@@ -6,7 +6,7 @@ Blood donation and social networking platform for Android and iOS.
 
 ## Status
 
-Stage 6 of 14 complete (awaiting approval) — the app runs in Bangla and English,
+Stage 6 of 14 complete (approved) — the app runs in Bangla and English,
 in light and dark, remembers both choices, a signed-in donor lands on a responsive
 home dashboard, can maintain their own profile with a split between what others
 may read and what only they can, and can add, change or remove a profile photo

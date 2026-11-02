@@ -14,7 +14,7 @@ not what was attempted. A stage is only marked done when `flutter analyze` and
 | 3 | Bangla/English & dark/light theme | **Complete — approved** |
 | 4 | Home dashboard UI | **Complete — approved** |
 | 5 | User profile system | **Complete — approved** |
-| 6 | Profile photo upload (Supabase Storage) | **Complete — awaiting approval** |
+| 6 | Profile photo upload (Supabase Storage) | **Complete — approved** |
 | 7 | Navigation & settings | Not started |
 | 8 | Donor management & badges | Not started |
 | 9 | Normal blood search & maps | Not started |
@@ -1441,9 +1441,21 @@ What the tests actually cover, since the last row is the one that matters:
 
 ### Next stage
 
-**Stage 7 — not started, waiting for approval.** Before Stage 6's storage claims
-can be upgraded from "tested against fakes" to "verified", steps 1–5 of
-`docs/storage/README.md` have to be performed and their output recorded: the
-project, the Firebase provider, the applied SQL, the verification queries, and
-the `curl` negative test that must come back `403`.
+**Stage 6 was approved by the owner on 2 November 2026.** The approval covers the
+client-side work verified above; the storage backend remains unverified. Issue 1
+in the list above is now partly stale: `supabase/.temp/linked-project.json`
+shows the CLI is linked to a project named "Sholovvo blood donation", so a
+project does exist. Whether the SQL, the bucket or the policies were ever applied
+to it is still unknown, so issues 2 and 3 stand unchanged.
+
+**Stage 7 — not started.** Before Stage 6's storage claims can be upgraded from
+"tested against fakes" to "verified", steps 1–5 of `docs/storage/README.md` have
+to be performed and their output recorded: the project, the Firebase provider,
+the applied SQL, the verification queries, and the `curl` negative test that must
+come back `403`.
+
+The approved next workstream is not Stage 7. It is the Firestore rules
+remediation arising from the four P0 findings, because the application writes
+none of the affected collections yet: closing them now is a rules-only change,
+whereas closing them after Stages 10–11 would force a client migration.
 
