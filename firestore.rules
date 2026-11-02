@@ -16,12 +16,63 @@ service cloud.firestore {
     // Blood requests collection
     match /blood_requests/{requestId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      // The owner may manage their request. A matching, available donor may
-      // atomically claim an open request; only the first transaction can win.
+
+      // A request is born open and unassigned, created by the patient it is for.
+      // Ownership is fixed at creation: the completion, assignment and
+      // cancellation fields cannot be forged or pre-filled by the creator.
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['userId', 'patientName', 'phoneNumber', 'bloodGroup', 'bloodBags', 'hospitalName', 'hospitalAddress', 'requiredDateTime', 'status', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['userId', 'patientName', 'phoneNumber', 'bloodGroup', 'bloodBags', 'hospitalName', 'hospitalAddress', 'requiredDateTime', 'requestType', 'notes', 'latitude', 'longitude', 'status', 'createdAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.patientName is string
+        && request.resource.data.patientName.size() > 0
+        && request.resource.data.phoneNumber is string
+        && request.resource.data.hospitalName is string
+        && request.resource.data.hospitalName.size() > 0
+        && request.resource.data.bloodGroup is string
+        && request.resource.data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+        && request.resource.data.bloodBags is int
+        && request.resource.data.bloodBags >= 1;
+
+      // Exactly four ways to update a request, and nothing else:
+      //   1. the patient edits the details of their own request while it is open;
+      //   2. the patient cancels their own request while it is open or accepted;
+      //   3. a matching, available donor claims an open request or closes out an
+      //      accepted one (never their own, and never anyone else's);
+      //   4. the patient confirms a completed donation, which is the only path to
+      //      'fulfilled' and the precondition for a rating or a post.
+      //
+      // Every branch is keyed on the stored document, so the owner identity
+      // cannot be rewritten, a request cannot be handed to another user, an
+      // assigned donor cannot be swapped, and no status can move backwards.
       allow update: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
         (
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == resource.data.userId &&
+          (
+            (resource.data.status == 'open' &&
+             request.resource.data.status == 'open' &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'patientName', 'phoneNumber', 'bloodGroup', 'bloodBags',
+               'hospitalName', 'hospitalAddress', 'requiredDateTime',
+               'requestType', 'notes', 'latitude', 'longitude'
+             ])) ||
+            (resource.data.status in ['open', 'accepted'] &&
+             request.resource.data.status == 'cancelled' &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt']) &&
+             (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['cancelledAt']) ||
+              request.resource.data.cancelledAt == request.time)) ||
+            (resource.data.status == 'donation_completed' &&
+             request.resource.data.status == 'fulfilled' &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'fulfilledAt']) &&
+             (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['fulfilledAt']) ||
+              request.resource.data.fulfilledAt == request.time))
+          )
+        ) ||
+        (
+          request.auth.uid != resource.data.userId &&
           (
             (resource.data.status == 'open' &&
              request.resource.data.status == 'accepted' &&
@@ -104,24 +155,35 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Notifications collection (Secured: recipientUid present, verified request or response existence for non-self notifications)
+    // Notifications collection (Secured: recipientUid present and never the sender,
+    // verified request or response existence for every notification type)
     match /notifications/{notificationId} {
       // Predicate describing whether the caller may raise a notification for the
       // recipient encoded in the payload. Used by both create and update so that
       // idempotent re-writes cannot drift away from the original relationship.
       //
-      // donor_response resolves the response document through responseId (NOT
-      // requestId, which points at blood_requests) and pins the notification to the
-      // donor who owns that response and the recipient who owns the request.
+      // Nobody may notify themselves: the old self-addressed branch let a caller
+      // create a notification whose recipient was the sender, and the recipient
+      // update branch then became a write to any document.
+      //
+      // new_request is raised by the request owner, to a donor, while the request
+      // is open. donor_response resolves the response document through responseId
+      // (NOT requestId, which points at blood_requests) and pins the notification
+      // to the donor who owns that response and the recipient who owns the request.
+      // request_cancelled is raised by the request owner to the donor who had
+      // accepted, and is valid both inside the cancelling batch (request still
+      // 'accepted') and after it (request already 'cancelled').
       function isAuthorizedNotificationPayload() {
         return request.resource.data.recipientUid is string
           && request.resource.data.recipientUid.size() > 0
+          && request.resource.data.recipientUid != request.auth.uid
           && request.resource.data.requestId is string
           && request.resource.data.createdAt == request.time
           && (
-            request.resource.data.recipientUid == request.auth.uid ||
             (request.resource.data.type == 'new_request' &&
-             exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId))) ||
+             exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.auth.uid &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'open') ||
             (request.resource.data.type == 'donor_response' &&
              request.resource.data.responseId is string &&
              request.resource.data.responseId.size() > 0 &&
@@ -139,7 +201,12 @@ service cloud.firestore {
              exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
              get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.assignedDonorId == request.resource.data.recipientUid &&
              get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.auth.uid &&
-             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'fulfilled')
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'fulfilled') ||
+            (request.resource.data.type == 'request_cancelled' &&
+             exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.auth.uid &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.assignedDonorId == request.resource.data.recipientUid &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status in ['accepted', 'cancelled'])
           );
       }
 
@@ -150,12 +217,14 @@ service cloud.firestore {
                     && request.resource.data.keys().hasOnly(['recipientUid', 'requestId', 'responseId', 'type', 'title', 'body', 'createdAt'])
                     && isAuthorizedNotificationPayload();
 
-      // The recipient marks notifications as read. The original sender may also
+      // The recipient may only mark a notification as read; they cannot edit its
+      // text, retype it or hand it to another user. The original sender may also
       // re-raise the exact same notification (deterministic document IDs make the
       // client write idempotent), but it may only refresh the display text: the
       // recipient, request, type and read state can never be altered.
       allow update: if request.auth != null && (
-        resource.data.recipientUid == request.auth.uid ||
+        (resource.data.recipientUid == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])) ||
         (
           isAuthorizedNotificationPayload()
           && request.resource.data.recipientUid == resource.data.recipientUid
@@ -238,13 +307,23 @@ service cloud.firestore {
                        request.resource.data.status == 'pending' &&
                        !request.resource.data.keys().hasAny(['confirmedBy']) &&
                        request.resource.data.keys().hasAll(['donorUid', 'bloodGroup', 'hospitalName', 'status', 'createdAt'])) ||
+                      // A confirmed record is written by the request owner, about
+                      // someone else, and only from a request that is genuinely
+                      // theirs, actually assigned to that donor, past completion
+                      // ('donation_completed' in the same batch as the confirmation,
+                      // or 'fulfilled' if the owner confirmed first), for the same
+                      // blood group the request asked for.
                       (request.resource.data.status == 'confirmed' &&
+                       request.resource.data.donorUid != request.auth.uid &&
                        request.resource.data.confirmedBy == request.auth.uid &&
                        request.resource.data.requestId is string &&
                        exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
                        get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.auth.uid &&
-                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'donation_completed' &&
+                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status in ['donation_completed', 'fulfilled'] &&
                        get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.assignedDonorId == request.resource.data.donorUid &&
+                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.bloodGroup == request.resource.data.bloodGroup &&
+                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.hospitalName == request.resource.data.hospitalName &&
+                       request.resource.data.donationDate is timestamp &&
                        request.resource.data.keys().hasAll(['donorUid', 'bloodGroup', 'hospitalName', 'status', 'createdAt', 'donationDate', 'requestId', 'confirmedBy']))
                     )
                     && request.resource.data.hospitalName is string

@@ -1454,8 +1454,75 @@ to be performed and their output recorded: the project, the Firebase provider,
 the applied SQL, the verification queries, and the `curl` negative test that must
 come back `403`.
 
-The approved next workstream is not Stage 7. It is the Firestore rules
+The approved next workstream was not Stage 7. It was the Firestore rules
 remediation arising from the four P0 findings, because the application writes
-none of the affected collections yet: closing them now is a rules-only change,
-whereas closing them after Stages 10–11 would force a client migration.
+none of the affected collections yet: closing them now was a rules-only change,
+whereas closing them after Stages 10–11 would have forced a client migration.
+**That remediation is complete — see the next section.**
+
+---
+
+## Security remediation — the four P0 findings
+
+Completed 2 November 2026, after Stage 6 was approved. Rules-only: no Dart file
+was touched, because the application writes neither `blood_requests`, nor
+`donation_history`, nor `notifications` yet (verified by grep over `lib/`).
+
+### What changed in `firestore.rules`
+
+**Finding 1 — fabricated donation history.** `blood_requests.create` no longer
+only compares `userId` with the caller. It requires the ten mandatory keys, a
+`hasOnly` allow-list, `status == 'open'`, no `assignedDonorId`/`acceptedAt`/
+`completedAt`/`cancelledAt`, a server `createdAt`, and a valid blood group. The
+confirmed branch of `donation_history.create` now also requires that the donor is
+not the caller, that the request is `donation_completed` or `fulfilled`, that
+`bloodGroup` and `hospitalName` match the request, and that `donationDate` is a
+timestamp.
+
+**Finding 2 — notification recipient reassignment.** The self-addressed branch
+is gone and `recipientUid != request.auth.uid` is now a precondition of every
+type. The recipient's update branch is restricted to `affectedKeys().hasOnly
+(['isRead'])`, so a notification can no longer be retyped or handed to another
+user.
+
+**Finding 3 — unauthorized `new_request`.** `new_request` now requires the
+caller to own the request *and* the request to still be `open`. A new
+`request_cancelled` type was added for the owner to tell the assigned donor that
+the request is off, valid both inside the cancelling batch (`status == 'accepted'`)
+and after it (`status == 'cancelled'`).
+
+**Finding 4 — unrestricted owner update.** The owner branch is now four named
+transitions and nothing else: edit details while `open`; cancel while `open` or
+`accepted`; confirm `donation_completed` → `fulfilled`. `userId` is immutable,
+`assignedDonorId` cannot be set or swapped by the owner, and self-claim is
+impossible because the donor branch excludes `auth.uid == resource.data.userId`.
+
+### Verified
+
+- `node --test firestore.test.js` against the Firestore emulator: **67 tests,
+  67 pass, 0 fail**, 8 suites. The 43 original tests are unchanged and all pass.
+  The 14 discovery tests were rewritten to assert the closed behaviour and 10
+  new contract tests were added.
+- `flutter analyze`: no issues found. `flutter test`: 386 passed, 37 skipped.
+- Two defects were found by the suite itself during this pass: `Set.has()` does
+  not exist in the rules language (`hasAny` does), and an owner may legitimately
+  correct the blood group of a request nobody has claimed yet.
+
+### Limitation that remains
+
+Rules cannot prove a real donation happened. They can only guarantee that a
+confirmed record is written by the owner of a request that a specific donor
+claimed and completed, with matching blood group and hospital. A patient and a
+collaborating donor can still manufacture a mutual donation by going through the
+claim and completion steps, and a confirmed record still cannot be corrected by
+the donor it names (`allow update: if false`). Closing either gap needs a
+trusted server process, which the Spark plan does not provide.
+
+### Unplanned change, disclosed
+
+`pubspec.yaml` declared `supabase: ^3.0.0-dev.15`, which is imported nowhere and
+conflicts with `storage_client ^2.8.1` through `supabase_common`. `flutter pub
+get` could not resolve at all, so `analyze` and `test` could not run. The line
+was removed. Nothing else in the dependency set changed and `pubspec.lock` was
+not modified.
 
