@@ -1,0 +1,691 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for English (`en`).
+class AppLocalizationsEn extends AppLocalizations {
+  AppLocalizationsEn([String locale = 'en']) : super(locale);
+
+  @override
+  String get appTagline => 'Save Lives • Connect Hearts';
+
+  @override
+  String get signIn => 'Sign in';
+
+  @override
+  String get signOut => 'Sign out';
+
+  @override
+  String get tryAgain => 'Try again';
+
+  @override
+  String get close => 'Close';
+
+  @override
+  String get emailLabel => 'Email';
+
+  @override
+  String get emailHint => 'you@example.com';
+
+  @override
+  String get passwordLabel => 'Password';
+
+  @override
+  String get showPassword => 'Show password';
+
+  @override
+  String get hidePassword => 'Hide password';
+
+  @override
+  String get welcomeHeadline => 'A Drop of Hope, Give Blood, Give Life';
+
+  @override
+  String get welcomeSubtitle =>
+      'One donation can be the difference between a family waiting and a family reuniting. Join the community that answers when someone calls.';
+
+  @override
+  String get getStarted => 'Get Started';
+
+  @override
+  String get alreadyHaveAccount => 'Already have an account?';
+
+  @override
+  String get loginTitle => 'Welcome back';
+
+  @override
+  String get loginSubtitle =>
+      'Sign in to reach your donor profile and the requests near you.';
+
+  @override
+  String get passwordHint => 'Your password';
+
+  @override
+  String get forgotPassword => 'Forgot password?';
+
+  @override
+  String get newToSolovvo => 'New to Solovvo?';
+
+  @override
+  String get createAnAccount => 'Create an account';
+
+  @override
+  String get registerTitle => 'Join Solovvo';
+
+  @override
+  String get registerSubtitle =>
+      'Donors are matched by blood group and distance. Registration takes less than a minute.';
+
+  @override
+  String get fullNameLabel => 'Full name';
+
+  @override
+  String get fullNameHint => 'As it will appear to donors';
+
+  @override
+  String get newPasswordHint => 'At least 8 characters';
+
+  @override
+  String get passwordRule => 'Mix letters and numbers';
+
+  @override
+  String get confirmPasswordLabel => 'Confirm password';
+
+  @override
+  String get confirmPasswordHint => 'Repeat the password';
+
+  @override
+  String get createAccount => 'Create account';
+
+  @override
+  String get verificationEmailNote =>
+      'We will email you a link to confirm the address before your account can answer a request.';
+
+  @override
+  String get alreadyRegistered => 'Already registered?';
+
+  @override
+  String get forgotTitle => 'Reset your password';
+
+  @override
+  String get forgotSubtitle =>
+      'Enter the address on your account and we will send a link to choose a new password.';
+
+  @override
+  String get sendResetLink => 'Send reset link';
+
+  @override
+  String get backToSignIn => 'Back to sign in';
+
+  @override
+  String get resetSentTitle => 'Check your inbox';
+
+  @override
+  String resetSentBody(String email) {
+    return 'If an account exists for $email, a password reset link is on its way from Firebase. The link expires after one hour.';
+  }
+
+  @override
+  String get verifyTitle => 'Confirm your email';
+
+  @override
+  String get verifySubtitle =>
+      'One tap in your inbox unlocks the rest of Solovvo.';
+
+  @override
+  String get sentToLabel => 'We sent a link to';
+
+  @override
+  String get verifyLockedBody =>
+      'Your account is created, but donation features stay locked until the address is confirmed.';
+
+  @override
+  String get freshLinkSent => 'A fresh link is on its way.';
+
+  @override
+  String get notConfirmedYet =>
+      'Not confirmed yet. Open the link in your inbox, then check again.';
+
+  @override
+  String get confirmedCta => 'I\'ve confirmed my email';
+
+  @override
+  String get resendEmail => 'Resend email';
+
+  @override
+  String resendIn(int seconds) {
+    return 'Resend in ${seconds}s';
+  }
+
+  @override
+  String get unknownEmail => 'your email address';
+
+  @override
+  String homeGreeting(String name) {
+    return 'Welcome, $name';
+  }
+
+  @override
+  String get homeDashboardSubtitle =>
+      'Everything you need to give blood — and to ask for it.';
+
+  @override
+  String get verified => 'Verified';
+
+  @override
+  String get donorStatusTitle => 'Donor status';
+
+  @override
+  String get bloodGroupLabel => 'Blood group';
+
+  @override
+  String get lastDonationLabel => 'Last donation';
+
+  @override
+  String get availabilityLabel => 'Availability';
+
+  @override
+  String get notSetYet => 'Not set yet';
+
+  @override
+  String get availableNow => 'Available';
+
+  @override
+  String get notAvailableNow => 'Not available';
+
+  @override
+  String get neverDonated => 'No donations yet';
+
+  @override
+  String homeDonationsCount(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString donations',
+      one: '$countString donation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get homeRequestBlood => 'Request blood';
+
+  @override
+  String get homeFindDonors => 'Find donors';
+
+  @override
+  String get homeNearbyTitle => 'Requests near you';
+
+  @override
+  String get homeNearbyEmptyTitle => 'No open requests nearby';
+
+  @override
+  String get homeNearbyEmptyBody =>
+      'When someone near you needs blood, their request appears here first.';
+
+  @override
+  String homeUnitsNeeded(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString units needed',
+      one: '$countString unit needed',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeNeededBy(String date) {
+    return 'Needed by $date';
+  }
+
+  @override
+  String get homeFeedTitle => 'From the community';
+
+  @override
+  String get homeFeedEmptyTitle => 'No posts yet';
+
+  @override
+  String get homeFeedEmptyBody =>
+      'Stories and updates from donors will appear here.';
+
+  @override
+  String get homeSeeAll => 'See all';
+
+  @override
+  String get homeComingSoon => 'Coming soon.';
+
+  @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileEditTitle => 'Edit profile';
+
+  @override
+  String get profileEditAction => 'Edit';
+
+  @override
+  String get profileSaveAction => 'Save changes';
+
+  @override
+  String get profileSaved => 'Profile saved.';
+
+  @override
+  String get profileSectionYou => 'Your donor card';
+
+  @override
+  String get profileSectionDetails => 'Personal details';
+
+  @override
+  String get profileSectionPrivacy => 'Privacy';
+
+  @override
+  String get profileSectionHistory => 'Donation history';
+
+  @override
+  String get profileCompletionTitle => 'Profile completion';
+
+  @override
+  String profileCompletionCount(num done, num total) {
+    final intl.NumberFormat doneNumberFormat = intl.NumberFormat.decimalPattern(
+      localeName,
+    );
+    final String doneString = doneNumberFormat.format(done);
+    final intl.NumberFormat totalNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String totalString = totalNumberFormat.format(total);
+
+    return '$doneString of $totalString filled in';
+  }
+
+  @override
+  String get profileCompletionAllDone => 'Every field is filled in.';
+
+  @override
+  String get profileCompletionMissingTitle => 'Still missing';
+
+  @override
+  String get profileFieldPhoto => 'Profile photo';
+
+  @override
+  String get profilePhoneLabel => 'Phone';
+
+  @override
+  String get profileAreaLabel => 'Area';
+
+  @override
+  String get profileAddressLabel => 'Address';
+
+  @override
+  String get profileDobLabel => 'Date of birth';
+
+  @override
+  String get profileGenderLabel => 'Gender';
+
+  @override
+  String get profileGenderFemale => 'Female';
+
+  @override
+  String get profileGenderMale => 'Male';
+
+  @override
+  String get profileGenderOther => 'Other';
+
+  @override
+  String get profileGenderPreferNotToSay => 'Prefer not to say';
+
+  @override
+  String get profileAvailabilityTitle => 'Available to donate';
+
+  @override
+  String get profileAvailabilityOnBody =>
+      'Your donor card shows you as available. You can switch this off at any time.';
+
+  @override
+  String get profileAvailabilityOffBody =>
+      'Nobody looking for blood will be matched with you. Only you can switch this on.';
+
+  @override
+  String get profileAvailabilityNeedsGroup =>
+      'Add your blood group before a request can be matched with you.';
+
+  @override
+  String get profilePrivacyAreaTitle => 'Show my area to other donors';
+
+  @override
+  String get profilePrivacyAreaBody =>
+      'When this is on your area is published on your donor card. When it is off the area is removed from it.';
+
+  @override
+  String get profilePrivacyPrivateTitle => 'Always private';
+
+  @override
+  String get profilePrivacyPrivateBody =>
+      'Phone, address and date of birth are stored where only you can read them.';
+
+  @override
+  String get profileHistoryEmptyTitle => 'No donations recorded yet';
+
+  @override
+  String get profileHistoryEmptyBody =>
+      'A donation appears here once the recipient confirms it. Nothing is added by hand.';
+
+  @override
+  String get profileHistoryConfirmed => 'Confirmed';
+
+  @override
+  String get profileHistoryPending => 'Pending';
+
+  @override
+  String get profileHistoryErrorTitle => 'Could not load your donations';
+
+  @override
+  String get profileLoadErrorTitle => 'Could not load your profile';
+
+  @override
+  String profileHistoryCount(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString donations',
+      one: '$countString donation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String profileHistoryLast(String date) {
+    return 'Last donation $date';
+  }
+
+  @override
+  String get profileContactPrivateBadge => 'Private';
+
+  @override
+  String get profileEmailManaged => 'Managed by your sign-in account';
+
+  @override
+  String get profileNotSetCtaTitle => 'Complete your profile';
+
+  @override
+  String get profileNotSetCtaBody =>
+      'Add your blood group and area so a request near you can find you.';
+
+  @override
+  String get profileAddDetails => 'Add details';
+
+  @override
+  String get profilePhotoAdd => 'Add photo';
+
+  @override
+  String get profilePhotoChange => 'Change photo';
+
+  @override
+  String get profilePhotoSheetTitle => 'Profile photo';
+
+  @override
+  String get profilePhotoSheetBody =>
+      'Your photo appears on your donor card. Only you can change it.';
+
+  @override
+  String get profilePhotoFromGallery => 'Choose from gallery';
+
+  @override
+  String get profilePhotoFromCamera => 'Take a photo';
+
+  @override
+  String get profilePhotoRemove => 'Remove photo';
+
+  @override
+  String get profilePhotoRemoveConfirmTitle => 'Remove your photo?';
+
+  @override
+  String get profilePhotoRemoveConfirmBody =>
+      'Your initials will show on your donor card instead, and the stored image will be deleted.';
+
+  @override
+  String get profilePhotoUploading => 'Uploading your photo…';
+
+  @override
+  String get profilePhotoUpdated => 'Photo updated.';
+
+  @override
+  String get profilePhotoRemoved => 'Photo removed.';
+
+  @override
+  String get profilePhotoNotConfigured =>
+      'Photo upload is not set up in this build yet.';
+
+  @override
+  String get actionCancel => 'Cancel';
+
+  @override
+  String get profilePickerDate => 'Choose a date';
+
+  @override
+  String get profilePickerClear => 'Clear';
+
+  @override
+  String get errorPhoneInvalid =>
+      'Enter a valid mobile number, for example 01712345678';
+
+  @override
+  String errorAreaTooLong(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'Keep the area under $countString characters';
+  }
+
+  @override
+  String errorAddressTooLong(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'Keep the address under $countString characters';
+  }
+
+  @override
+  String get errorDobFuture => 'A date of birth cannot be in the future';
+
+  @override
+  String errorDobTooOld(num year) {
+    final intl.NumberFormat yearNumberFormat = intl.NumberFormat.decimalPattern(
+      localeName,
+    );
+    final String yearString = yearNumberFormat.format(year);
+
+    return 'Enter a date after $yearString';
+  }
+
+  @override
+  String get errorBloodGroupUnknown => 'Choose one of the eight blood groups';
+
+  @override
+  String get errorPhotoEmpty => 'That file was empty. Choose another photo';
+
+  @override
+  String errorPhotoTooLarge(num megabytes) {
+    final intl.NumberFormat megabytesNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String megabytesString = megabytesNumberFormat.format(megabytes);
+
+    return 'Choose a photo under $megabytesString MB';
+  }
+
+  @override
+  String get errorPhotoUnsupported => 'Choose a JPEG, PNG or WebP image';
+
+  @override
+  String get errorPhotoAccessDenied =>
+      'Solovvo needs access to your photos to set a profile photo';
+
+  @override
+  String get errorPhotoUnreadable =>
+      'That photo could not be read. Try another one';
+
+  @override
+  String get firebaseUnavailableTitle => 'Firebase unavailable';
+
+  @override
+  String get firebaseUnavailableBody =>
+      'Solovvo could not start its backend connection, so data screens are held back rather than shown empty.';
+
+  @override
+  String get reconnectHint => 'Reconnect and relaunch the app.';
+
+  @override
+  String get diagnosticReason => 'Reason';
+
+  @override
+  String get diagnosticDetail => 'Detail';
+
+  @override
+  String get diagnosticProject => 'Project';
+
+  @override
+  String get diagnosticFlavor => 'Flavor';
+
+  @override
+  String get sessionRestoreTitle => 'Could not restore your session';
+
+  @override
+  String get sessionRestoreBody =>
+      'Solovvo could not reach Firebase Authentication, so it will not guess whether you are signed in.';
+
+  @override
+  String get errorEmailRequired => 'Enter your email address';
+
+  @override
+  String get errorEmailTooLong => 'That email address is too long';
+
+  @override
+  String get errorEmailInvalid => 'Enter a valid email address';
+
+  @override
+  String get errorPasswordRequired => 'Enter your password';
+
+  @override
+  String get errorPasswordChoose => 'Choose a password';
+
+  @override
+  String errorPasswordTooShort(int count) {
+    return 'Use at least $count characters';
+  }
+
+  @override
+  String get errorPasswordComposition => 'Mix letters and numbers';
+
+  @override
+  String get errorConfirmRequired => 'Repeat your password';
+
+  @override
+  String get errorConfirmMismatch => 'Passwords do not match';
+
+  @override
+  String get errorNameRequired => 'Enter your name';
+
+  @override
+  String get errorNameTooShort => 'That name is too short';
+
+  @override
+  String errorNameTooLong(int count) {
+    return 'Keep it under $count characters';
+  }
+
+  @override
+  String get failureInvalidCredentials =>
+      'That email and password do not match. Check both and try again.';
+
+  @override
+  String get failureUserDisabled =>
+      'This account has been disabled. Contact support to restore it.';
+
+  @override
+  String get failureEmailAlreadyInUse =>
+      'An account already exists for this email. Sign in instead.';
+
+  @override
+  String get failureWeakPassword =>
+      'That password is too easy to guess. Use at least 8 characters.';
+
+  @override
+  String get failureEmailNotVerified =>
+      'Verify your email address before continuing.';
+
+  @override
+  String get failureRequiresRecentLogin =>
+      'For your security, sign in again and retry.';
+
+  @override
+  String get failureOperationNotAllowed =>
+      'Email sign-in is switched off for this app. Please contact support.';
+
+  @override
+  String get failureUnknownAuth =>
+      'We could not complete that sign-in. Please try again.';
+
+  @override
+  String get failureNetwork =>
+      'No connection. Check your network and try again.';
+
+  @override
+  String get failureRateLimited =>
+      'Too many attempts. Wait a few minutes and try again.';
+
+  @override
+  String get failurePermission => 'You do not have permission to do that.';
+
+  @override
+  String get failureNotFound => 'We could not find that account.';
+
+  @override
+  String get failureConflict => 'That request is already in progress.';
+
+  @override
+  String get failureValidation => 'Please check the details you entered.';
+
+  @override
+  String get failureUnexpected =>
+      'Something went wrong on our side. Please try again.';
+
+  @override
+  String get appearanceAndLanguage => 'Appearance & language';
+
+  @override
+  String get languageLabel => 'Language';
+
+  @override
+  String get languageEnglish => 'English';
+
+  @override
+  String get languageBangla => 'বাংলা';
+
+  @override
+  String get themeLabel => 'Theme';
+
+  @override
+  String get themeSystem => 'System';
+
+  @override
+  String get themeLight => 'Light';
+
+  @override
+  String get themeDark => 'Dark';
+}

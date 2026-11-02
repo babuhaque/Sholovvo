@@ -1,0 +1,268 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users collection (Public profile data & private sensitive PII subcollection)
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      // Private sensitive PII subcollection (Strict owner-only read/write)
+      match /private/{privateDoc} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Blood requests collection
+    match /blood_requests/{requestId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // The owner may manage their request. A matching, available donor may
+      // atomically claim an open request; only the first transaction can win.
+      allow update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        (
+          (
+            (resource.data.status == 'open' &&
+             request.resource.data.status == 'accepted' &&
+             request.resource.data.assignedDonorId == request.auth.uid &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assignedDonorId', 'acceptedAt'])) ||
+            (resource.data.status == 'accepted' &&
+             resource.data.assignedDonorId == request.auth.uid &&
+             request.resource.data.status == 'donation_completed' &&
+             request.resource.data.assignedDonorId == resource.data.assignedDonorId &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt']))
+          ) &&
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'donor' &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAvailable == true &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.bloodGroup == resource.data.bloodGroup
+        )
+      );
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Request responses collection (Secured: read by donor or request owner; create/update with immutable IDs & valid status)
+    match /request_responses/{responseId} {
+      allow read: if request.auth != null && (
+        resource.data.donorId == request.auth.uid ||
+        (exists(/databases/$(database)/documents/blood_requests/$(resource.data.requestId)) &&
+         get(/databases/$(database)/documents/blood_requests/$(resource.data.requestId)).data.userId == request.auth.uid)
+      );
+      allow create: if request.auth != null
+                    && request.resource.data.donorId == request.auth.uid
+                    && request.resource.data.requestId is string
+                    && request.resource.data.status in ['accepted', 'declined']
+                    && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'donor'
+                    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAvailable == true
+                    && exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId))
+                    && get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.bloodGroup == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.bloodGroup
+                    && (
+                      (request.resource.data.status == 'declined' &&
+                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'open') ||
+                      (request.resource.data.status == 'accepted' &&
+                       getAfter(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'accepted' &&
+                       getAfter(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.assignedDonorId == request.auth.uid)
+                    );
+      allow update: if request.auth != null
+                    && resource.data.donorId == request.auth.uid
+                    && request.resource.data.donorId == resource.data.donorId
+                    && request.resource.data.requestId == resource.data.requestId
+                    && request.resource.data.status in ['accepted', 'declined', 'pending']
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'donorName', 'donorPhone', 'createdAt']);
+      allow delete: if request.auth != null && resource.data.donorId == request.auth.uid;
+    }
+
+    // Response claims collection (Secured: one immutable claim per request/donor pair)
+    match /response_claims/{claimId} {
+      // A claim document is the transactional anchor that makes "first donor to
+      // accept wins" atomic. The booking transaction must read the claim *before*
+      // it exists, so reading a non-existent claim id is allowed; an existing claim
+      // remains readable only by the donor who owns it.
+      allow read: if request.auth != null && (
+        !exists(/databases/$(database)/documents/response_claims/$(claimId)) ||
+        resource.data.donorId == request.auth.uid
+      );
+
+      // Claims are only ever created, in the same transaction that writes the
+      // matching request_responses document. The claim must point at a response the
+      // caller actually owns for the same request. update/delete stay closed so a
+      // winning claim can never be released or reassigned.
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['requestId', 'donorId', 'responseId'])
+                    && request.resource.data.keys().hasOnly(['requestId', 'donorId', 'responseId'])
+                    && request.resource.data.requestId is string
+                    && request.resource.data.donorId is string
+                    && request.resource.data.donorId == request.auth.uid
+                    && request.resource.data.responseId is string
+                    && request.resource.data.responseId.size() > 0
+                    && existsAfter(/databases/$(database)/documents/request_responses/$(request.resource.data.responseId))
+                    && getAfter(/databases/$(database)/documents/request_responses/$(request.resource.data.responseId)).data.donorId == request.auth.uid
+                    && getAfter(/databases/$(database)/documents/request_responses/$(request.resource.data.responseId)).data.requestId == request.resource.data.requestId;
+
+      allow update, delete: if false;
+    }
+
+    // Notifications collection (Secured: recipientUid present, verified request or response existence for non-self notifications)
+    match /notifications/{notificationId} {
+      // Predicate describing whether the caller may raise a notification for the
+      // recipient encoded in the payload. Used by both create and update so that
+      // idempotent re-writes cannot drift away from the original relationship.
+      //
+      // donor_response resolves the response document through responseId (NOT
+      // requestId, which points at blood_requests) and pins the notification to the
+      // donor who owns that response and the recipient who owns the request.
+      function isAuthorizedNotificationPayload() {
+        return request.resource.data.recipientUid is string
+          && request.resource.data.recipientUid.size() > 0
+          && request.resource.data.requestId is string
+          && request.resource.data.createdAt == request.time
+          && (
+            request.resource.data.recipientUid == request.auth.uid ||
+            (request.resource.data.type == 'new_request' &&
+             exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId))) ||
+            (request.resource.data.type == 'donor_response' &&
+             request.resource.data.responseId is string &&
+             request.resource.data.responseId.size() > 0 &&
+             exists(/databases/$(database)/documents/request_responses/$(request.resource.data.responseId)) &&
+             get(/databases/$(database)/documents/request_responses/$(request.resource.data.responseId)).data.donorId == request.auth.uid &&
+             get(/databases/$(database)/documents/request_responses/$(request.resource.data.responseId)).data.requestId == request.resource.data.requestId &&
+             exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.resource.data.recipientUid) ||
+            (request.resource.data.type == 'donation_completed' &&
+             exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.resource.data.recipientUid &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.assignedDonorId == request.auth.uid &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'donation_completed') ||
+            (request.resource.data.type == 'donation_confirmed' &&
+             exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.assignedDonorId == request.resource.data.recipientUid &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.auth.uid &&
+             get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'fulfilled')
+          );
+      }
+
+      // Only the recipient can list, open, or delete their own notifications.
+      allow read, delete: if request.auth != null && resource.data.recipientUid == request.auth.uid;
+
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['recipientUid', 'requestId', 'responseId', 'type', 'title', 'body', 'createdAt'])
+                    && isAuthorizedNotificationPayload();
+
+      // The recipient marks notifications as read. The original sender may also
+      // re-raise the exact same notification (deterministic document IDs make the
+      // client write idempotent), but it may only refresh the display text: the
+      // recipient, request, type and read state can never be altered.
+      allow update: if request.auth != null && (
+        resource.data.recipientUid == request.auth.uid ||
+        (
+          isAuthorizedNotificationPayload()
+          && request.resource.data.recipientUid == resource.data.recipientUid
+          && request.resource.data.requestId == resource.data.requestId
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'body', 'createdAt', 'responseId'])
+        )
+      );
+    }
+
+    // Posts and comments collection (Author can update text/imageUrl; likeCount restricted to exact +1 or -1 change)
+    match /posts/{postId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.authorUid == request.auth.uid
+                    && (
+                      !request.resource.data.keys().hasAny(['donationRecordId']) ||
+                      (request.resource.data.donationRecordId is string &&
+                       exists(/databases/$(database)/documents/donation_history/$(request.resource.data.donationRecordId)) &&
+                       get(/databases/$(database)/documents/donation_history/$(request.resource.data.donationRecordId)).data.donorUid == request.auth.uid &&
+                       get(/databases/$(database)/documents/donation_history/$(request.resource.data.donationRecordId)).data.status == 'confirmed')
+                    );
+      allow update: if request.auth != null && (
+        (resource.data.authorUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'imageUrl']) && request.resource.data.authorUid == resource.data.authorUid && request.resource.data.createdAt == resource.data.createdAt) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount']) &&
+         (request.resource.data.likeCount == resource.data.likeCount + 1 || request.resource.data.likeCount == resource.data.likeCount - 1))
+      );
+      allow delete: if request.auth != null && resource.data.authorUid == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && request.resource.data.authorUid == request.auth.uid;
+        allow delete: if request.auth != null && resource.data.authorUid == request.auth.uid;
+      }
+    }
+
+    // Post likes collection (Validated create on userId, delete on existing resource.data.userId)
+    match /post_likes/{likeId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+
+    // One recipient rating per completed donation (document ID is the blood request ID).
+    match /donation_ratings/{requestId} {
+      // Ratings are public community feedback for donor profiles and feed cards.
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['requestId', 'donorUid', 'recipientUid', 'stars', 'review', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['requestId', 'donorUid', 'recipientUid', 'stars', 'review', 'createdAt'])
+        && request.resource.data.requestId == requestId
+        && request.resource.data.recipientUid == request.auth.uid
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1
+        && request.resource.data.stars <= 5
+        && request.resource.data.review is string
+        && request.resource.data.review.size() <= 300
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/blood_requests/$(requestId))
+        && get(/databases/$(database)/documents/blood_requests/$(requestId)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/blood_requests/$(requestId)).data.status == 'fulfilled'
+        && get(/databases/$(database)/documents/blood_requests/$(requestId)).data.assignedDonorId == request.resource.data.donorUid;
+      allow update, delete: if false;
+    }
+
+    // --- Donation History Collection ---
+    match /donation_history/{recordId} {
+      // Read: Only the owning donor can read their private donation history
+      allow read: if request.auth != null && resource.data.donorUid == request.auth.uid;
+
+      // Create: Strict keys presence, allowed keys, type validations, pending status, nullable donationDate and requestId
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['donorUid', 'bloodGroup', 'hospitalName', 'status', 'createdAt'])
+                    && request.resource.data.keys().hasOnly(['donorUid', 'bloodGroup', 'hospitalName', 'status', 'createdAt', 'donationDate', 'requestId', 'confirmedBy'])
+                    && request.resource.data.donorUid is string
+                    && request.resource.data.status is string
+                    && (
+                      (request.resource.data.donorUid == request.auth.uid &&
+                       request.resource.data.status == 'pending' &&
+                       !request.resource.data.keys().hasAny(['confirmedBy']) &&
+                       request.resource.data.keys().hasAll(['donorUid', 'bloodGroup', 'hospitalName', 'status', 'createdAt'])) ||
+                      (request.resource.data.status == 'confirmed' &&
+                       request.resource.data.confirmedBy == request.auth.uid &&
+                       request.resource.data.requestId is string &&
+                       exists(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)) &&
+                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.userId == request.auth.uid &&
+                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.status == 'donation_completed' &&
+                       get(/databases/$(database)/documents/blood_requests/$(request.resource.data.requestId)).data.assignedDonorId == request.resource.data.donorUid &&
+                       request.resource.data.keys().hasAll(['donorUid', 'bloodGroup', 'hospitalName', 'status', 'createdAt', 'donationDate', 'requestId', 'confirmedBy']))
+                    )
+                    && request.resource.data.hospitalName is string
+                    && request.resource.data.hospitalName.size() > 0
+                    && request.resource.data.bloodGroup is string
+                    && request.resource.data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+                    && request.resource.data.createdAt is timestamp
+                    && request.resource.data.createdAt == request.time
+                    && (!request.resource.data.keys().hasAll(['donationDate']) || request.resource.data.donationDate is timestamp || request.resource.data.donationDate == null)
+                    && (!request.resource.data.keys().hasAll(['requestId']) || request.resource.data.requestId is string || request.resource.data.requestId == null);
+
+      // Update: Disabled entirely for clients to prevent any tampering with pending records
+      allow update: if false;
+
+      // Delete: Owner can delete only pending records
+      allow delete: if request.auth != null
+                    && resource.data.donorUid == request.auth.uid
+                    && resource.data.status == 'pending';
+    }
+  }
+}

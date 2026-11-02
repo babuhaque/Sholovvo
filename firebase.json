@@ -1,0 +1,36 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "sholovvo-blood-donation",
+          "appId": "1:419478547476:android:051fe54ab30e282d108b01",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "sholovvo-blood-donation",
+          "configurations": {
+            "android": "1:419478547476:android:051fe54ab30e282d108b01",
+            "ios": "1:419478547476:ios:7cc966cff2caa897108b01",
+            "web": "1:419478547476:web:906d5313a2973d7f108b01"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
+  }
+}

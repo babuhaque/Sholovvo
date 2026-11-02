@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "419478547476",
+    "project_id": "sholovvo-blood-donation",
+    "storage_bucket": "sholovvo-blood-donation.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:419478547476:android:051fe54ab30e282d108b01",
+        "android_client_info": {
+          "package_name": "com.example.sholovvo_blood_donation_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-lu-T-9Lk9R2kNlqTJ_r0Y7xqjg1LSNk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

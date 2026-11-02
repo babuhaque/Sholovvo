@@ -1,0 +1,324 @@
+{
+  "@@locale": "en",
+
+  "appTagline": "Save Lives • Connect Hearts",
+
+  "signIn": "Sign in",
+  "signOut": "Sign out",
+  "tryAgain": "Try again",
+  "close": "Close",
+  "emailLabel": "Email",
+  "emailHint": "you@example.com",
+  "passwordLabel": "Password",
+  "showPassword": "Show password",
+  "hidePassword": "Hide password",
+
+  "welcomeHeadline": "A Drop of Hope, Give Blood, Give Life",
+  "welcomeSubtitle": "One donation can be the difference between a family waiting and a family reuniting. Join the community that answers when someone calls.",
+  "getStarted": "Get Started",
+  "alreadyHaveAccount": "Already have an account?",
+
+  "loginTitle": "Welcome back",
+  "loginSubtitle": "Sign in to reach your donor profile and the requests near you.",
+  "passwordHint": "Your password",
+  "forgotPassword": "Forgot password?",
+  "newToSolovvo": "New to Solovvo?",
+  "createAnAccount": "Create an account",
+
+  "registerTitle": "Join Solovvo",
+  "registerSubtitle": "Donors are matched by blood group and distance. Registration takes less than a minute.",
+  "fullNameLabel": "Full name",
+  "fullNameHint": "As it will appear to donors",
+  "newPasswordHint": "At least 8 characters",
+  "passwordRule": "Mix letters and numbers",
+  "confirmPasswordLabel": "Confirm password",
+  "confirmPasswordHint": "Repeat the password",
+  "createAccount": "Create account",
+  "verificationEmailNote": "We will email you a link to confirm the address before your account can answer a request.",
+  "alreadyRegistered": "Already registered?",
+
+  "forgotTitle": "Reset your password",
+  "forgotSubtitle": "Enter the address on your account and we will send a link to choose a new password.",
+  "sendResetLink": "Send reset link",
+  "backToSignIn": "Back to sign in",
+  "resetSentTitle": "Check your inbox",
+  "resetSentBody": "If an account exists for {email}, a password reset link is on its way from Firebase. The link expires after one hour.",
+  "@resetSentBody": {
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "donor@solovvo.app"
+      }
+    }
+  },
+
+  "verifyTitle": "Confirm your email",
+  "verifySubtitle": "One tap in your inbox unlocks the rest of Solovvo.",
+  "sentToLabel": "We sent a link to",
+  "verifyLockedBody": "Your account is created, but donation features stay locked until the address is confirmed.",
+  "freshLinkSent": "A fresh link is on its way.",
+  "notConfirmedYet": "Not confirmed yet. Open the link in your inbox, then check again.",
+  "confirmedCta": "I've confirmed my email",
+  "resendEmail": "Resend email",
+  "resendIn": "Resend in {seconds}s",
+  "@resendIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "unknownEmail": "your email address",
+
+  "homeGreeting": "Welcome, {name}",
+  "@homeGreeting": {
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Ayesha"
+      }
+    }
+  },
+  "homeDashboardSubtitle": "Everything you need to give blood — and to ask for it.",
+  "verified": "Verified",
+  "donorStatusTitle": "Donor status",
+  "bloodGroupLabel": "Blood group",
+  "lastDonationLabel": "Last donation",
+  "availabilityLabel": "Availability",
+  "notSetYet": "Not set yet",
+  "availableNow": "Available",
+  "notAvailableNow": "Not available",
+  "neverDonated": "No donations yet",
+  "homeDonationsCount": "{count, plural, one{{count} donation} other{{count} donations}}",
+  "@homeDonationsCount": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "homeRequestBlood": "Request blood",
+  "homeFindDonors": "Find donors",
+  "homeNearbyTitle": "Requests near you",
+  "homeNearbyEmptyTitle": "No open requests nearby",
+  "homeNearbyEmptyBody": "When someone near you needs blood, their request appears here first.",
+  "homeUnitsNeeded": "{count, plural, one{{count} unit needed} other{{count} units needed}}",
+  "@homeUnitsNeeded": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "homeNeededBy": "Needed by {date}",
+  "@homeNeededBy": {
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "2 Nov"
+      }
+    }
+  },
+  "homeFeedTitle": "From the community",
+  "homeFeedEmptyTitle": "No posts yet",
+  "homeFeedEmptyBody": "Stories and updates from donors will appear here.",
+  "homeSeeAll": "See all",
+  "homeComingSoon": "Coming soon.",
+
+  "profileTitle": "Profile",
+  "profileEditTitle": "Edit profile",
+  "profileEditAction": "Edit",
+  "profileSaveAction": "Save changes",
+  "profileSaved": "Profile saved.",
+  "profileSectionYou": "Your donor card",
+  "profileSectionDetails": "Personal details",
+  "profileSectionPrivacy": "Privacy",
+  "profileSectionHistory": "Donation history",
+  "profileCompletionTitle": "Profile completion",
+  "profileCompletionCount": "{done} of {total} filled in",
+  "@profileCompletionCount": {
+    "placeholders": {
+      "done": {
+        "type": "num",
+        "format": "decimalPattern"
+      },
+      "total": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "profileCompletionAllDone": "Every field is filled in.",
+  "profileCompletionMissingTitle": "Still missing",
+  "profileFieldPhoto": "Profile photo",
+  "profilePhoneLabel": "Phone",
+  "profileAreaLabel": "Area",
+  "profileAddressLabel": "Address",
+  "profileDobLabel": "Date of birth",
+  "profileGenderLabel": "Gender",
+  "profileGenderFemale": "Female",
+  "profileGenderMale": "Male",
+  "profileGenderOther": "Other",
+  "profileGenderPreferNotToSay": "Prefer not to say",
+  "profileAvailabilityTitle": "Available to donate",
+  "profileAvailabilityOnBody": "Your donor card shows you as available. You can switch this off at any time.",
+  "profileAvailabilityOffBody": "Nobody looking for blood will be matched with you. Only you can switch this on.",
+  "profileAvailabilityNeedsGroup": "Add your blood group before a request can be matched with you.",
+  "profilePrivacyAreaTitle": "Show my area to other donors",
+  "profilePrivacyAreaBody": "When this is on your area is published on your donor card. When it is off the area is removed from it.",
+  "profilePrivacyPrivateTitle": "Always private",
+  "profilePrivacyPrivateBody": "Phone, address and date of birth are stored where only you can read them.",
+  "profileHistoryEmptyTitle": "No donations recorded yet",
+  "profileHistoryEmptyBody": "A donation appears here once the recipient confirms it. Nothing is added by hand.",
+  "profileHistoryConfirmed": "Confirmed",
+  "profileHistoryPending": "Pending",
+  "profileHistoryErrorTitle": "Could not load your donations",
+  "profileLoadErrorTitle": "Could not load your profile",
+  "profileHistoryCount": "{count, plural, one{{count} donation} other{{count} donations}}",
+  "@profileHistoryCount": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "profileHistoryLast": "Last donation {date}",
+  "@profileHistoryLast": {
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "3 Mar"
+      }
+    }
+  },
+  "profileContactPrivateBadge": "Private",
+  "profileEmailManaged": "Managed by your sign-in account",
+  "profileNotSetCtaTitle": "Complete your profile",
+  "profileNotSetCtaBody": "Add your blood group and area so a request near you can find you.",
+  "profileAddDetails": "Add details",
+  "profilePhotoAdd": "Add photo",
+  "profilePhotoChange": "Change photo",
+  "profilePhotoSheetTitle": "Profile photo",
+  "profilePhotoSheetBody": "Your photo appears on your donor card. Only you can change it.",
+  "profilePhotoFromGallery": "Choose from gallery",
+  "profilePhotoFromCamera": "Take a photo",
+  "profilePhotoRemove": "Remove photo",
+  "profilePhotoRemoveConfirmTitle": "Remove your photo?",
+  "profilePhotoRemoveConfirmBody": "Your initials will show on your donor card instead, and the stored image will be deleted.",
+  "profilePhotoUploading": "Uploading your photo…",
+  "profilePhotoUpdated": "Photo updated.",
+  "profilePhotoRemoved": "Photo removed.",
+  "profilePhotoNotConfigured": "Photo upload is not set up in this build yet.",
+  "actionCancel": "Cancel",
+  "profilePickerDate": "Choose a date",
+  "profilePickerClear": "Clear",
+  "errorPhoneInvalid": "Enter a valid mobile number, for example 01712345678",
+  "errorAreaTooLong": "Keep the area under {count} characters",
+  "@errorAreaTooLong": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "errorAddressTooLong": "Keep the address under {count} characters",
+  "@errorAddressTooLong": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "errorDobFuture": "A date of birth cannot be in the future",
+  "errorDobTooOld": "Enter a date after {year}",
+  "@errorDobTooOld": {
+    "placeholders": {
+      "year": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "errorBloodGroupUnknown": "Choose one of the eight blood groups",
+  "errorPhotoEmpty": "That file was empty. Choose another photo",
+  "errorPhotoTooLarge": "Choose a photo under {megabytes} MB",
+  "@errorPhotoTooLarge": {
+    "placeholders": {
+      "megabytes": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "errorPhotoUnsupported": "Choose a JPEG, PNG or WebP image",
+  "errorPhotoAccessDenied": "Solovvo needs access to your photos to set a profile photo",
+  "errorPhotoUnreadable": "That photo could not be read. Try another one",
+
+  "firebaseUnavailableTitle": "Firebase unavailable",
+  "firebaseUnavailableBody": "Solovvo could not start its backend connection, so data screens are held back rather than shown empty.",
+  "reconnectHint": "Reconnect and relaunch the app.",
+  "diagnosticReason": "Reason",
+  "diagnosticDetail": "Detail",
+  "diagnosticProject": "Project",
+  "diagnosticFlavor": "Flavor",
+
+  "sessionRestoreTitle": "Could not restore your session",
+  "sessionRestoreBody": "Solovvo could not reach Firebase Authentication, so it will not guess whether you are signed in.",
+
+  "errorEmailRequired": "Enter your email address",
+  "errorEmailTooLong": "That email address is too long",
+  "errorEmailInvalid": "Enter a valid email address",
+  "errorPasswordRequired": "Enter your password",
+  "errorPasswordChoose": "Choose a password",
+  "errorPasswordTooShort": "Use at least {count} characters",
+  "@errorPasswordTooShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "errorPasswordComposition": "Mix letters and numbers",
+  "errorConfirmRequired": "Repeat your password",
+  "errorConfirmMismatch": "Passwords do not match",
+  "errorNameRequired": "Enter your name",
+  "errorNameTooShort": "That name is too short",
+  "errorNameTooLong": "Keep it under {count} characters",
+  "@errorNameTooLong": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "failureInvalidCredentials": "That email and password do not match. Check both and try again.",
+  "failureUserDisabled": "This account has been disabled. Contact support to restore it.",
+  "failureEmailAlreadyInUse": "An account already exists for this email. Sign in instead.",
+  "failureWeakPassword": "That password is too easy to guess. Use at least 8 characters.",
+  "failureEmailNotVerified": "Verify your email address before continuing.",
+  "failureRequiresRecentLogin": "For your security, sign in again and retry.",
+  "failureOperationNotAllowed": "Email sign-in is switched off for this app. Please contact support.",
+  "failureUnknownAuth": "We could not complete that sign-in. Please try again.",
+  "failureNetwork": "No connection. Check your network and try again.",
+  "failureRateLimited": "Too many attempts. Wait a few minutes and try again.",
+  "failurePermission": "You do not have permission to do that.",
+  "failureNotFound": "We could not find that account.",
+  "failureConflict": "That request is already in progress.",
+  "failureValidation": "Please check the details you entered.",
+  "failureUnexpected": "Something went wrong on our side. Please try again.",
+
+  "appearanceAndLanguage": "Appearance & language",
+  "languageLabel": "Language",
+  "languageEnglish": "English",
+  "languageBangla": "বাংলা",
+  "themeLabel": "Theme",
+  "themeSystem": "System",
+  "themeLight": "Light",
+  "themeDark": "Dark"
+}

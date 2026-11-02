@@ -1,0 +1,165 @@
+# Profile photos on Supabase Storage (Stage 6)
+
+Everything in this folder is **delivery material**. None of it has been applied,
+nothing in the repository runs it, and no Supabase project exists in this
+workspace yet. The app is built to work without it: when the build carries no
+Supabase defines, the photo sheet says *"Photo upload is not set up in this
+build yet."* and offers no control that could only fail.
+
+- `supabase-avatars.sql` — the bucket and the two storage policies.
+- This file — the order of operations, how to verify, and what is still unproven.
+
+## What the app does
+
+| Step | Where | Effect |
+| --- | --- | --- |
+| Pick | `ImagePickerPhotoPicker` | Gallery or camera, downscaled to 1024 px at quality 85, EXIF/GPS dropped (`requestFullMetadata: false`) |
+| Check | `PhotoValidator` | 5 MB cap, and the format is decided by magic bytes (JPEG/PNG/WebP), never by the file name |
+| Upload | `SupabasePhotoStorage.uploadAvatar` | `POST` to `avatars/{firebaseUid}/avatar-{millis}.{ext}` with the donor's **Firebase ID token** as the bearer |
+| Publish | `ProfileRepository.setPhotoUrl` | One-field merge of `users/{uid}.photoUrl` — only after the upload answered with a URL |
+| Compensate | `SupabasePhotoStorage.removeAvatar` | If the profile write fails, the object just uploaded is deleted again; the donor's previous photo is never touched |
+| Remove | `ProfileController` + `ProfilePhotoController.remove` | Profile field cleared first (public card stops showing a photo), then the object is deleted best-effort |
+
+Two ordering rules are the whole design and are covered by tests:
+
+- **Replacement:** upload → publish → (on publish failure) delete the new object.
+  A failed replacement leaves the profile exactly as it was.
+- **Removal:** clear the field → delete the object. The worst case is an orphaned
+  object nobody links to, never a profile pointing at a missing file.
+
+## Order of operations
+
+### 1. A Supabase project
+
+Create one (or reuse an existing one that is not used for anything else at this
+stage). One bucket holding 5 MB-capped avatars fits comfortably inside the free
+tier; nothing here needs a paid add-on. Note the **project URL** and the
+**publishable (anon) key** from *Project Settings → API*.
+
+Do **not** copy the `service_role` / `sb_secret_…` key anywhere near this app.
+The client refuses to use such a key at all — `SupabaseConfig.rejectPrivilegedKey`
+drops it and the app reports itself as unconfigured — but the guardrail exists to
+catch a mistake, not to make one safe.
+
+### 2. Let Supabase verify Firebase tokens
+
+The app authenticates with **Firebase** and has no Supabase user. For
+`auth.jwt()` to carry anything in a storage policy, the Supabase project must be
+told to trust the Firebase project:
+
+*Authentication → Sign In / Providers → Third-party auth → Firebase*, add the
+Firebase project id:
+
+```
+sholovvo-blood-donation
+```
+
+Dashboard wording moves between Supabase releases; the setting is the one that
+lets a project accept JWTs issued by an external identity provider. If your plan
+or project does not offer it, **stop here and report it** — the alternative
+(minting a `role: authenticated` claim with a Firebase blocking function, or
+moving to Supabase Auth) changes the authentication model and needs your
+decision. No workaround for this has been implemented.
+
+### 3. Apply the SQL
+
+Paste `supabase-avatars.sql` into *SQL Editor* and run it. It creates:
+
+- bucket `avatars`: public read, 5 MB, `image/jpeg`, `image/png`, `image/webp`
+- an **insert** policy and a **delete** policy on `storage.objects`, both gated on
+  `iss` + `aud` + `sub == first path segment`
+- no update policy, no select policy, nothing on any other bucket
+
+`public = true` is intentional: profile photos are shown on the donor card other
+donors see. It also means the image URL needs no Authorization header, which is
+what `Image.network` can actually send. Never store anything private in this
+bucket.
+
+### 4. Build the app with the defines
+
+```
+flutter run -d chrome ^
+  --dart-define=SUPABASE_URL=https://<project-ref>.supabase.co ^
+  --dart-define=SUPABASE_ANON_KEY=<publishable key>
+```
+
+The same two defines apply to `flutter build apk` / `flutter build web`. Only
+`https://` URLs are accepted (an `http` endpoint would put the bearer token on
+the wire in clear text), and a malformed URL or a missing key simply means "not
+configured".
+
+### 5. Verify
+
+1. Sign in, open **Profile**, tap **Add photo**, choose an image.
+2. In *Storage → avatars* the object should be `{firebaseUid}/avatar-{millis}.jpg`;
+   the donor card shows the photo and `users/{uid}.photoUrl` holds the public URL.
+3. **Change photo** again: a second object appears, the profile points at the
+   newer one, and the older object is left in place (nothing links to it — see
+   limitations).
+4. **Remove photo**: confirm, the card falls back to initials, `photoUrl` is
+   cleared, and the object is gone.
+5. Negative test — the policy, not the client, must refuse a foreign folder.
+   With a signed-in donor's ID token and a path belonging to someone else:
+
+   ```
+   curl -i -X POST "$SUPABASE_URL/storage/v1/object/avatars/<other-uid>/x.jpg" ^
+     -H "apikey: $SUPABASE_ANON_KEY" ^
+     -H "Authorization: Bearer $FIREBASE_ID_TOKEN" ^
+     -H "Content-Type: image/jpeg" ^
+     --data-binary "@photo.jpg"
+   ```
+
+   Expected: `403` with `new row violates row-level security policy`. The same
+   call to the donor's own folder with a token-less request must also fail.
+
+### 6. What each failure looks like in the app
+
+| Supabase answer | Message |
+| --- | --- |
+| `401`, `Invalid JWT`, `jwt expired` | the auth sentence — sign in again |
+| `403`, `row-level security`, `insufficient privilege` | the permission sentence — check step 2 and the path |
+| `413`, `maximum allowed size` | the same "choose a photo under 5 MB" the client shows |
+| `415`, `mime type … not supported` | "choose a JPEG, PNG or WebP image" |
+| `429` | the rate-limit sentence |
+| `5xx`, socket, timeout | the network sentence |
+
+## Known limitations (read before the Security stage)
+
+1. **No live verification yet.** There is no Supabase project in this workspace,
+   so no upload, download or delete has been exercised against real storage. All
+   storage behaviour is covered by unit and widget tests against fakes; the SQL
+   above has never been executed.
+2. **Firebase tokens arrive as the `anon` role.** Supabase has no `role` claim to
+   read, so the policies carry the whole burden: `iss`, `aud` and
+   `sub == (storage.foldername(name))[1]`. Anything that weakens those three
+   predicates weakens ownership for everyone.
+3. **The bucket is public-read.** The URL of a photo is not a secret and can be
+   shared or cached for a year (`Cache-Control: max-age=31536000`, which is safe
+   only because every upload gets a fresh path). Deleted objects may stay visible
+   from a CDN edge for a while.
+4. **Orphans are possible.** If the compensating delete fails (offline right after
+   a failed profile write), an object remains with nothing pointing at it, and
+   replacing a photo always leaves the previous object behind. Cleaning those up
+   needs a scheduled job — a paid feature on both providers — or a manual query,
+   so nothing does it yet.
+5. **Validation is enforced in two places, neither of them image analysis.** The
+   bucket checks size and mime type, the client checks magic bytes; neither
+   re-encodes the image, so a hostile but well-formed JPEG is stored as-is.
+6. **The photo outlives the account.** Deleting a Firebase user does not delete
+   their objects; only the app's own removal path does.
+7. **Firestore is untouched.** `photoUrl` is a plain string field on
+   `users/{uid}`; the current rules still do not validate its shape. That is the
+   same gap Stage 5 listed for the future Security stage, and it was not changed
+   here — rules were neither edited nor deployed.
+
+## Rolling back
+
+Only to remove the feature entirely (not to make an upload work):
+
+```sql
+drop policy if exists "avatars: donor uploads into their own folder" on storage.objects;
+drop policy if exists "avatars: donor deletes from their own folder" on storage.objects;
+delete from storage.buckets where id = 'avatars'; -- empties the bucket as well
+```
+
+Then build without the two defines: the sheet reports "not set up" again.

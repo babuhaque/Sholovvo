@@ -1,0 +1,13 @@
+{
+  "name": "sholovvo-firestore-rules-tests",
+  "version": "1.0.0",
+  "description": "Firestore security rules unit tests for Solovvo Phase 2.1 Donation History",
+  "private": true,
+  "scripts": {
+    "test": "node --test firestore.test.js"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase": "^10.12.0"
+  }
+}

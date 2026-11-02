@@ -1,0 +1,20 @@
+# Configures `flutter gen-l10n` (run automatically by `flutter pub get` because
+# pubspec.yaml sets `generate: true`).
+#
+# The generated files are written into the source tree rather than a synthetic
+# package. Synthetic localisation packages were removed from Flutter, and an
+# in-tree file is easier to inspect when a translation goes wrong.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+output-dir: lib/l10n/generated
+
+# `AppLocalizations.of(context)` is only reached through the `context.l10n`
+# extension, so a nullable getter would spread null checks nowhere useful.
+nullable-getter: false
+
+# Keeps `flutter gen-l10n` honest: any key present in the English template but
+# missing from a translation is reported here instead of silently falling back
+# to English at runtime.
+untranslated-messages-file: lib/l10n/untranslated.json
