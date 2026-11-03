@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/design/widgets/initials_avatar.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
+import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/features/home/presentation/home_screen.dart';
 import 'package:sholovvo_app/features/home/presentation/widgets/home_header.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
@@ -11,6 +12,7 @@ import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 
 import '../../support/fake_auth_repository.dart';
+import '../../support/fake_feed.dart';
 import '../../support/fake_profile_repository.dart';
 import '../../support/test_app.dart';
 
@@ -46,6 +48,10 @@ Future<FakeProfileRepository> _pumpHome(
       overrides: [
         authRepositoryProvider.overrideWithValue(repo),
         profileRepositoryProvider.overrideWithValue(profiles),
+        // The dashboard previews the community, so it reads the feed on mount.
+        // An empty fake is the state this file is not about, and it is the one
+        // that keeps the read away from Firestore.
+        feedRepositoryProvider.overrideWithValue(FakeFeedRepository()),
       ],
       child: testApp(
         home: HomeScreen(

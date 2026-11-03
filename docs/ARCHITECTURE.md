@@ -460,17 +460,21 @@ Carried deliberately, not forgotten:
     `docs/storage/README.md`.
 13. **Stage 8.3 is implemented but not hardened** — the reconciliation record is
     the Stage 8.3 entry in `docs/PROJECT_STATE.md`, and the short form is here so
-    this list cannot be read as "8.3 shipped cleanly". Four things are open:
-    `flutter test` has **one failing test** in `compose_controller_test.dart`
-    ("reports uploading while the object is in flight"), so the tree does not meet
-    the completion gate stated at the top of that file; `ComposePostScreen` and
-    `compose_image_grid` have **no widget tests and no visual render**; the feed
-    and the composer are **not reachable in the shipped app**, because
-    `feedPreviewProvider` is still empty and the dashboard hides the **See all**
-    that is the only route in; and the **malformed-document page** described in
-    §14.2 can render a permanently empty feed with no way to page past it. None of
-    these was introduced by this document's reconciliation, and none was fixed by
-    it either.
+    this list cannot be read as "8.3 shipped cleanly". **Three things are open:**
+    `ComposePostScreen` and `compose_image_grid` have **no widget tests and no
+    visual render**; the feed and the composer are **not reachable in the shipped
+    app**, because `feedPreviewProvider` is still empty and the dashboard hides the
+    **See all** that is the only route in; and the **malformed-document page**
+    described in §14.2 can render a permanently empty feed with no way to page past
+    it. A fourth item the reconciliation recorded here — **one failing test** in
+    `compose_controller_test.dart` — has since been **closed test-side**
+    (2026-11-03, `68f9ee8`): the test asserted the uploading flag before the
+    controller had finished awaiting the image picker, and now waits on a
+    deterministic entry signal from the storage fake before asserting it. **No file
+    under `lib/` changed.** The suite is 612 passed, 47 skipped, 0 failed, which
+    satisfies the gate at the top of `docs/PROJECT_STATE.md` for today's tree and
+    says nothing about approval. None of the three open items was fixed by the
+    reconciliation, and none was fixed by the test fix either.
 
 ## 12. Profile data model and privacy (Stage 5)
 
@@ -1090,13 +1094,14 @@ detailed record, with the commands and the numbers, is the Stage 8.3 entry in
 | Claim above | Implemented | Tested | Approved | Deployed | Live-verified |
 | --- | --- | --- | --- | --- | --- |
 | `publish` writes one `posts` document | Yes | Yes — 15 repository tests over `FakePostWriter` | No | No | No |
-| Draft validated before the network | Yes | Yes — within the 31 controller tests | No | No | No |
+| Draft validated before the network | Yes | Yes — within the 32 controller tests | No | No | No |
 | Photographs upload on pick | Yes | Yes — 15 storage tests against a fake | No | No | **No — no byte has ever been transferred** |
 | Abandoned drafts delete their objects | Yes | Yes — best-effort path pinned by tests | No | No | No |
 | `ownPath()` blocks foreign deletes | Yes | Yes — guard tested directly | No | No | No (server-side enforcement is the unapplied policy) |
+| `isUploading` means the storage upload, not the pick | Yes | Yes — pinned by two gating tests, one holding the upload open (`storage.uploadStarted`) and one holding the pick open (`picker.entered`); no delays involved | No | No | No |
 | The compose form behaves as described | Yes | **No — zero widget tests**; nothing under `test/` imports `ComposePostScreen` | No | No | No |
 | The form renders as designed | Yes | **No — no visual-review capture exists** | No | No | No |
-| The whole stage meets the project gate | — | **No — `flutter test` fails one test** | No | No | No |
+| The whole stage meets the project gate | — | **Yes for today's tree** — 612 passed, 47 skipped, 0 failed and `flutter analyze` clean, measured on `68f9ee8`; a standing gate to re-run each step, not an approval | **No** | No | No |
 
 Three further gaps belong with the design rather than with the paperwork:
 
@@ -1116,7 +1121,15 @@ Three further gaps belong with the design rather than with the paperwork:
   the footer that holds **Load more**. The publish-to-feed flow inherits this: a
   post written into a collection of unreadable documents would not appear.
 
-**Nothing in this subsection was fixed by the reconciliation that added it.** It is
-a statement of measured state, written so that the design record above cannot be
-read as a verification record.
+**The reconciliation that added this subsection fixed nothing**, and it is written
+so that the design record above cannot be read as a verification record. Since it
+was written, exactly one row has moved: the failing controller test, closed on
+2026-11-03 by `68f9ee8`, **test-side** — a test that asserted an in-flight state on
+the line after an unawaited call, measuring the image-picker await rather than the
+upload. `ComposeController`, `ComposeState` and every other file under `lib/` are
+unchanged, and the upload-state contract is now stated rather than inferred:
+waiting for the donor to choose a file is not uploading, `isUploading` covers the
+storage phase alone, the controller's private `_busy` guard spans the whole
+pick-then-upload flow, and a validator refusal never sets the flag. Everything else
+in the table above still reads as it did.
 

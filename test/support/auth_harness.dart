@@ -7,9 +7,11 @@ import 'package:sholovvo_app/core/config/app_config.dart';
 import 'package:sholovvo_app/core/preferences/app_preferences.dart';
 import 'package:sholovvo_app/design/tokens/app_motion.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
+import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 
 import 'fake_auth_repository.dart';
+import 'fake_feed.dart';
 import 'fake_profile_repository.dart';
 import 'test_app.dart';
 
@@ -44,6 +46,11 @@ Widget authHarness({
       profileRepositoryProvider.overrideWithValue(
         profileRepository ?? FakeProfileRepository(),
       ),
+      // The dashboard previews the community now, so it reads the feed the same
+      // way it reads the profile. A fresh fake has no posts, which is what a
+      // build whose community has not been written to actually shows — and it
+      // keeps every gate test out of `FirebaseFirestore.instance`.
+      feedRepositoryProvider.overrideWithValue(FakeFeedRepository()),
       if (preferences != null)
         preferencesStoreProvider.overrideWithValue(preferences),
       // Settings reads the build flavour. Every other screen tolerates the

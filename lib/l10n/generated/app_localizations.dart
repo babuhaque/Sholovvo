@@ -512,6 +512,12 @@ abstract class AppLocalizations {
   /// **'Stories and updates from donors will appear here.'**
   String get homeFeedEmptyBody;
 
+  /// No description provided for @homeFeedOpenAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the community'**
+  String get homeFeedOpenAction;
+
   /// No description provided for @homeSeeAll.
   ///
   /// In en, this message translates to:

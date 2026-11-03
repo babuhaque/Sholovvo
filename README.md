@@ -17,16 +17,21 @@ changed or deployed.
 Three things are true at once and belong in any resume-from-these-notes brief, so
 they are stated here rather than only in `docs/PROJECT_STATE.md`:
 
-- **The stage is not signed off and the suite is not green.** `flutter analyze`
-  reports no issues; `flutter test` reports 610 passed, 47 skipped and **1 failed**,
-  in the composer's own controller suite. By this project's gate a stage is only
-  done when both pass, so Stage 8.3 is implemented, not complete.
+- **The stage is implemented and the suite is green, and neither of those means
+  signed off.** `flutter analyze` reports no issues and `flutter test` reports 612
+  passed, 47 skipped, **0 failed**. The one red test the recovery audit found was a
+  test-synchronisation defect in the composer's own suite, fixed test-side on
+  2026-11-03 with no change to any production code: the test now waits until the
+  storage upload has actually started before asserting the uploading state. By this
+  project's gate a stage is only *done* when both commands pass, so the gate is met
+  for today's tree — while the presentation layer below is still untested, the feed
+  is still unreachable, and the rules still check nothing about a post.
 - **The feed is not yet reachable through normal navigation.** `FeedScreen` is
   reached from the dashboard's community **See all**, which the dashboard hides
   over an empty preview, and that preview provider is still empty by design. The
   read path, the composer and the upload therefore exist in code and cannot be
   opened in the shipped app.
-- **`ComposePostScreen` has no widget tests and no visual render.** Its 61 tests
+- **`ComposePostScreen` has no widget tests and no visual render.** Its 62 tests
   cover the controller, the repository and the storage adapter, not the screen.
 
 Stage 8.1 laid the foundations (`Post`, `Comment` and `Report` entities, a pure
@@ -307,12 +312,20 @@ testable without an app, in the same shape the read side earned:
   upload is not set up — and the text half of the form still publishes.
 
 Two things the write path does not have yet. It has **no server-side enforcement**
-— see the rules paragraph below — and it has **no widget tests**: its 61 tests
+— see the rules paragraph below — and it has **no widget tests**: its 62 tests
 cover `ComposeController`, `FirestorePostRepository` and `SupabasePostImageStorage`,
 while `ComposePostScreen` and `compose_image_grid` are untested and have never been
-rendered. One of the 61 currently fails. Neither the bucket nor its policies has
+rendered. All 62 pass. Neither the bucket nor its policies has
 been applied, so no photograph has ever been uploaded for real. See
 `docs/PROJECT_STATE.md` (Stage 8.3) and `docs/ARCHITECTURE.md` §14.3.
+
+One distinction the tests now pin, because it was ambiguous enough to break a test:
+waiting for the donor to choose a file is **not** uploading. `ComposeState.isUploading`
+covers the storage phase only — the add tile's spinner and `feedComposeUploading`
+describe bytes on the wire — while the controller's private `_busy` guard covers the
+whole pick-then-upload flow, including the window before any state has changed. A
+refusal from the validator never sets the flag either, and a dedicated regression
+test fails anyone who tries to hoist it above the picker.
 
 `firestore.rules` was **not touched by Stage 8.1, 8.1.1, 8.2 or 8.3**, but it is not
 empty on the feed: it already has a `posts` block, a nested `comments` block and

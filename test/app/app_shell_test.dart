@@ -4,13 +4,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/app/app_shell.dart';
 import 'package:sholovvo_app/core/config/app_config.dart';
 import 'package:sholovvo_app/design/widgets/initials_avatar.dart';
+import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
+import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
+import 'package:sholovvo_app/features/feed/presentation/feed_screen.dart';
 import 'package:sholovvo_app/features/home/presentation/widgets/home_header.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
 import 'package:sholovvo_app/features/settings/presentation/settings_screen.dart';
 
 import '../support/fake_auth_repository.dart';
+import '../support/fake_feed.dart';
 import '../support/fake_profile_repository.dart';
 import '../support/test_app.dart';
 
@@ -46,6 +50,10 @@ Future<void> _pumpShell(
       overrides: [
         authRepositoryProvider.overrideWithValue(auth),
         profileRepositoryProvider.overrideWithValue(profiles),
+        // Both tabs are built at once, so this is also true of the feed the
+        // dashboard previews: a shell test that forgot it would fail on a
+        // Firestore call rather than on the tab it was checking.
+        feedRepositoryProvider.overrideWithValue(FakeFeedRepository()),
         // Reached only by the test that walks into Settings from the gear. It
         // throws by default, on purpose, so leaving it out would make the
         // failure look like a navigation bug.
@@ -114,6 +122,44 @@ void main() {
       expect(find.byType(NavigationRail), findsNothing);
       // The dashboard is the destination, not a screen pushed over one.
       expect(find.byType(HomeHeader), findsOneWidget);
+    });
+
+    testWidgets('the community opens as a page above the shell and closes back '
+        'to the dashboard', (WidgetTester tester) async {
+      await _pumpShell(tester);
+
+      // The empty community card carries the way in, because the feed is a real
+      // destination even on a day with nothing posted.
+      final Finder open = find.widgetWithText(
+        SolovvoButton,
+        'Open the community',
+      );
+      expect(open, findsOneWidget);
+      await tester.ensureVisible(open);
+      await tester.pump();
+      await tester.tap(open);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // A page rather than a third destination: the feed covers the bar instead
+      // of joining it, so the shell still owns exactly two tabs.
+      expect(find.byType(FeedScreen), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.text('Community'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // Back on the dashboard the donor left, not on a rebuilt copy of it.
+      expect(find.byType(FeedScreen), findsNothing);
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).destinations,
+        hasLength(2),
+      );
+      expect(_visibleTab(tester), ShellTab.home.index);
+      expect(find.text('From the community'), findsOneWidget);
     });
 
     testWidgets('the bar switches to the profile tab', (

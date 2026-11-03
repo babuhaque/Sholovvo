@@ -39,12 +39,15 @@ a new plan: until this reconciliation the tracker stopped at 8.2, and the Stage
 8.2 entry below closed with "Stage 8.3 has not been started", while the same
 commit that delivered 8.2 (`d27aee3`) also delivered `ComposePostScreen`,
 `ComposeController`, the `PostRepository`/`PostWriter` ports and their Firestore
-and Supabase implementations, the `post-images` SQL and 61 composer tests.
+and Supabase implementations, the `post-images` SQL and the composer tests — 61
+in that commit, **62 today** after the Step 2 fix added one.
 `docs/ARCHITECTURE.md` §14.3 documented that work as it was built; this file never
 caught up. The entry at the end of this file records what is actually in the tree,
-what is not yet verified — including one failing test in `flutter test` — and what
+what is not yet verified — including, at the reconciliation, one failing test in
+`flutter test` since resolved **test-side** — and what
 hardening is outstanding. Nothing about the 8.3 implementation was rebuilt,
-replaced or reverted by this reconciliation.
+replaced or reverted by this reconciliation, and the Step 2 fix changed no Dart
+source.
 
 ---
 
@@ -2220,6 +2223,13 @@ boundaries are not separable in Git. This entry was written by the recovery
 reconciliation, from the source tree and measured command results, not from the
 stage brief; there is no original Stage 8.3 completion report.
 
+Two things have happened since that entry was written: the owner committed the
+reconciliation documentation (`bbf1543`) and the **Step 2 test fix** (`68f9ee8`),
+which resolved the one failing test below. That makes the suite green; it does not
+make the stage complete. Defects 2–9 and tasks 3–7 are all still open, and the
+gate at the top of this file is met *today*, not *once and for all* — every later
+hardening step has to re-run it.
+
 ### What "implemented" means here, and what it does not
 
 Five different states get conflated easily, and this stage is in only the first
@@ -2228,7 +2238,7 @@ and second of them:
 | State | Stage 8.3 | Evidence |
 | --- | --- | --- |
 | **Implemented** | Yes | Every file below exists in the committed tree and is wired: `FeedScreen`'s `FloatingActionButton.extended` pushes `ComposePostScreen.route()`, and a publish calls `FeedController.prepend` |
-| **Unit-tested** | Partly | 61 tests exist; **one of them fails**. The controller, the repository and the storage adapter are covered; the screens are not covered at all |
+| **Unit-tested** | Partly | 62 composer tests exist and **all pass** (whole suite: 612 passed, 47 skipped, 0 failed). The controller, the repository and the storage adapter are covered; the screens are not covered at all |
 | **Approved** | **No** | No approval record exists for 8.3, and neither Stage 8.2 nor Stage 7 has been approved — 8.3 was built on top of an unapproved stage |
 | **Deployed** | **No** | `firestore.rules`, `firebase.json` and `docs/storage/*.sql` were not applied by this stage and nothing was deployed |
 | **Live-verified** | **No** | No post has ever been written to a real Firestore project, and no post photograph has ever been uploaded to real storage |
@@ -2257,7 +2267,7 @@ and second of them:
 | File | Job / tests |
 | --- | --- |
 | `docs/storage/supabase-post-images.sql` | the `post-images` bucket and its two storage policies. **Delivered, not applied** |
-| `test/features/feed/compose_controller_test.dart` | 31 tests — **1 failing** (below) |
+| `test/features/feed/compose_controller_test.dart` | **32 tests, all passing** (31 at `d27aee3`, one of them failing — see defect 1; the 32nd pins the pick/upload distinction) |
 | `test/features/feed/firestore_post_repository_test.dart` | 15 tests over `FakePostWriter`, pinning the exact document shape |
 | `test/features/feed/supabase_post_image_storage_test.dart` | 15 tests, including the `ownPath()` delete guard |
 | `test/support/fake_compose.dart` | fakes for the three ports; no tests of its own |
@@ -2276,10 +2286,20 @@ and second of them:
 `pubspec.lock`, `firestore-rules-tests/` — none of them appears in the commit's
 100-file diff. There is still no `firestore.indexes.json`.
 
-### Known defects, recorded without being fixed
+**Changed later, test-side only:** Step 2 (`68f9ee8`) modified
+`test/features/feed/compose_controller_test.dart`, `test/support/fake_compose.dart`
+and `test/support/fake_photo_services.dart`. **Nothing under `lib/` has changed
+since `d27aee3`** — verified with `git diff d27aee3 HEAD -- lib`, which is empty.
 
-1. **The suite is red, and this stage fails the project's own completion gate.**
-   The failing test, in full:
+### Known defects — one closed, the rest recorded without being fixed
+
+Only defect 1 has been closed, and it was closed by the Step 2 test fix. Nothing
+else on this list was touched, and each item below says which side of the
+line (code, tests, backend, deployment) it is still open on.
+
+1. **RESOLVED IN STEP 2 (2026-11-03, `68f9ee8`) — the suite was red, and this stage
+   failed the project's own completion gate.** The failure, quoted as recorded at
+   the reconciliation:
 
    ```
    test/features/feed/compose_controller_test.dart
@@ -2288,23 +2308,55 @@ and second of them:
      expect: state().isUploading — Expected: true, Actual: <false>   (line 138)
    ```
 
-   It reproduces every run — `flutter test test/features/feed/compose_controller_test.dart`
-   gives `+30 -1` — so it is not a flake. The test calls `addImage` without
-   awaiting it and asserts on the next line, while `ComposeController.addImage`
-   awaits the **picker** (`compose_providers.dart:122`) before it sets
-   `isUploading: true` (line 144). The structurally identical publish test passes,
-   because `publish` sets `isPublishing` synchronously before its first await.
-   **Diagnosed only; nothing was changed.** Deciding whether the test needs to
-   yield to the event loop first, or the controller should set the flag before the
-   pick, is an owner decision: the second option changes what the UI promises
-   during a pick, and the test's own name asserts that promise.
+   **Root cause: a test-synchronisation defect, not a production controller
+   defect.** No Dart source changed — `git diff d27aee3 HEAD -- lib` is empty, and
+   `ComposeController` is exactly what Stage 8.3 committed.
+   `addImage` awaits the **picker** before it sets `isUploading`, so at the instant
+   the test asserted, three steps before that assignment, the controller was still
+   inside `pick`. The un-awaited call meant the assertion measured the *pick* and
+   not the upload, and the storage gate the test had installed had not been
+   reached at all.
+
+   **The fix, test-side and deterministic.** The test now waits for the upload to
+   have actually started — `await storage.uploadStarted.future` — before asserting
+   `isUploading`, then releases the gate, awaits the call, and checks the settled
+   state. `uploadStarted` is a `Completer<void>` the fake completes on entry to
+   `upload()`, so no delay, no `Future.delayed`, and no counting of microtasks is
+   involved. `test/support/fake_compose.dart` (+11) and
+   `test/support/fake_photo_services.dart` (+21) gained that entry signal, plus a
+   `gate` on `FakePhotoPicker`; both are additive, and the picker's gate await only
+   executes when a test installs it, so no existing consumer shifted timing
+   (verified by running `test/features/profile` and `test/core/media`).
+
+   **The state contract that was ambiguous is now explicit and tested:**
+
+   - **Waiting for the picker is not reported as uploading.** A dedicated
+     regression test, `waiting for the picker is not reported as uploading`, holds
+     the pick open on `picker.gate`, asserts from inside `picker.entered` that
+     `isUploading` and `isBusy` are both false with nothing uploaded, and then lets
+     the flow finish. Anyone who later hoists `isUploading: true` above the pick
+     will fail that test rather than silently change what the form promises.
+   - **The controller's private `_busy` flag protects the whole
+     image-selection-plus-upload flow**, including the window before any state has
+     changed — which is the gap the pre-existing
+     `a second tap while a pick is in flight opens no second picker` test pins.
+   - **`ComposeState.isUploading` means the storage upload phase only** — bytes on
+     the wire to `post-images`. It is what the add tile's spinner and
+     `feedComposeUploading` render, and the platform picker owns the screen during
+     the wait it deliberately does not cover.
+   - A photo refused by `PhotoValidator` never sets the flag either, now asserted
+     on the `bytes that are not an image never reach the network` test.
+
+   The count went 31 → **32** in this file, and 61 → **62** across the composer's
+   three files. The 47 skips are unchanged (the opt-in visual-review harness).
 2. **`ComposePostScreen` has no widget tests and no visual review.** No file under
    `test/` imports `ComposePostScreen` or quotes a `feedCompose*` key — verified by
-   search. So unverified by any test: the `PopScope`/discard flow, the
+   search, and still true after Step 2. So unverified by any test: the
+   `PopScope`/discard flow, the
    publish-disabled-while-uploading rule, the unconfigured-bucket fallback message,
    the text counter, and all of `compose_image_grid`. `test/review/visual_review_test.dart`
    has a `feed` group and **no compose group**, and `docs/visuals/stage8/` holds
-   only the five read-path renders. The 61 tests cover the logic around the screen,
+   only the five read-path renders. The 62 tests cover the logic around the screen,
    not the screen, and the presentation layer of this stage is the largest
    unverified surface in it (282 + 389 lines).
 3. **The malformed-document pagination dead-end** (found in 8.2, still present).
@@ -2358,12 +2410,18 @@ and second of them:
 
 ### Outstanding tasks — hardening, in order
 
-None of these was started by this reconciliation.
+Task 1 was completed by the Step 2 test fix. **None of the rest has been started.**
 
-1. Disposition defect 1: the failing test — test-side or controller-side, an owner
-   decision.
-2. `flutter test` green and `flutter analyze` clean, recorded here, before the stage
-   can be called complete (the gate at the top of this file).
+1. ~~Disposition defect 1: the failing test — test-side or controller-side, an owner
+   decision.~~ **Done in Step 2 (2026-11-03, `68f9ee8`)**: it was a test
+   synchronisation defect, fixed test-side; no controller behaviour or public
+   interface changed, and the pick/upload distinction now has its own regression
+   test.
+2. **A standing gate, not a one-off task.** `flutter test` green and `flutter analyze`
+   clean on the committed tree, re-measured at the end of every hardening step. Met
+   today (612 / 47 / 0 and no analyzer issues), which satisfies the gate at the top
+   of this file for the current tree and nothing more: meeting it does not approve
+   the stage, and tasks 3–7 below are what still stand between 8.3 and "complete".
 3. Widget tests for `ComposePostScreen` and `compose_image_grid`, and a `compose`
    capture group in the visual-review harness with renders in `docs/visuals/stage8/`.
 4. Fix the pagination dead-end (defect 3) and pin it with tests.
@@ -2378,26 +2436,50 @@ None of these was started by this reconciliation.
 
 ### Verification
 
-Measured on the committed tree at `d27aee3`, at the time this entry was written:
+Measured twice, in full, on the committed tree — nothing below is inferred from a
+partial run.
+
+**At the Step 1 reconciliation, on `d27aee3`.** Kept as the record of what the
+audit found; the rows about test status are superseded by the next table.
 
 | Check | Command | Result |
 | --- | --- | --- |
 | Static analysis | `flutter analyze` | **No issues found** (98.3 s) |
-| Full suite | `flutter test` | **610 passed, 47 skipped, 1 failed** — the failure is defect 1 |
-| The failing test alone | `flutter test test/features/feed/compose_controller_test.dart` | `+30 -1`, reproducible |
-| Baseline for comparison | Stage 8.2's entry above | 550 passed, 47 skipped, 0 failed. The +61 executed tests are exactly this stage's three files (31 + 15 + 15), and one of them fails |
+| Full suite | `flutter test` | **610 passed, 47 skipped, 1 failed** — the failure was defect 1 |
+| The failing test alone | `flutter test test/features/feed/compose_controller_test.dart` | `+30 -1`, reproducible (before Step 2) |
+| Baseline for comparison | Stage 8.2's entry above | 550 passed, 47 skipped, 0 failed. The +61 executed tests were exactly this stage's three files (31 + 15 + 15), and one of them failed |
 | Format | `dart format --output=none --set-exit-if-changed lib test` (inspection only, wrote nothing) | **77 of 180 files** are not format-clean under Dart 3.13.7 — inherited from Stage 8.1's decision to avoid formatting churn, not caused by this stage |
 | Toolchain | `flutter --version` | Flutter 3.47.9 stable, Dart 3.13.7 |
 | Rules tests | `npm test` in `firestore-rules-tests/` | **Not run** — needs the Firestore emulator, and no rules changed here |
 | Live Firebase / Supabase | — | **Not run.** No emulator session, no device build, no browser pass, no network write |
 
-### Git state at the time of this entry
+**After the Step 2 test fix, on `68f9ee8`.** This is the current state.
 
-`main` at `d27aee3`, working tree clean, no stash, no tags, one remote
-(`origin`). `refs/remotes/origin/main` equals `HEAD` locally, so the tree believes
-it is pushed; that was not verified against the network. Stages 7 → 8.3 are one
-squashed commit, so **8.3 cannot be separated from 8.2 by Git alone**, which
-matters if Stage 8.2's approval is later withheld.
+| Check | Command | Result |
+| --- | --- | --- |
+| Static analysis | `flutter analyze` | **No issues found** (26.4 s) |
+| Full suite | `flutter test` | **612 passed, 47 skipped, 0 failed** — defect 1 closed, one test added |
+| The formerly failing test alone | `flutter test test/features/feed/compose_controller_test.dart --name "reports uploading while the object is in flight"` | **`+1`, 0 failed** |
+| Its file | `flutter test test/features/feed/compose_controller_test.dart` | **`+32`, 0 failed** (was `+30 -1`) |
+| All feed tests | `flutter test test/features/feed` | **184 passed, 0 failed** |
+| Shared-picker regression | `flutter test test/features/profile` | **176 passed, 0 failed** — `FakePhotoPicker` is used by both features |
+| Shared photo primitives | `flutter test test/core/media` | **16 passed, 0 failed** |
+| Composer test count | `test(` counted per file | **62** — 32 controller + 15 repository + 15 storage |
+| Format | `dart format --output=none --set-exit-if-changed` on the three changed test files **and** on copies of their `HEAD` versions (inspection only, nothing written) | Both changed and unchanged versions report "Changed", so **no new formatting deviation was introduced**; no repo-wide formatting was run |
+| Rules tests | `npm test` in `firestore-rules-tests/` | **Not run** — needs the Firestore emulator, and no rules changed |
+| Live Firebase / Supabase | — | **Not run.** No emulator session, no device build, no browser pass, no network write |
+
+### Git state
+
+`main`, no stash, no tags, one remote (`origin`). When this entry was written HEAD
+was `d27aee3`; the owner has since committed the reconciliation documentation as
+`bbf1543` and the Step 2 test fix as `68f9ee8`, so **HEAD is now `68f9ee8` with a
+clean working tree**. `refs/remotes/origin/main` equalled `HEAD` locally at the
+reconciliation; that has not been re-verified against the network since.
+Stage boundaries are still not separable in Git: `d27aee3` squashes Stages 7 → 8.3
+into one commit, so **8.3 cannot be separated from 8.2 by Git alone**, which
+matters if Stage 8.2's approval is later withheld. The only post-`d27aee3` changes
+to the feed are test-side.
 
 ### Next stage
 

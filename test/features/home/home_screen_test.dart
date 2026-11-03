@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/app/appearance_sheet.dart';
+import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/design/tokens/app_palette.dart';
+import 'package:sholovvo_app/design/widgets/error_banner.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
@@ -48,9 +52,11 @@ const Size _tablet = Size(900, 1200);
 /// [profile] is the donor document the header and the donor strip read; it stays
 /// `null` unless a test asks for it, which is the state of a new account.
 ///
-/// [feedRepository] is what the pushed [FeedScreen] reads. It stays `null` for
-/// every test that never leaves the dashboard, which keeps the lazy
-/// `feedRepositoryProvider` unbuilt and the tests clear of Firestore.
+/// [feedRepository] is the feed both the dashboard's preview and the pushed
+/// [FeedScreen] read. It is always stubbed — a fresh fake carries no posts —
+/// because the dashboard asks the feed for its preview the moment it mounts, and
+/// leaving the provider unoverridden would build `FirebaseFirestore.instance` in
+/// every test in this file. Passing one in is how a test inspects the reads.
 Future<FakeAuthRepository> _pumpHome(
   WidgetTester tester, {
   AuthUser user = verifiedUser,
@@ -84,8 +90,9 @@ Future<FakeAuthRepository> _pumpHome(
         if (requests != null)
           nearbyRequestsProvider.overrideWithValue(requests),
         if (feed != null) feedPreviewProvider.overrideWithValue(feed),
-        if (feedRepository != null)
-          feedRepositoryProvider.overrideWithValue(feedRepository),
+        feedRepositoryProvider.overrideWithValue(
+          feedRepository ?? FakeFeedRepository(),
+        ),
       ],
       child: testApp(
         // Mounted the way the shell mounts it: the dashboard is a tab, and its
@@ -102,8 +109,12 @@ Future<FakeAuthRepository> _pumpHome(
     ),
   );
   // `pumpAndSettle` would never return: the soft glow behind the dashboard
-  // animates forever.
+  // animates forever. The second pump is the one that lets the community read
+  // resolve and reach the tree: the first builds the section while the read is
+  // still in flight, so a test that stopped there would be looking at a spinner
+  // rather than at the state it meant to assert.
   await tester.pump();
+  await tester.pump(const Duration(milliseconds: 100));
   return repo;
 }
 
@@ -370,7 +381,12 @@ void main() {
       // from the dashboard preview.
       expect(find.text('From the community'), findsNothing);
       expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
-      expect(feedRepository.calls, 1);
+      // Two reads, and each has its own reason: the dashboard asked for its
+      // preview on mount, and the feed screen always starts from the first page
+      // when it opens. Not three — returning to the dashboard later does not pay
+      // for the preview again, because the page it would re-read is the one
+      // already held.
+      expect(feedRepository.calls, 2);
     });
 
     testWidgets('counts one unit and one donation in the singular', (
@@ -392,6 +408,208 @@ void main() {
       expect(find.text('1 donations'), findsNothing);
       expect(find.textContaining('1 unit needed'), findsOneWidget);
       expect(find.textContaining('1 units'), findsNothing);
+    });
+  });
+
+  group('HomeScreen community preview', () {
+    // Everything below drives the preview through the *repository* rather than
+    // through a `feedPreviewProvider` override, because these tests are about the
+    // wiring: that the dashboard asks the feed's own controller for its page, and
+    // then says honestly which of the four outcomes it got.
+    testWidgets('spins while the preview read is in flight', (
+      WidgetTester tester,
+    ) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository(
+        posts: <Post>[fakePost()],
+      )..gate = Completer<void>();
+
+      await _pumpHome(tester, feedRepository: feedRepository);
+
+      // Not the empty card, and not nothing: the section owns its own spinner,
+      // so the donor's status card above it is never covered.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.byType(HomeEmptyCard),
+        findsOneWidget,
+        reason: 'the requests section only',
+      );
+      expect(find.text('No posts yet'), findsNothing);
+      expect(find.text('See all'), findsNothing);
+
+      feedRepository.gate!.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(FeedPostCard), findsOneWidget);
+    });
+
+    testWidgets('previews the newest posts, and only as many as a preview is', (
+      WidgetTester tester,
+    ) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository(
+        posts: <Post>[
+          for (int index = 1; index <= 5; index++)
+            fakePost(id: 'post-$index', text: 'Update $index'),
+        ],
+      );
+
+      await _pumpHome(tester, feedRepository: feedRepository);
+
+      expect(find.byType(FeedPostCard), findsNWidgets(feedPreviewLimit));
+      expect(find.text('Update 1'), findsOneWidget);
+      expect(find.text('Update 3'), findsOneWidget);
+      // The rest of the page is not wasted: "See all" reaches it.
+      expect(find.text('Update 4'), findsNothing);
+      expect(find.text('See all'), findsOneWidget);
+      expect(
+        find.byType(HomeEmptyCard),
+        findsOneWidget,
+        reason: 'the requests section only',
+      );
+    });
+
+    testWidgets('the empty card offers the way into the community, and it '
+        'opens the feed', (WidgetTester tester) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository();
+      await _pumpHome(tester, feedRepository: feedRepository);
+
+      expect(find.text('No posts yet'), findsOneWidget);
+      // Nothing to preview, so still no "See all" — but the section is not a
+      // dead end either: the card itself carries one way in.
+      expect(find.text('See all'), findsNothing);
+
+      await _tapVisible(
+        tester,
+        find.widgetWithText(SolovvoButton, 'Open the community'),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+
+      expect(find.byType(FeedScreen), findsOneWidget);
+      expect(find.text('From the community'), findsNothing);
+      // The feed starts from its own first page every time it opens, so this is
+      // the second read — the preview's and the page's, and no more.
+      expect(feedRepository.calls, 2);
+    });
+
+    testWidgets('says so when the preview read failed, and recovers on retry', (
+      WidgetTester tester,
+    ) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository(
+        posts: <Post>[fakePost(text: 'Donated at Dhaka Medical today.')],
+      )..failure = const NetworkFailure(debugMessage: 'offline');
+
+      await _pumpHome(tester, feedRepository: feedRepository);
+
+      expect(find.text('The feed could not be loaded'), findsOneWidget);
+      expect(
+        find.text('No connection. Check your network and try again.'),
+        findsOneWidget,
+      );
+      // A failure is never dressed up as an empty community.
+      expect(find.text('No posts yet'), findsNothing);
+
+      feedRepository.failure = null;
+      await _tapVisible(
+        tester,
+        find.widgetWithText(SolovvoButton, 'Try again'),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('The feed could not be loaded'), findsNothing);
+      expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
+    });
+
+    testWidgets('a failed refresh reports itself above the preview rather than '
+        'hiding behind it', (WidgetTester tester) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository(
+        posts: <Post>[fakePost(text: 'Donated at Dhaka Medical today.')],
+      );
+      await _pumpHome(tester, feedRepository: feedRepository);
+
+      // The refresh is the feed screen's gesture, and the dashboard shares that
+      // one controller, so the test reaches the same object the feed would.
+      final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(HomeScreen)),
+      );
+      feedRepository.failure = const NetworkFailure(debugMessage: 'offline');
+      await container.read(feedControllerProvider.notifier).refresh();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // The readable post stays, and the refusal is said out loud next to it.
+      expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
+      expect(find.byType(ErrorBanner), findsOneWidget);
+      expect(
+        find.text('No connection. Check your network and try again.'),
+        findsOneWidget,
+      );
+      expect(find.text('No posts yet'), findsNothing);
+    });
+  });
+
+  group('HomeScreen into the feed and back', () {
+    testWidgets('a preview card opens the feed, and back returns to the '
+        'dashboard', (WidgetTester tester) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository(
+        posts: <Post>[fakePost(text: 'Donated at Dhaka Medical today.')],
+      );
+      await _pumpHome(tester, feedRepository: feedRepository);
+
+      await _tapVisible(tester, find.byType(FeedPostCard));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+
+      expect(find.byType(FeedScreen), findsOneWidget);
+      // One page on the stack, not two, and it is pushed rather than joined to
+      // the tab bar: the feed is a destination above the shell, not a third one.
+      expect(tester.widgetList(find.byType(FeedScreen)), hasLength(1));
+      expect(find.text('From the community'), findsNothing);
+      expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.byType(FeedScreen), findsNothing);
+      expect(find.text('From the community'), findsOneWidget);
+      expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
+      // Two reads and no third: the dashboard's preview, then the feed's own
+      // first page on open. Coming back does not re-ask for a page the shared
+      // controller already holds.
+      expect(feedRepository.calls, 2);
+    });
+
+    testWidgets('"See all" and a preview card reach the same page, not two', (
+      WidgetTester tester,
+    ) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository(
+        posts: <Post>[fakePost(text: 'Donated at Dhaka Medical today.')],
+      );
+      await _pumpHome(tester, feedRepository: feedRepository);
+
+      await _tapVisible(tester, find.byType(FeedPostCard));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(find.byType(FeedScreen), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      await _tapVisible(tester, find.text('See all'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+
+      // The second entry point opens the one screen rather than a parallel copy
+      // of it, and never leaves a feed stacked under the new one.
+      expect(find.byType(FeedScreen), findsOneWidget);
+      expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
+      // Preview, first open, second open — and no read for returning to the
+      // dashboard in between.
+      expect(feedRepository.calls, 3);
     });
   });
 

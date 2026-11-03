@@ -3,8 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/design/tokens/app_spacing.dart';
+import 'package:sholovvo_app/design/widgets/error_banner.dart';
 import 'package:sholovvo_app/design/widgets/soft_glow_background.dart';
+import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
+import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
+import 'package:sholovvo_app/features/feed/application/feed_state.dart';
+import 'package:sholovvo_app/features/feed/presentation/feed_messages.dart';
 import 'package:sholovvo_app/features/feed/presentation/feed_screen.dart';
 import 'package:sholovvo_app/features/home/application/home_providers.dart';
 import 'package:sholovvo_app/features/home/domain/home_dashboard.dart';
@@ -20,10 +25,10 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// Where a verified, signed-in donor lands: their status, the two things they
 /// came to do, and the two streams that will fill in as the app grows.
 ///
-/// The donor strip and the header now read the profile the donor edits in Stage
-/// 5. The nearby requests and the feed stay empty until their own stages, and
-/// every section says so in its own words rather than showing a zero, a spinner
-/// or a sample row.
+/// The donor strip and the header read the profile the donor edits in Stage 5,
+/// and the community preview reads the feed Stage 8 built. The nearby requests
+/// stay empty until their own stage. Every section says what it does not have in
+/// its own words rather than showing a zero, a spinner or a sample row.
 ///
 /// Since Stage 7 this is one tab of the app shell rather than the whole
 /// signed-in surface, so it no longer owns a `Scaffold`, a sign-out button or
@@ -53,6 +58,40 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // The community preview is the dashboard's only live read, and it is asked
+    // for the way the feed screen asks: after the first frame, so no provider is
+    // mutated while the tree is being built, and through the feed's own
+    // controller rather than a second query. A donor who lands here and never
+    // taps anything still sees what the community is saying.
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) {
+        return;
+      }
+      // Skipped once a page has been read in this session. The dashboard is
+      // covered and uncovered every time a pushed screen opens and closes, so
+      // without this a donor who walks into the feed and back would pay for the
+      // same preview twice — and the state it is about to show is still on
+      // screen. Pull-to-refresh on the feed is how a page is deliberately
+      // re-read.
+      if (ref.read(feedControllerProvider).loaded) {
+        return;
+      }
+      unawaited(ref.read(feedControllerProvider.notifier).loadFirstPage());
+    });
+  }
+
+  /// The one way into the feed, from every control in the community section that
+  /// deserves one: a preview card, "See all", and the empty card's action.
+  ///
+  /// Not a per-post destination, because there is no per-post screen — the feed
+  /// shows the whole list newest first, and the tapped post is in it.
+  void _openFeed() {
+    unawaited(Navigator.of(context).push(FeedScreen.route()));
+  }
+
   /// The honest response for an action whose screen does not exist yet.
   ///
   /// A disabled button would read as a bug and a fake screen would be a lie, so
@@ -89,11 +128,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     final Widget feedSection = _FeedSection(
       posts: feed,
-      onComingSoon: _comingSoon,
-      // The community preview is the dashboard's way into the feed, so its
-      // "See all" is the one placeholder on this screen that now opens a real
-      // page instead of reporting "Coming soon".
-      onSeeAll: () => unawaited(Navigator.of(context).push(FeedScreen.route())),
+      feed: ref.watch(feedControllerProvider),
+      // The community preview is the dashboard's way into the feed, so every
+      // control in this section opens that page rather than reporting "Coming
+      // soon" about a feature that exists.
+      onOpenFeed: _openFeed,
+      onRetry: () =>
+          unawaited(ref.read(feedControllerProvider.notifier).loadFirstPage()),
     );
 
     // The header's avatar is an `InkWell`, which needs a `Material` ancestor.
@@ -221,19 +262,41 @@ class _RequestsSection extends StatelessWidget {
   }
 }
 
-/// Community preview: posts when there are any, one honest empty card when not.
+/// Community preview: the newest posts when there are any, and one honest card
+/// for each reason there are not.
+///
+/// The four states are decided in one place because they are one question — *what
+/// does this section have to show?* — and the order is the argument:
+///
+/// 1. Posts on screen win over anything the read is doing behind them. A preview
+///    that is real but a second old is still real, and swapping readable cards
+///    for a spinner on every rebuild is worse than a stale-looking one.
+/// 2. A refused read with nothing behind it says so and offers the retry the
+///    feed screen offers, in the same words.
+/// 3. A read in flight spins, in the section's own height rather than over the
+///    page: the donor's own status card above it is the reason they came.
+/// 4. Nothing refused, nothing pending, nothing there: the empty card. It carries
+///    a way into the feed, because a community with no posts is also a community
+///    whose composer a first post would have to come from somewhere.
 class _FeedSection extends StatelessWidget {
   const _FeedSection({
     required this.posts,
-    required this.onComingSoon,
-    required this.onSeeAll,
+    required this.feed,
+    required this.onOpenFeed,
+    required this.onRetry,
   });
 
   final List<FeedPostPreview> posts;
-  final VoidCallback onComingSoon;
 
-  /// Opens the full feed. Supplied by the screen, which owns the navigator.
-  final VoidCallback onSeeAll;
+  /// The feed's own state, watched so a refresh on the feed screen repaints this
+  /// section too. The preview list is a projection of it.
+  final FeedState feed;
+
+  /// Opens the full feed — from a card, from "See all", and from the empty card.
+  final VoidCallback onOpenFeed;
+
+  /// Asks for the first page again after a refused read.
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -248,22 +311,85 @@ class _FeedSection extends StatelessWidget {
           // nothing in it, because the dashboard has nothing to preview.
           action: posts.isEmpty
               ? null
-              : TextButton(onPressed: onSeeAll, child: Text(l10n.homeSeeAll)),
+              : TextButton(onPressed: onOpenFeed, child: Text(l10n.homeSeeAll)),
         ),
         const SizedBox(height: AppSpacing.sm),
-        if (posts.isEmpty)
-          HomeEmptyCard(
-            icon: Icons.forum_outlined,
-            title: l10n.homeFeedEmptyTitle,
-            body: l10n.homeFeedEmptyBody,
-          )
-        else
-          for (final FeedPostPreview post in posts)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-              child: FeedPostCard(post: post, onTap: onComingSoon),
-            ),
+        ..._body(l10n),
       ],
     );
+  }
+
+  List<Widget> _body(AppLocalizations l10n) {
+    if (posts.isNotEmpty) {
+      return <Widget>[
+        // A refresh that failed leaves the previewed posts up and says so here,
+        // rather than replacing something readable with an error card.
+        if (feed.failure != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: ErrorBanner(
+              message: feedFailureMessage(l10n, feed.failure!),
+            ),
+          ),
+        for (final FeedPostPreview post in posts)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: FeedPostCard(post: post, onTap: onOpenFeed),
+          ),
+      ];
+    }
+
+    if (feed.isFatalError) {
+      return <Widget>[
+        HomeEmptyCard(
+          icon: Icons.cloud_off_rounded,
+          title: l10n.feedErrorTitle,
+          body: feedFailureMessage(l10n, feed.failure!),
+          action: SolovvoButton(
+            label: l10n.feedRetry,
+            onPressed: onRetry,
+            variant: SolovvoButtonVariant.secondary,
+            size: SolovvoButtonSize.medium,
+            icon: Icons.refresh_rounded,
+            expand: false,
+          ),
+        ),
+      ];
+    }
+
+    if (feed.isInitialLoading) {
+      // The same 22 dp mark the feed's own footer spins at, so the two screens
+      // agree about what "still reading" looks like.
+      return const <Widget>[
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+          child: Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return <Widget>[
+      HomeEmptyCard(
+        icon: Icons.forum_outlined,
+        title: l10n.homeFeedEmptyTitle,
+        body: l10n.homeFeedEmptyBody,
+        // Not "See all": that promises a list to see, and there is none. This
+        // promises the page, which is where a first post would be written.
+        action: SolovvoButton(
+          label: l10n.homeFeedOpenAction,
+          onPressed: onOpenFeed,
+          variant: SolovvoButtonVariant.secondary,
+          size: SolovvoButtonSize.medium,
+          icon: Icons.forum_outlined,
+          expand: false,
+        ),
+      ),
+    ];
   }
 }

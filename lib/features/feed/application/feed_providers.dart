@@ -41,8 +41,28 @@ final Provider<FeedRepository> feedRepositoryProvider =
 /// second half belongs to a different window; a second tap on "Load more" would
 /// pay for the same page twice. Both are prevented by one flag rather than by
 /// disabling buttons, because the gesture is not a button.
+///
+/// **An empty page is not an empty feed.** [FirestoreFeedRepository] refuses
+/// documents it cannot map rather than guessing at them, and it decides
+/// `hasMore` from the raw document count. Those two truths combine into a page
+/// that carries no post at all while the collection still has plenty: see
+/// [maxEmptyPages].
 class FeedController extends Notifier<FeedState> {
   bool _fetching = false;
+
+  /// How many unreadable pages one operation walks past before it stops and
+  /// lets the donor decide.
+  ///
+  /// Walking is correct because the cursor addresses *raw* documents, not posts:
+  /// a refused document still moves it, so the next window starts where this one
+  /// ended and nothing is skipped or repeated. It is bounded because a collection
+  /// malformed all the way down is a data incident, not a bottom of the list, and
+  /// an unbounded loop would pay for a read every frame until the app is closed.
+  /// Five pages is fifty documents scanned on one tap — far past any plausible
+  /// run of bad writes — and the screen keeps offering "Load more" throughout,
+  /// so the walk continues by choice rather than by machinery. Exposed so a test
+  /// can pin the boundary rather than guess at it.
+  static const int maxEmptyPages = 5;
 
   /// Whether a read is in flight. Exposed for tests and for the screen's
   /// footer, which must not offer "Load more" while one is running.
@@ -115,25 +135,57 @@ class FeedController extends Notifier<FeedState> {
               : state.copyWith(clearFailure: true));
 
     try {
-      final Result<FeedPage> result = await ref
-          .read(feedRepositoryProvider)
-          .loadPage(after: after);
-      final FeedPage? page = result.valueOrNull;
+      FeedCursor? cursor = after;
+      int emptyPages = 0;
+      FeedPage page;
 
-      if (page == null) {
-        // The cursor is deliberately not consumed, and posts are kept, so the
-        // retry re-asks the same question and an already-visible page survives
-        // a failure to extend it.
-        state = state.copyWith(
-          status: state.posts.isEmpty ? FeedStatus.failure : FeedStatus.ready,
-          failure: result.failureOrNull,
-        );
-        return;
+      // The walk. A page is accepted as soon as it carries a post, or as soon
+      // as there is no further page to ask for; otherwise the cursor it carries
+      // is used to ask again, up to [maxEmptyPages] times. Only a *successful*
+      // read extends the walk — a refused one leaves below, unanswered.
+      while (true) {
+        final Result<FeedPage> result = await ref
+            .read(feedRepositoryProvider)
+            .loadPage(after: cursor);
+        final FeedPage? resolved = result.valueOrNull;
+
+        if (resolved == null) {
+          // The cursor is deliberately not consumed, and posts are kept, so the
+          // retry re-asks the same question and an already-visible page survives
+          // a failure to extend it.
+          state = state.copyWith(
+            status: state.posts.isEmpty ? FeedStatus.failure : FeedStatus.ready,
+            failure: result.failureOrNull,
+          );
+          return;
+        }
+
+        page = resolved;
+        if (page.posts.isNotEmpty ||
+            !page.hasMore ||
+            ++emptyPages >= maxEmptyPages) {
+          break;
+        }
+        // `cursor ??` rather than `cursor = page.cursor`: a repository that
+        // answers with neither a post nor a position would otherwise re-ask the
+        // same page forever. It cannot happen by the domain's contract, and the
+        // bound above would stop it anyway, but the loop must not *depend* on
+        // either.
+        cursor = page.cursor ?? cursor;
       }
+
+      // A first-page read that walked to its cap without finding a readable
+      // document keeps what the donor can already see. Refusing to show *new*
+      // posts is what the bad writes earned; blanking the good old ones is a
+      // second, unearned penalty, and `hasMore` stays true so the footer still
+      // offers the way on.
+      final List<Post> next = append || (page.posts.isEmpty && page.hasMore)
+          ? _append(state.posts, page.posts)
+          : page.posts;
 
       state = FeedState(
         status: FeedStatus.ready,
-        posts: append ? _append(state.posts, page.posts) : page.posts,
+        posts: next,
         cursor: page.cursor,
         hasMore: page.hasMore,
         loaded: true,

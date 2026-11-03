@@ -12,14 +12,17 @@ import 'package:sholovvo_app/app/appearance_sheet.dart';
 import 'package:sholovvo_app/app/router/app_routes.dart';
 import 'package:sholovvo_app/core/config/app_config.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/core/preferences/app_preferences.dart';
 import 'package:sholovvo_app/design/app_theme.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/presentation/login_screen.dart';
+import 'package:sholovvo_app/features/feed/application/compose_providers.dart';
 import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/domain/feed_repository.dart';
+import 'package:sholovvo_app/features/feed/presentation/compose_post_screen.dart';
 import 'package:sholovvo_app/features/feed/presentation/feed_screen.dart';
 import 'package:sholovvo_app/features/home/application/home_providers.dart';
 import 'package:sholovvo_app/features/home/domain/home_dashboard.dart';
@@ -36,6 +39,7 @@ import 'package:sholovvo_app/features/welcome/presentation/welcome_screen.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
 import '../support/fake_auth_repository.dart';
+import '../support/fake_compose.dart';
 import '../support/fake_feed.dart';
 import '../support/fake_photo_services.dart';
 import '../support/fake_profile_repository.dart';
@@ -145,6 +149,7 @@ Future<PreferencesStore> _pump(
   List<FeedPostPreview>? feed,
   FeedRepository? feedRepository,
   bool? photoConfigured,
+  bool? postConfigured,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -184,12 +189,32 @@ Future<PreferencesStore> _pump(
             ),
           if (photoConfigured != null)
             photoPickerProvider.overrideWithValue(FakePhotoPicker()),
+          // The composer's three seams, stubbed together for the same reason the
+          // profile photo pair is: a review shot has to reach neither Firestore,
+          // nor a Supabase project, nor a platform permission prompt. `false`
+          // keeps the storage fake but unconfigured, which is the state the screen
+          // puts into words instead of drawing a grid that can only fail.
+          if (postConfigured != null)
+            postRepositoryProvider.overrideWithValue(FakePostRepository()),
+          if (postConfigured != null)
+            postImageStorageProvider.overrideWithValue(
+              FakePostImageStorage(isConfigured: postConfigured),
+            ),
+          if (postConfigured != null)
+            postPhotoPickerProvider.overrideWithValue(
+              FakePhotoPicker(candidate: PhotoCandidate(bytes: jpegBytes())),
+            ),
           if (donor != null) donorSnapshotProvider.overrideWithValue(donor),
           if (requests != null)
             nearbyRequestsProvider.overrideWithValue(requests),
           if (feed != null) feedPreviewProvider.overrideWithValue(feed),
-          if (feedRepository != null)
-            feedRepositoryProvider.overrideWithValue(feedRepository),
+          // Always stubbed, not only when a case asks for posts: the dashboard
+          // previews the community, so it reads the feed the moment the shell is
+          // mounted. A fresh fake has no posts, which is the state the empty home
+          // render is meant to show, and no review shot can reach Firestore.
+          feedRepositoryProvider.overrideWithValue(
+            feedRepository ?? FakeFeedRepository(),
+          ),
         ],
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
@@ -718,6 +743,82 @@ void main() {
       await _capture(tester, 'feed-error-dark-en');
     }, skip: !_enabled);
   });
+
+  // Stage 8.3: the composer. Every state is seeded through the three post fakes,
+  // which are the same seams the widget tests use, so no production code carries
+  // a draft and no capture reaches a backend. Pictures answer with the grid's
+  // broken-image glyph rather than a photograph, for the reason the feed shots
+  // have: the test renderer answers every network image with 400. What is under
+  // review is the layout — four cells, two rows, and the labels in both languages.
+  group('compose', () {
+    for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
+      for (final Locale locale in <Locale>[
+        const Locale('en'),
+        const Locale('bn'),
+      ]) {
+        final String tag = '${mode.name}-${locale.languageCode}';
+
+        testWidgets('compose, empty form, $tag', (WidgetTester tester) async {
+          await _pumpCompose(tester, themeMode: mode, locale: locale);
+          await _capture(tester, 'compose-empty-$tag');
+        }, skip: !_enabled);
+
+        testWidgets('compose, drafted with photos, $tag', (
+          WidgetTester tester,
+        ) async {
+          await _pumpCompose(
+            tester,
+            themeMode: mode,
+            locale: locale,
+            draft: true,
+            photos: 2,
+          );
+          await _capture(tester, 'compose-drafted-$tag');
+        }, skip: !_enabled);
+      }
+    }
+
+    testWidgets('compose, photo source sheet open, light en', (
+      WidgetTester tester,
+    ) async {
+      await _pumpCompose(
+        tester,
+        themeMode: ThemeMode.light,
+        locale: const Locale('en'),
+      );
+      await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await _capture(tester, 'compose-source-sheet-light-en');
+    }, skip: !_enabled);
+
+    testWidgets('compose, no post bucket in this build, dark bn', (
+      WidgetTester tester,
+    ) async {
+      await _pumpCompose(
+        tester,
+        themeMode: ThemeMode.dark,
+        locale: const Locale('bn'),
+        bucket: false,
+        draft: true,
+      );
+      await _capture(tester, 'compose-no-bucket-dark-bn');
+    }, skip: !_enabled);
+
+    testWidgets('compose, four photos on a wide measure, light en', (
+      WidgetTester tester,
+    ) async {
+      await _pumpCompose(
+        tester,
+        themeMode: ThemeMode.light,
+        locale: const Locale('en'),
+        draft: true,
+        photos: PostValidator.maxImages,
+        size: const Size(1000, 1100),
+      );
+      await _capture(tester, 'compose-full-wide-light-en');
+    }, skip: !_enabled);
+  });
 }
 
 /// Mounts the feed over a seeded repository, pushed above an empty dashboard.
@@ -772,6 +873,100 @@ class _PushedFeedState extends State<_PushedFeed> {
 
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+/// Mounts the composer over the three post fakes, pushed above an empty route.
+///
+/// Pushed rather than mounted as `home:`, for the reason the feed shot has: the
+/// composer only draws a back arrow when there is somewhere to go back to, and
+/// that arrow is the control the discard guard is wired to. The window is taller
+/// than a phone screen because the form — field, helper line, four cells, publish
+/// — is longer than the display it is typed on, and a capture that cut the button
+/// off would review nothing.
+Future<void> _pumpCompose(
+  WidgetTester tester, {
+  required ThemeMode themeMode,
+  required Locale locale,
+  bool bucket = true,
+  bool draft = false,
+  int photos = 0,
+  Size size = const Size(430, 1100),
+}) async {
+  await _pump(
+    tester,
+    home: const _PushedCompose(),
+    themeMode: themeMode,
+    locale: locale,
+    postConfigured: bucket,
+    size: size,
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pump();
+
+  if (draft) {
+    await tester.enterText(
+      find.byType(TextField),
+      _composeDraft(bengali: locale.languageCode == 'bn'),
+    );
+    await tester.pump();
+  }
+  // The photos come in through the tile, the sheet and the picker seam, exactly
+  // as a donor's do. Nothing writes into the widget tree or the state directly,
+  // so the shot shows the grid the app actually builds.
+  for (int index = 0; index < photos; index++) {
+    await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byIcon(Icons.photo_library_outlined));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+  // One last stretch of time before the shutter. The button fades from 45% to
+  // full opacity over `AppMotion.fast` when a draft turns publishable, so a
+  // capture taken on the frame after `enterText` shows an enabled publish that
+  // looks disabled — a shot of an animation rather than of the screen. The
+  // drafted-with-photos cases pass through the sheet's own 400ms pumps on the way
+  // and so were already settled; this is what makes the text-only cases honest.
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
+}
+
+/// Pushes [ComposePostScreen] onto an otherwise empty first route once mounted.
+class _PushedCompose extends StatefulWidget {
+  const _PushedCompose();
+
+  @override
+  State<_PushedCompose> createState() => _PushedComposeState();
+}
+
+class _PushedComposeState extends State<_PushedCompose> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) return;
+      Navigator.of(context).push(ComposePostScreen.route());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+/// The draft a composer capture is typed with, in the language of the capture.
+///
+/// Long on purpose: the helper line, the grid and the publish all have to sit in
+/// one frame for the review to say anything about the layout, and a post that
+/// fits on three lines is not the case that stresses a form.
+String _composeDraft({required bool bengali}) {
+  return bengali
+      ? 'আজ ঢাকা মেডিকেলে রক্ত দিলাম। ব্যাংকে B+ প্রায় ফুরিয়ে এসেছে, '
+            'শনিবারের শিবিরে আরও চার ইউনিট দরকার। যিনি আসতে পারেন, '
+            'সকাল দশটায় আসুন।'
+      : 'Donated at Dhaka Medical today. The bank is running close to empty on '
+            'B+ and Saturday\'s camp needs four more units. Come at ten in the '
+            'morning if you can.';
 }
 
 /// Four posts, in the language the capture is made in.

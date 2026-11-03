@@ -1,4 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
+import 'package:sholovvo_app/features/feed/application/feed_state.dart';
+import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/home/domain/home_dashboard.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
@@ -8,10 +11,12 @@ import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 ///
 /// The donor strip is filled in from Stage 5: it reads the same documents the
 /// profile screen edits (`users/{uid}` and `users/{uid}/private/profile`) and the
-/// donor's own `donation_history`. The other two stay empty until the stages
-/// that own them (`blood_requests` in Stage 9, `posts` in Stage 6). Nothing here
-/// is a placeholder number — a dashboard that shows "12 requests nearby" before
-/// anything has been queried is lying to someone who may act on it.
+/// donor's own `donation_history`. The feed is filled in from Stage 8, as a
+/// projection of the feed's own controller (see [feedPreviewProvider]).
+/// Nearby requests stay empty until the stage that owns them (`blood_requests`
+/// in Stage 9). Nothing here is a placeholder number — a dashboard that shows
+/// "12 requests nearby" before anything has been queried is lying to someone who
+/// may act on it.
 ///
 /// The projection from profile data into [DonorSnapshot] lives here rather than
 /// in the profile feature because the adapter belongs to its consumer: the
@@ -46,5 +51,39 @@ final Provider<List<NearbyRequestSummary>> nearbyRequestsProvider =
       (Ref ref) => const <NearbyRequestSummary>[],
     );
 
+/// How many posts the dashboard previews.
+///
+/// Three, not a page: the section shares its column with the requests list on a
+/// phone, and a fourth card would push the donor's own status off the screen.
+/// "See all" is what the rest of the collection is for.
+const int feedPreviewLimit = 3;
+
+/// The newest posts, as the dashboard shows them.
+///
+/// A projection of [feedControllerProvider] rather than a second read. The feed
+/// already owns the paging, the cursor, the one-read-at-a-time rule and the
+/// failure model; a dashboard that queried `posts` for itself would have two
+/// answers to "what is the newest post" and would have to be told which one to
+/// believe. This way the preview, the feed screen and a just-published post that
+/// [FeedController.prepend] inserts are one list, and the button that says
+/// "published" is the button that shows the post.
+///
+/// It is still a `Provider` over a plain list, so a test that wants a preview
+/// without a read can override it with one — which is what the dashboard's own
+/// layout tests do.
 final Provider<List<FeedPostPreview>> feedPreviewProvider =
-    Provider<List<FeedPostPreview>>((Ref ref) => const <FeedPostPreview>[]);
+    Provider<List<FeedPostPreview>>((Ref ref) {
+      final FeedState feed = ref.watch(feedControllerProvider);
+      return <FeedPostPreview>[
+        for (final Post post in feed.posts.take(feedPreviewLimit))
+          FeedPostPreview(
+            id: post.id,
+            authorName: post.authorName,
+            // The card ellipsises at two lines, so the whole text is passed and
+            // the layout decides how much of it fits. Cutting it here would be
+            // a second truncation the reader cannot expand.
+            excerpt: post.text,
+            createdAt: post.createdAt,
+          ),
+      ];
+    });

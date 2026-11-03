@@ -15,11 +15,18 @@ class HomeSectionHeader extends SectionHeader {
 }
 
 /// See [EmptyStateCard].
+///
+/// The optional [action] is passed through rather than dropped: a section that
+/// is empty *and* has somewhere to go from — the community, whose feed and
+/// composer exist even when its posts do not — needs the card to carry the way
+/// out. An empty card with no control is only honest when there is genuinely
+/// nothing to open.
 class HomeEmptyCard extends EmptyStateCard {
   const HomeEmptyCard({
     super.key,
     required super.icon,
     required super.title,
     required super.body,
+    super.action,
   });
 }

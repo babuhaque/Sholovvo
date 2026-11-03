@@ -260,6 +260,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Stories and updates from donors will appear here.';
 
   @override
+  String get homeFeedOpenAction => 'Open the community';
+
+  @override
   String get homeSeeAll => 'See all';
 
   @override

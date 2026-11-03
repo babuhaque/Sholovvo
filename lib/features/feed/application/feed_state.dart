@@ -60,9 +60,17 @@ final class FeedState {
       posts.isEmpty &&
       (status == FeedStatus.loading || status == FeedStatus.initial);
 
-  /// Nothing to show and nothing pending: the honest empty state.
+  /// Nothing to show, nothing pending, and nothing further to ask for: the
+  /// honest empty state.
+  ///
+  /// The `!hasMore` term is what makes this honest. A page whose documents were
+  /// all refused by the mapper is an empty *page* without being an empty
+  /// *collection*, and calling that "no posts yet" would strand the donor above
+  /// a list they have no control left to page past — the screen renders this
+  /// branch instead of the list and its footer, so the one "Load more" that
+  /// could reach the readable posts behind the bad writes would never be drawn.
   bool get isEmptyResult =>
-      posts.isEmpty && loaded && status != FeedStatus.loading;
+      posts.isEmpty && loaded && !hasMore && status != FeedStatus.loading;
 
   /// An error with nothing behind it, so the screen has to say so in place of
   /// the list rather than above it.

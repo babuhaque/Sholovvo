@@ -247,6 +247,9 @@ class AppLocalizationsBn extends AppLocalizations {
   String get homeFeedEmptyBody => 'ডোনারদের লেখা ও গল্প এখানে দেখা যাবে।';
 
   @override
+  String get homeFeedOpenAction => 'কমিউনিটি দেখুন';
+
+  @override
   String get homeSeeAll => 'সব দেখুন';
 
   @override

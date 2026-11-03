@@ -114,6 +114,13 @@ class FakeFeedDocuments implements FeedDocuments {
   int? lastLimit;
   FeedCursor? lastAfter;
 
+  /// The cursor each call was given, in order.
+  ///
+  /// [lastAfter] answers "what did the final call ask for"; this answers "what
+  /// did the whole walk ask for, in what order", which is the question a test
+  /// about page advancement has to ask.
+  final List<FeedCursor?> requestedAfter = <FeedCursor?>[];
+
   @override
   Future<Result<List<FeedDocument>>> fetch({
     required int limit,
@@ -122,6 +129,7 @@ class FakeFeedDocuments implements FeedDocuments {
     calls++;
     lastLimit = limit;
     lastAfter = after;
+    requestedAfter.add(after);
 
     final Completer<void>? pending = gate;
     if (pending != null) {

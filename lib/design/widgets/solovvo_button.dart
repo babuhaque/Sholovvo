@@ -104,6 +104,15 @@ class _SolovvoButtonState extends State<SolovvoButton> {
       button: true,
       enabled: _enabled,
       label: widget.label,
+      // The same callback the InkWell below gets.
+      //
+      // `ExcludeSemantics` is there on purpose — it stops the label being read
+      // twice — but it also swallows the tap action Flutter would otherwise
+      // derive from the InkWell. The node therefore announced "button" with no
+      // way to press it, which leaves a TalkBack or VoiceOver user hearing a
+      // control they cannot activate. Null while disabled, so an inert button is
+      // still not offered as pressable.
+      onTap: _enabled ? widget.onPressed : null,
       child: ExcludeSemantics(
         child: AnimatedScale(
           scale: _pressed ? 0.97 : 1,
