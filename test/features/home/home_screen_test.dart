@@ -522,6 +522,40 @@ void main() {
       expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
     });
 
+    testWidgets('an unreadable preview is never called an empty community', (
+      WidgetTester tester,
+    ) async {
+      final FakeFeedRepository feedRepository = FakeFeedRepository()
+        ..unreadable = 2;
+
+      await _pumpHome(tester, feedRepository: feedRepository);
+      // The read walks past every empty page it is allowed to before it stops, so
+      // this state takes longer to reach the tree than a single read does. These
+      // frames are the walk finishing, not the section animating in.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final int skipped = 2 * FeedController.maxEmptyPages;
+
+      // The defect this closes. The section used to fall through to its empty
+      // card here, telling a donor that nobody had posted at all while the
+      // collection held [skipped] documents the mapper could not read. That is a
+      // false report about other people's posts, and it is the one sentence in
+      // this app that a shorter list cannot distinguish from the truth on its own.
+      expect(find.text('No posts yet'), findsNothing);
+      expect(find.text('The feed could not be fully read'), findsOneWidget);
+      expect(find.text('$skipped posts could not be shown'), findsOneWidget);
+
+      // And the control it offers works. "Try again" would re-ask the same window
+      // and draw the same card, so the section points at the page that still has
+      // a working "Load more" instead.
+      await _tapVisible(
+        tester,
+        find.widgetWithText(SolovvoButton, 'Open the community'),
+      );
+      expect(find.byType(FeedScreen), findsOneWidget);
+    });
+
     testWidgets('a failed refresh reports itself above the preview rather than '
         'hiding behind it', (WidgetTester tester) async {
       final FakeFeedRepository feedRepository = FakeFeedRepository(

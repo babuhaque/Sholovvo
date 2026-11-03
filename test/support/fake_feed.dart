@@ -177,6 +177,17 @@ class FakeFeedRepository implements FeedRepository {
 
   int calls = 0;
 
+  /// Every page answers with no post, with this many refused documents, and with
+  /// more still behind it.
+  ///
+  /// This is the shape [FirestoreFeedRepository] produces when a run of stored
+  /// documents is malformed, and it is a shape no other setting of this fake can
+  /// reach by accident: an empty *page* inside a non-empty *collection*. A screen
+  /// test sets it to ask what the donor is told when the community has posted and
+  /// the app cannot read what they posted — the one case where "No posts yet" is
+  /// a false statement about somebody else's work.
+  int? unreadable;
+
   /// The cursor each call was given, in order, so a test can see that page two
   /// asked for page two and that a retry re-asked the same question.
   final List<FeedCursor?> requestedAfter = <FeedCursor?>[];
@@ -193,6 +204,22 @@ class FakeFeedRepository implements FeedRepository {
 
     if (failure != null) {
       return FailureResult<FeedPage>(failure!);
+    }
+
+    final int? refused = unreadable;
+    if (refused != null) {
+      // The cursor is passed back unchanged rather than advanced, which is what
+      // makes a caller's bounded walk the thing under test: every page looks
+      // exactly like the last, so the read can only stop by reaching its own
+      // limit, and the count it accumulates is that limit times [refused].
+      return Success<FeedPage>(
+        FeedPage(
+          posts: const <Post>[],
+          cursor: after,
+          hasMore: true,
+          skipped: refused,
+        ),
+      );
     }
 
     final int start = after is FeedTestCursor ? int.parse(after.id) : 0;

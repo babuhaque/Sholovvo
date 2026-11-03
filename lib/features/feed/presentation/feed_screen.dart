@@ -148,12 +148,21 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   /// Written as a single function with early returns so the four states cannot
   /// be shown at once: every branch is exclusive, and the compiler makes sure
   /// the list case is the only one that reaches the posts.
+  ///
+  /// `FeedState.isUnreadableResult` deliberately has no branch here, and that is
+  /// a decision rather than an omission. A read that mapped nothing but still has
+  /// documents behind it lands in the list case below, which draws no tiles, one
+  /// honest count of what is missing, and the footer's working "Load more" —
+  /// exactly the affordance `feed_pagination_test.dart` exists to protect. A
+  /// full-height card in its place would have to be paid for by rewriting a test
+  /// that is not wrong, and would say less.
   Widget _body(
     BuildContext context,
     FeedState state,
     FeedController controller,
   ) {
     final AppLocalizations l10n = context.l10n;
+    final TextTheme text = Theme.of(context).textTheme;
 
     if (state.isInitialLoading) {
       return const SliverFillRemaining(
@@ -216,6 +225,26 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             child: FeedPostTile(post: state.posts[index]),
           ),
         ),
+        // The count of what this list is missing, in the same quiet register as
+        // "end of feed" below it. Deliberately not an [ErrorBanner]: nothing
+        // failed here, the posts above are real and readable, and a danger-
+        // coloured live region would report a working feed as broken and would
+        // interrupt a donor who is already reading. It is still said, because a
+        // silent short list is how a data incident hides for months — and because
+        // this line is the only place the feed screen can tell an empty-looking
+        // collection apart from an unreadable one without taking the footer's
+        // working "Load more" away.
+        if (state.skipped > 0)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xxs),
+              child: Text(
+                l10n.feedSkippedNotice(state.skipped),
+                textAlign: TextAlign.center,
+                style: text.labelSmall,
+              ),
+            ),
+          ),
         SliverToBoxAdapter(child: _footer(context, state, controller)),
       ],
     );

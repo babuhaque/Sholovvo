@@ -105,7 +105,7 @@ class FeedPostTile extends StatelessWidget {
           ),
           if (post.hasImages) ...<Widget>[
             const SizedBox(height: AppSpacing.sm),
-            _PostImages(urls: post.imageUrls),
+            _PostImages(urls: post.imageUrls, authorName: post.authorName),
           ],
           const SizedBox(height: AppSpacing.xxs),
           Row(
@@ -167,16 +167,31 @@ class FeedPostTile extends StatelessWidget {
 /// 900 dp one, where two cells would each be over 400 dp tall and one photograph
 /// would take the whole screen. Past the cap the cells keep their width and crop
 /// instead — a feed is text with pictures, not a gallery.
+///
+/// [authorName] exists only to be handed down as part of each picture's
+/// semantics label. A photograph in a feed is the one element a screen reader
+/// cannot read aloud from what is next to it, and the two sentences a listener
+/// could need — who wrote this, and what is in the picture — are not both
+/// answerable from the author line above.
 class _PostImages extends StatelessWidget {
-  const _PostImages({required this.urls});
+  const _PostImages({required this.urls, required this.authorName});
 
   /// The tallest a picture may draw, whatever the card's width.
   static const double maxHeight = 300;
 
   final List<String> urls;
 
+  /// Whose post these pictures belong to. Used for the label, never drawn.
+  final String authorName;
+
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = context.l10n;
+    // Built once for the whole group rather than per cell: every picture in a
+    // post belongs to the same author, and the sentence is the same for all of
+    // them.
+    final String label = l10n.feedPostPhotoLabel(authorName);
+
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth;
@@ -185,7 +200,7 @@ class _PostImages extends StatelessWidget {
           return SizedBox(
             width: width,
             height: math.min(width * 10 / 16, maxHeight),
-            child: _PostImage(url: urls[0]),
+            child: _PostImage(url: urls[0], semanticLabel: label),
           );
         }
 
@@ -199,12 +214,12 @@ class _PostImages extends StatelessWidget {
                 padding: EdgeInsets.only(top: index == 0 ? 0 : AppSpacing.xs),
                 child: Row(
                   children: <Widget>[
-                    Expanded(child: _cell(urls[index], cell)),
+                    Expanded(child: _cell(urls[index], cell, label)),
                     const SizedBox(width: AppSpacing.xs),
                     // An odd count leaves the last cell empty rather than letting
                     // one picture stretch to the full width of the card.
                     if (index + 1 < urls.length)
-                      Expanded(child: _cell(urls[index + 1], cell))
+                      Expanded(child: _cell(urls[index + 1], cell, label))
                     else
                       const Spacer(),
                   ],
@@ -216,10 +231,10 @@ class _PostImages extends StatelessWidget {
     );
   }
 
-  Widget _cell(String url, double height) {
+  Widget _cell(String url, double height, String semanticLabel) {
     return SizedBox(
       height: height,
-      child: _PostImage(url: url),
+      child: _PostImage(url: url, semanticLabel: semanticLabel),
     );
   }
 }
@@ -231,9 +246,14 @@ class _PostImages extends StatelessWidget {
 /// not take the text down with it. [errorBuilder] paints a placeholder instead;
 /// a post whose storage objects are gone is still a readable post.
 class _PostImage extends StatelessWidget {
-  const _PostImage({required this.url});
+  const _PostImage({required this.url, required this.semanticLabel});
 
   final String url;
+
+  /// What a screen reader says instead of the picture. Supplied rather than read
+  /// from [url], because a storage path is an identifier a donor never chose to
+  /// hear read aloud.
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -246,6 +266,7 @@ class _PostImage extends StatelessWidget {
         child: Image.network(
           url,
           fit: BoxFit.cover,
+          semanticLabel: semanticLabel,
           errorBuilder:
               (BuildContext context, Object error, StackTrace? stackTrace) =>
                   Center(

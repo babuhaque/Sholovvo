@@ -96,8 +96,21 @@ final class FeedState {
   /// one empty list apart and completely different claims. A screen that cannot
   /// tell them apart tells a donor their community is quiet when the app has
   /// actually failed to read it.
+  ///
+  /// [FeedStatus.loadingMore] is excluded as well as [FeedStatus.loading]. The
+  /// two exclusions are not the same kind of caution, so the difference is worth
+  /// stating: a first load has nothing to show yet and earns the full-height
+  /// spinner above this getter, while a later page is being asked for *behind* an
+  /// empty list the screen is already drawing, and replacing that list with a
+  /// card would hide the footer spinner which is the only proof the tap landed.
+  /// [isEmptyResult] needs no such term: it requires `!hasMore`, and a page is
+  /// only ever requested while `hasMore` is true, so the two can never overlap.
   bool get isUnreadableResult =>
-      posts.isEmpty && loaded && hasMore && status != FeedStatus.loading;
+      posts.isEmpty &&
+      loaded &&
+      hasMore &&
+      status != FeedStatus.loading &&
+      status != FeedStatus.loadingMore;
 
   /// An error with nothing behind it, so the screen has to say so in place of
   /// the list rather than above it.

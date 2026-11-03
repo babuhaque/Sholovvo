@@ -130,6 +130,11 @@ class _FilledSlot extends StatelessWidget {
             child: Image.network(
               image.url,
               fit: BoxFit.cover,
+              // The word the grid already uses for its contents, chosen over the
+              // object path or a coordinate: a listener needs to know a photo is
+              // here, and which of the four slots it is in is a question the
+              // "Remove photo" button in this same cell already answers.
+              semanticLabel: l10n.feedComposePhotosLabel,
               // The object was uploaded seconds ago, so a failure here means it
               // is genuinely unreachable — not that a reader is offline. The
               // slot stays, because the URL is already in the draft and silently

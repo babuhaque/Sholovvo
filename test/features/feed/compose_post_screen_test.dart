@@ -701,6 +701,51 @@ void main() {
       expect(find.text('Discard this post?'), findsNothing);
     });
 
+    testWidgets('a discard during an upload keeps the form open', (
+      WidgetTester tester,
+    ) async {
+      final _Compose fakes = await _pumpCompose(tester);
+      await fakes.type(tester, 'Donated at Dhaka Medical today.');
+      fakes.storage.gate = Completer<void>();
+      await fakes.pickFromGallery(tester);
+      // Held open on purpose: this test is about the one moment the old guard
+      // missed, and it can only be observed from inside an upload that has
+      // started and has not finished.
+      await fakes.storage.uploadStarted.future;
+      await _settle(tester);
+
+      await tester.tap(_backButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Discard'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      // Not closed, and not silently closed-and-leaked: the draft survives, the
+      // photo is still going up, and the grid says so in the donor's own words.
+      expect(find.byType(ComposePostScreen), findsOneWidget);
+      expect(find.text('Discard this post?'), findsNothing);
+      expect(find.text('Uploading your photo…'), findsOneWidget);
+      expect(fakes.storage.removedPaths, isEmpty);
+
+      fakes.storage.gate!.complete();
+      await _settle(tester);
+
+      // Confirming again now abandons it properly, with the photo named and
+      // deleted rather than dropped on the floor.
+      await tester.tap(_backButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Discard'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      expect(find.byType(ComposePostScreen), findsNothing);
+      expect(fakes.storage.removedPaths, <String>[storedImage(0).path]);
+    });
+
     testWidgets('a photo-only draft is worth confirming too', (
       WidgetTester tester,
     ) async {

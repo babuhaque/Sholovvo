@@ -330,7 +330,7 @@ void main() {
       await controller().addImage(PhotoSource.gallery);
       await controller().addImage(PhotoSource.gallery);
 
-      await controller().discard();
+      expect(await controller().discard(), isTrue);
 
       expect(state().text, isEmpty);
       expect(state().images, isEmpty);
@@ -346,7 +346,7 @@ void main() {
       await setUpController();
       controller().updateText('something');
 
-      await controller().discard();
+      expect(await controller().discard(), isTrue);
 
       expect(state().text, isEmpty);
       expect(storage.removedPaths, isEmpty);
@@ -357,10 +357,62 @@ void main() {
       await controller().addImage(PhotoSource.gallery);
       storage.removeFailure = const NetworkFailure(debugMessage: 'offline');
 
-      await controller().discard();
+      expect(await controller().discard(), isTrue);
 
       expect(state().images, isEmpty);
       expect(state().failure, isNull);
+    });
+
+    test('refuses while a photo upload is in flight', () async {
+      await setUpController();
+      controller().updateText('something');
+      // The gate goes up *before* the pick, so the upload is held open rather
+      // than raced: the test waits on `uploadStarted` rather than guessing how
+      // many microtasks the code under test needs to reach the network.
+      storage.gate = Completer<void>();
+
+      final Future<void> adding = controller().addImage(PhotoSource.gallery);
+      await storage.uploadStarted.future;
+
+      expect(await controller().discard(), isFalse);
+
+      // The draft is where an in-flight upload is going to land. Emptying it now
+      // would put a photo in a post the donor threw away, and leave the object
+      // behind it named by nothing — the exact leak `discard` exists to prevent.
+      expect(state().text, 'something');
+      expect(state().isUploading, isTrue);
+      expect(storage.removedPaths, isEmpty);
+
+      storage.gate!.complete();
+      await adding;
+
+      // The same answer one second later, once there is a photo to delete.
+      expect(await controller().discard(), isTrue);
+      expect(state().text, isEmpty);
+      expect(state().images, isEmpty);
+      expect(storage.removedPaths, <String>[storedImage(0).path]);
+    });
+
+    test('refuses while a publish is in flight', () async {
+      await setUpController();
+      controller().updateText('hello');
+      await controller().addImage(PhotoSource.gallery);
+      repository.gate = Completer<void>();
+
+      final Future<Result<Post>> publishing = controller().publish(
+        author: _author,
+      );
+
+      expect(await controller().discard(), isFalse);
+
+      // The document write is still carrying those image paths. Deleting the
+      // objects underneath it would publish a post that points at nothing.
+      expect(state().text, 'hello');
+      expect(state().images, hasLength(1));
+      expect(storage.removedPaths, isEmpty);
+
+      repository.gate!.complete();
+      await publishing;
     });
   });
 

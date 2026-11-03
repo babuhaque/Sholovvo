@@ -67,6 +67,13 @@ class InitialsAvatar extends StatelessWidget {
     final TextTheme text = Theme.of(context).textTheme;
     final String? photo = photoUrl?.trim();
     final String initials = _initials;
+    // The label the photograph is read with. The fallback this branch replaces
+    // draws initials, which are readable text and are announced; a bare picture
+    // would be announced as nothing at all, so leaving it unlabelled is a
+    // regression against the state it substitutes for. [name] is the one fact
+    // this widget always holds, and it is the least a disc standing for a person
+    // can honestly be read as.
+    final String photoLabel = name.trim();
 
     final Widget fallback = switch (variant) {
       InitialsAvatarVariant.brand => DecoratedBox(
@@ -130,6 +137,7 @@ class InitialsAvatar extends StatelessWidget {
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
+                semanticLabel: photoLabel.isEmpty ? null : photoLabel,
                 // A stale or unreachable URL must not leave a broken box where
                 // the donor's identity goes.
                 errorBuilder: (

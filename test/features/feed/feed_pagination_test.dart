@@ -562,6 +562,84 @@ void main() {
     });
   });
 
+  group('The count of documents the mapper refused', () {
+    test("is the whole walk's total, not the last page's", () async {
+      final harness = _real(<FeedDocument>[
+        ..._unreadable(51),
+        ..._readable(1, from: 52),
+      ]);
+      final ProviderContainer container = _container(harness.repository);
+
+      await container.read(feedControllerProvider.notifier).loadFirstPage();
+
+      final FeedState state = container.read(feedControllerProvider);
+      // Five windows of ten refused documents. This is the number a screen is
+      // going to say out loud, so it has to be everything that went missing from
+      // the list rather than only whatever the window that stopped the walk saw.
+      expect(
+        state.skipped,
+        FeedRepository.pageSize * FeedController.maxEmptyPages,
+      );
+      expect(state.posts, isEmpty);
+      expect(state.hasMore, isTrue);
+      expect(state.isUnreadableResult, isTrue);
+    });
+
+    test("adds a later page's refusals to the ones already on screen", () async {
+      final harness = _real(<FeedDocument>[
+        ..._unreadable(3),
+        ..._readable(7, from: 4),
+        ..._unreadable(2, from: 11),
+        ..._readable(1, from: 13),
+      ]);
+      final ProviderContainer container = _container(harness.repository);
+      final FeedController controller = container.read(
+        feedControllerProvider.notifier,
+      );
+
+      await controller.loadFirstPage();
+
+      // The first window mixed three refused documents with seven readable ones,
+      // so the list is short without being empty and the count belongs to it.
+      expect(container.read(feedControllerProvider).posts, hasLength(7));
+      expect(container.read(feedControllerProvider).skipped, 3);
+
+      await controller.loadMore();
+
+      expect(container.read(feedControllerProvider).posts, hasLength(8));
+      // Two more refused on the second page, on top of the three already counted
+      // — not replacing them, because those three are still missing from the
+      // same list the donor is looking at.
+      expect(container.read(feedControllerProvider).skipped, 5);
+    });
+
+    test('survives a later failure that keeps the list on screen', () async {
+      final _ScriptedPages scripted = _ScriptedPages(<Object>[
+        FeedPage(
+          posts: <Post>[fakePost(id: 'p1')],
+          cursor: const FeedTestCursor('1'),
+          hasMore: true,
+          skipped: 4,
+        ),
+        const NetworkFailure(debugMessage: 'offline'),
+      ]);
+      final ProviderContainer container = _container(scripted);
+
+      await container.read(feedControllerProvider.notifier).loadFirstPage();
+      expect(container.read(feedControllerProvider).skipped, 4);
+
+      await container.read(feedControllerProvider.notifier).loadFirstPage();
+
+      // The posts stayed, so the number saying what is missing from them has to
+      // stay too. A read that never reached the database refused nothing; a
+      // refresh that fails must not rewrite a true count with a zero.
+      final FeedState state = container.read(feedControllerProvider);
+      expect(state.posts, hasLength(1));
+      expect(state.skipped, 4);
+      expect(state.failure, isNotNull);
+    });
+  });
+
   group('The feed screen with unreadable documents', () {
     testWidgets('offers "Load more" instead of an empty feed', (
       WidgetTester tester,
@@ -578,6 +656,29 @@ void main() {
       expect(find.byType(EmptyStateCard), findsNothing);
       expect(find.widgetWithText(SolovvoButton, 'Load more'), findsOneWidget);
       expect(documents.calls, FeedController.maxEmptyPages);
+    });
+
+    testWidgets('says how many posts it could not read', (
+      WidgetTester tester,
+    ) async {
+      await _pumpFeedOver(tester, <FeedDocument>[
+        ..._unreadable(51),
+        ..._readable(1, from: 52),
+      ]);
+
+      // Read off the same controller the screen reads, so this asserts that the
+      // number on screen *is* the number the walk refused — not a sentence the
+      // widget invented from the length of a list it never received.
+      final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(FeedScreen)),
+      );
+      final int skipped = container.read(feedControllerProvider).skipped;
+      expect(skipped, greaterThan(1));
+
+      expect(find.text('$skipped posts could not be shown'), findsOneWidget);
+      // Said without covering the way out: the footer still offers the page that
+      // can reach the readable posts behind the bad writes.
+      expect(find.widgetWithText(SolovvoButton, 'Load more'), findsOneWidget);
     });
 
     testWidgets('shows the post behind the run when the donor asks for more', (

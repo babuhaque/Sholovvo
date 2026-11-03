@@ -265,7 +265,7 @@ class _RequestsSection extends StatelessWidget {
 /// Community preview: the newest posts when there are any, and one honest card
 /// for each reason there are not.
 ///
-/// The four states are decided in one place because they are one question — *what
+/// The five states are decided in one place because they are one question — *what
 /// does this section have to show?* — and the order is the argument:
 ///
 /// 1. Posts on screen win over anything the read is doing behind them. A preview
@@ -273,9 +273,16 @@ class _RequestsSection extends StatelessWidget {
 ///    for a spinner on every rebuild is worse than a stale-looking one.
 /// 2. A refused read with nothing behind it says so and offers the retry the
 ///    feed screen offers, in the same words.
-/// 3. A read in flight spins, in the section's own height rather than over the
+/// 3. A read that succeeded but mapped nothing, with more documents still behind
+///    them. This one is separated from state 5 on purpose, because the two say
+///    opposite things: "nobody has posted" is a fact about the community, and
+///    "this app could not read what it posted" is a fact about the app. Telling
+///    a donor the first when the second is true is a false report about other
+///    people, and it is the reason a fourth getter exists on [FeedState] rather
+///    than a fourth string here.
+/// 4. A read in flight spins, in the section's own height rather than over the
 ///    page: the donor's own status card above it is the reason they came.
-/// 4. Nothing refused, nothing pending, nothing there: the empty card. It carries
+/// 5. Nothing refused, nothing pending, nothing there: the empty card. It carries
 ///    a way into the feed, because a community with no posts is also a community
 ///    whose composer a first post would have to come from somewhere.
 class _FeedSection extends StatelessWidget {
@@ -296,6 +303,11 @@ class _FeedSection extends StatelessWidget {
   final VoidCallback onOpenFeed;
 
   /// Asks for the first page again after a refused read.
+  ///
+  /// Only ever wired to state 2. State 3 is not a refused read, so this would
+  /// re-ask the same window and earn the same answer: a button that cannot work
+  /// is worse than no button, and the way past unreadable documents is paging
+  /// forward, which is what opening the feed lets the donor do.
   final VoidCallback onRetry;
 
   @override
@@ -351,6 +363,32 @@ class _FeedSection extends StatelessWidget {
             variant: SolovvoButtonVariant.secondary,
             size: SolovvoButtonSize.medium,
             icon: Icons.refresh_rounded,
+            expand: false,
+          ),
+        ),
+      ];
+    }
+
+    if (feed.isUnreadableResult) {
+      return <Widget>[
+        HomeEmptyCard(
+          icon: Icons.cloud_off_rounded,
+          title: l10n.feedUnreadableTitle,
+          body: feed.skipped > 0
+              ? l10n.feedSkippedNotice(feed.skipped)
+              : l10n.feedUnreadableBody,
+          // "Open the community" rather than "Try again", and the same control
+          // the honest empty card already offers. The feed screen owns the cursor
+          // and the "Load more" that consumes it; a dashboard button that paged
+          // the feed from here would be a second, shallower copy of that
+          // mechanism for no benefit to the donor, who is about to leave for the
+          // page anyway.
+          action: SolovvoButton(
+            label: l10n.homeFeedOpenAction,
+            onPressed: onOpenFeed,
+            variant: SolovvoButtonVariant.secondary,
+            size: SolovvoButtonSize.medium,
+            icon: Icons.forum_outlined,
             expand: false,
           ),
         ),

@@ -85,6 +85,10 @@ class _ComposePostScreenState extends ConsumerState<ComposePostScreen> {
 
   /// Asks before throwing away a draft, then deletes whatever was uploaded for
   /// it — an abandoned draft has no document to own its objects.
+  ///
+  /// Pops only if the controller really abandoned the draft. Closing anyway would
+  /// report a discard that never happened and leave the in-flight upload writing
+  /// its photo into a form nobody is looking at.
   Future<void> _confirmDiscard() async {
     final AppLocalizations l10n = context.l10n;
     final bool? discard = await showDialog<bool>(
@@ -108,7 +112,13 @@ class _ComposePostScreenState extends ConsumerState<ComposePostScreen> {
       return;
     }
 
-    await ref.read(composeControllerProvider.notifier).discard();
+    if (!await ref.read(composeControllerProvider.notifier).discard()) {
+      // Nothing said, because the form already says it: the grid is showing a
+      // spinner and "Uploading your photo…", which is the reason the draft is
+      // still here and the reason it will be worth confirming again in a second.
+      // A snackbar over it would repeat the sentence the donor is reading.
+      return;
+    }
     if (!mounted) {
       return;
     }

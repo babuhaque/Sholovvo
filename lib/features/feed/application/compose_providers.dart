@@ -190,14 +190,26 @@ class ComposeController extends Notifier<ComposeState> {
   /// Called when the donor confirms the discard prompt. Without it, every
   /// abandoned compose would leave up to four objects in the bucket that no
   /// document names — the free tier counts bytes, not intentions.
-  Future<void> discard() async {
-    if (state.isPublishing) {
-      return;
+  ///
+  /// Returns whether the draft really was abandoned. `false` means an operation
+  /// was in flight and nothing was touched, so the caller must keep the form open
+  /// rather than reporting a discard that did not happen.
+  Future<bool> discard() async {
+    // [_busy] rather than `state.isPublishing`, which is what this guard used to
+    // ask. The difference is the upload, and the cost of missing it is a leaked
+    // object: an upload in flight has already handed its bytes to the bucket and
+    // is still awaiting the result, so resetting the draft underneath it empties
+    // the list that was about to receive it, and `addImage` then writes that
+    // photo into the fresh state the reset installed — a picture in a post the
+    // donor threw away, named by nothing, never deleted. Same shape as
+    // [publish]'s guard, for the same reason.
+    if (_busy || state.isBusy) {
+      return false;
     }
     final List<StoredPostImage> orphaned = state.images;
     state = const ComposeState();
     if (orphaned.isEmpty) {
-      return;
+      return true;
     }
 
     final PostImageStorage storage = ref.read(postImageStorageProvider);
@@ -211,6 +223,12 @@ class ComposeController extends Notifier<ComposeState> {
         );
       }
     }
+    // True even when a delete failed. The draft is gone, which is what the donor
+    // asked for and what the screen's pop reports; an object the bucket refused
+    // to delete is a billing problem this app cannot solve from the client, and
+    // a discard dialog that reappeared because a delete failed would offer the
+    // same refusal twice.
+    return true;
   }
 
   /// Publishes the draft and puts the result at the top of the feed.
