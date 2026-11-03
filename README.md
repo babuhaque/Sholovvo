@@ -6,23 +6,41 @@ Blood donation and social networking platform for Android and iOS.
 
 ## Status
 
-Stage 8.2 complete (awaiting approval). **Stage 8 is the social feed**, and 8.2
-makes it **readable**: a paged, pull-to-refresh `FeedScreen` over one Firestore
-query on `posts`, with the dashboard's community **See all** as the route in.
-Nothing in the feed can be written — no post, like, comment, save, report or
-upload — and no rule, index or backend setting was changed. Stage 8.1 laid the
-foundations (`Post`, `Comment` and `Report` entities, a pure `Post` document
-mapper, shared photo primitives in `core/media`, one avatar and one blood-group
-badge instead of two of each), and 8.1.1 aligned the schema documents with the
-rules. Everything through Stage 7 still
+Stage 8.3 **implemented — hardening in progress**. **Stage 8 is the social feed**,
+and the feed now both reads and writes: a paged `FeedScreen` over one Firestore
+query on `posts`, and a composer that publishes a text-plus-photographs post
+through `FirestorePostRepository` and uploads its images to a `post-images`
+Supabase bucket. Nothing else can be done to a post — no like, comment, save,
+report, edit, delete or share — and no rule, index, bucket or backend setting was
+changed or deployed.
+
+Three things are true at once and belong in any resume-from-these-notes brief, so
+they are stated here rather than only in `docs/PROJECT_STATE.md`:
+
+- **The stage is not signed off and the suite is not green.** `flutter analyze`
+  reports no issues; `flutter test` reports 610 passed, 47 skipped and **1 failed**,
+  in the composer's own controller suite. By this project's gate a stage is only
+  done when both pass, so Stage 8.3 is implemented, not complete.
+- **The feed is not yet reachable through normal navigation.** `FeedScreen` is
+  reached from the dashboard's community **See all**, which the dashboard hides
+  over an empty preview, and that preview provider is still empty by design. The
+  read path, the composer and the upload therefore exist in code and cannot be
+  opened in the shipped app.
+- **`ComposePostScreen` has no widget tests and no visual render.** Its 61 tests
+  cover the controller, the repository and the storage adapter, not the screen.
+
+Stage 8.1 laid the foundations (`Post`, `Comment` and `Report` entities, a pure
+`Post` document mapper, shared photo primitives in `core/media`, one avatar and
+one blood-group badge instead of two of each), 8.1.1 aligned the schema documents
+with the rules, and 8.2 delivered the read path. Everything through Stage 7 still
 stands: the app runs in Bangla and English, in light and dark, remembers both
 choices, and a signed-in donor lands in a two-tab shell: a responsive home
 dashboard and their own profile, with a settings page (account, appearance,
 about, sign out) pushed above them. They can maintain their profile with a split
 between what others may read and what only they can, and can add, change or
 remove a profile photo through Supabase Storage. See
-[`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) for the stage tracker and
-per-stage verification results.
+[`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) for the stage tracker, the
+Stage 8.3 hardening list and per-stage verification results.
 
 ## Stack
 
@@ -63,7 +81,9 @@ flutter run --dart-define=APP_FLAVOR=development
 Flavours are compile-time (`--dart-define=APP_FLAVOR=development|staging|production`).
 An unflagged build always resolves to `development`.
 
-Profile photo upload needs two more defines, and works without them by saying so:
+Photo storage needs two more defines, and works without them by saying so. The
+same two cover both buckets — the profile avatar (Stage 6) and post photographs
+(Stage 8.3):
 
 ```bash
 flutter run ^
@@ -72,9 +92,12 @@ flutter run ^
 ```
 
 `https` only; an `sb_secret_…` key or a service-role JWT is refused at runtime
-rather than used. The bucket, the policies and the Firebase→Supabase
-authentication step are in [`docs/storage/README.md`](docs/storage/README.md) and
-have **not** been applied.
+rather than used. The two buckets, the four storage policies and the
+Firebase→Supabase authentication step are in
+[`docs/storage/README.md`](docs/storage/README.md) and have **not** been applied
+from this repository — so unless the owner has applied them by hand, supplying the
+defines only gets a request to a bucket that is not there. The code and the
+delivery material are both finished; **live verification is neither**.
 
 Translations are generated, not hand-written Dart: `flutter gen-l10n` (or any
 build, `generate: true` is set) turns `lib/l10n/app_en.arb` and `app_bn.arb` into
@@ -100,11 +123,13 @@ that catches things a widget render cannot, such as a sheet background that does
 not follow a theme switch. Stages 6, 7 and 8 have widget renders only
 ([`docs/visuals/stage6/`](docs/visuals/stage6),
 [`docs/visuals/stage7/`](docs/visuals/stage7),
-[`docs/visuals/stage8/`](docs/visuals/stage8)): Stage 6 has no Supabase project,
-so there is no live upload to photograph, and the temporary browser entrypoint
-used in Stage 3 was not recreated for any of them. The Stage 8 set covers the
-feed populated in light English and dark Bangla, at the wide measure with
-pictures, empty, and after a failed read.
+[`docs/visuals/stage8/`](docs/visuals/stage8)): Stage 6 has no live upload to
+photograph, and the temporary browser entrypoint used in Stage 3 was not recreated
+for any of them. The Stage 8 set covers the feed populated in light English and
+dark Bangla, at the wide measure with pictures, empty, and after a failed read.
+**The composer has no render at all** — `test/review/visual_review_test.dart` has a
+`feed` group and no `compose` group, which is part of the Stage 8.3 verification
+gap recorded in `docs/PROJECT_STATE.md`.
 
 ## Home dashboard
 
@@ -179,10 +204,12 @@ offers nothing that could only fail.
 ## Feed
 
 Stage 8 is the social feed. **8.1** added the foundations — three immutable
-entities and one mapper — and **8.2** adds the read path: one screen, one
-repository, one provider, one query. Nothing in the feed can be created, edited,
-deleted, liked, saved, commented on, reported or uploaded to; there is no sample
-data in production code, and `firestore.rules` was not touched in either stage.
+entities and one mapper — **8.2** added the read path (one screen, one repository,
+one provider, one query), and **8.3** added the composer and post photographs: one
+form, one write port, one storage adapter. A post can now be **created**, with up
+to four photographs. It still cannot be edited, deleted, liked, saved, commented
+on, reported or shared, and there is no sample data in production code.
+`firestore.rules` was not touched by any of the three stages.
 
 | Type | Holds | Refuses |
 | --- | --- | --- |
@@ -205,8 +232,10 @@ blood group are never copied into a post.
 ### Reading it
 
 `FeedScreen` (`lib/features/feed/presentation`) is a pushed route above the
-two-tab shell, reached from the dashboard's community **See all**. It reads ten
-posts at a time:
+two-tab shell, reached from the dashboard's community **See all** — which the
+dashboard currently hides, because the preview it summarizes is still an empty
+provider (see Status above and `docs/PROJECT_STATE.md`, Stage 8.3 defect 4). It
+reads ten posts at a time:
 
 ```
 posts
@@ -231,7 +260,11 @@ posts
   `posts/{id}/comments` subcollection is addressed anywhere.
 - **A malformed post is dropped, not fatal.** It is counted in `FeedPage.skipped`
   so one bad document cannot empty the feed, and the count is what a debugger
-  reads to confirm the schema has drifted.
+  reads to confirm the schema has drifted. **Caveat, unresolved:** `hasMore` is
+  decided from the raw document count, so a page whose documents are all refused
+  reports "empty" while still claiming more pages — and the screen's empty state
+  replaces the footer that holds **Load more**, leaving no way to page past the
+  run. See `docs/PROJECT_STATE.md`, Stage 8.3 known defect 3.
 - **No composite index is needed.** One collection, one `orderBy`, no `where`:
   Firestore serves that from its automatic single-field index. There is no
   `firestore.indexes.json` in this repository and this stage did not add one.
@@ -239,17 +272,66 @@ posts
   `allow read: if request.auth != null` on `/posts/{postId}` has no field
   condition, so it covers a list query for a signed-in caller.
 
-`firestore.rules` was **not touched by Stage 8.1, 8.1.1 or 8.2**, but it is not
+### Writing it
+
+`ComposePostScreen` is pushed from the feed's own button. Two ports keep the write
+testable without an app, in the same shape the read side earned:
+
+| Port | Implemented by | Job |
+| --- | --- | --- |
+| `PostRepository` | `FirestorePostRepository` → `PostWriter` (`FirestorePostWriter`) | `publish(PostDraft) → Result<Post>`: one `set` on a pre-allocated id, `createdAt`/`updatedAt` as `FieldValue.serverTimestamp()` |
+| `PostImageStorage` | `SupabasePostImageStorage` | `isConfigured`, `upload(ValidatedPhoto)`, `remove(objectPath)` against the `post-images` bucket |
+
+- **The author's uid comes from the session, never from the form.** `PostDraft`
+  carries no uid, because the create rule compares `authorUid` to
+  `request.auth.uid`; a form that could choose the value could only produce denied
+  writes. A donor with no profile document posts under `PostAuthor.unknown()`.
+- **Validation happens before the network.** `PostDraft.issue` re-runs the same
+  `PostValidator` the read mapper uses, so an unpublishable draft costs no quota.
+- **Photographs upload on pick, not on publish,** so each file gets its own outcome
+  while the text is still editable, and publish stays one small document write.
+- **The object path is `{uid}/post-{millis}-{n}.{ext}`** — the sequence number keeps
+  four photos picked in the same millisecond from overwriting each other, which is
+  also why every URL is immutable and may be cached for a year.
+- **Removal names the path, not the URL.** `Post.imagePaths` exists beside
+  `Post.imageUrls` for exactly this, and `ownPath()` refuses any delete whose first
+  segment is not the caller's uid — so a corrupt document cannot become a delete
+  aimed at somebody else's photograph.
+- **Abandoning a draft deletes its objects.** Confirming the discard prompt calls
+  `ComposeController.discard()`, because otherwise every abandoned compose leaves up
+  to four objects that nothing names.
+- **The published post is prepended to the feed** through `FeedController.prepend`
+  rather than triggering a refresh the donor did not ask for; it is a no-op on a
+  feed that has not loaded and dedupes by id.
+- **With no `SUPABASE_*` defines there is no photo control,** only a sentence saying
+  upload is not set up — and the text half of the form still publishes.
+
+Two things the write path does not have yet. It has **no server-side enforcement**
+— see the rules paragraph below — and it has **no widget tests**: its 61 tests
+cover `ComposeController`, `FirestorePostRepository` and `SupabasePostImageStorage`,
+while `ComposePostScreen` and `compose_image_grid` are untested and have never been
+rendered. One of the 61 currently fails. Neither the bucket nor its policies has
+been applied, so no photograph has ever been uploaded for real. See
+`docs/PROJECT_STATE.md` (Stage 8.3) and `docs/ARCHITECTURE.md` §14.3.
+
+`firestore.rules` was **not touched by Stage 8.1, 8.1.1, 8.2 or 8.3**, but it is not
 empty on the feed: it already has a `posts` block, a nested `comments` block and
 a top-level `post_likes` block. Those rules predate the feed design and are **not
 approved** for it — they allow updating a singular `imageUrl` where the mapper
 writes `imageUrls` and `imagePaths`, they keep likes at `post_likes/{likeId}`
 instead of under a post, they permit a `donationRecordId` the entity does not
 model, and no branch lets `commentCount` change. The Feed schema has **not** been
-reconciled with them, and `reports` has **no rule at all**. That is why this
-stage only reads: every write would land on a rule nobody has approved.
-Reconciliation is a later, separately approved stage. See
-`docs/ARCHITECTURE.md` §14.1 and §14.2.
+reconciled with them, and `reports` has **no rule at all**.
+
+**This is now the project's main outstanding security gap, and 8.3 made it worse
+by making it live.** While the feed only read, the mismatch was latent. A donor can
+now create a post through a create rule that checks `authorUid` and nothing else:
+no field set, no text length, no image count, no counter shape. What the client
+guarantees is that *this* app writes the mapper's field set, validated first; what
+the rules guarantee about *any other* client is nothing. `firestore-rules-tests/`
+covers no feed collection at all. Reconciliation against §14.1 — a later, separately
+approved stage — gates any deployment of the write path. See
+`docs/ARCHITECTURE.md` §14.1, §14.2 and §14.3.
 
 ## Security rules
 

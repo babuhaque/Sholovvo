@@ -16,7 +16,7 @@ not what was attempted. A stage is only marked done when `flutter analyze` and
 | 5 | User profile system | **Complete — approved** |
 | 6 | Profile photo upload (Supabase Storage) | **Complete — approved** |
 | 7 | Navigation & settings | **Complete — awaiting approval** |
-| 8 | Social feed | **In progress — 8.1, 8.1.1 and 8.2 complete, awaiting approval** |
+| 8 | Social feed | **In progress — 8.1 and 8.1.1 complete (awaiting approval), 8.2 complete (awaiting approval), 8.3 IMPLEMENTED — HARDENING IN PROGRESS** |
 | 9 | Normal blood search & maps | Not started |
 | 10 | Emergency blood request | Not started |
 | 11 | Donor matching & notifications | Not started |
@@ -31,8 +31,20 @@ social feed again**, and the donor management and badge work that used to occupy
 that slot is now unscheduled rather than renumbered, so the names of Stages 9–14
 are unchanged. Stage 8.1 delivered the feed's foundations only, Stage 8.1.1
 corrected this file's and the other documents' claims about the rules, and Stage
-8.2 delivered the read path — one paged, read-only `FeedScreen` — see the entries
-at the end of this file.
+8.2 delivered the read path — one paged, read-only `FeedScreen`.
+
+**Stage 8.3 — post image storage and the composer — is implemented and committed,
+and is neither hardened nor signed off.** That is a correction to this file, not
+a new plan: until this reconciliation the tracker stopped at 8.2, and the Stage
+8.2 entry below closed with "Stage 8.3 has not been started", while the same
+commit that delivered 8.2 (`d27aee3`) also delivered `ComposePostScreen`,
+`ComposeController`, the `PostRepository`/`PostWriter` ports and their Firestore
+and Supabase implementations, the `post-images` SQL and 61 composer tests.
+`docs/ARCHITECTURE.md` §14.3 documented that work as it was built; this file never
+caught up. The entry at the end of this file records what is actually in the tree,
+what is not yet verified — including one failing test in `flutter test` — and what
+hardening is outstanding. Nothing about the 8.3 implementation was rebuilt,
+replaced or reverted by this reconciliation.
 
 ---
 
@@ -1404,6 +1416,15 @@ What the tests actually cover, since the last row is the one that matters:
    workspace: the bucket does not exist, the SQL has never run, and no policy has
    ever allowed or refused anything. Everything above about storage behaviour is
    verified against fakes, and `docs/storage/README.md` says so at the top.
+   *Reconciled 2026-11-03 (Stage 8.3 recovery):* the substance of this item still
+   holds — no upload has ever run and neither SQL file has been executed from this
+   repository — but "there is no Supabase project in this workspace" was written
+   before local, gitignored Supabase CLI state appeared on the development machine
+   (`supabase/.temp/`). Linking a project is not applying it, and whether either
+   bucket exists remotely cannot be established from the repository. See
+   `docs/ARCHITECTURE.md` §11 items 10 and 12 and the top of
+   `docs/storage/README.md` for the corrected wording. The historical record above
+   is kept as written.
 2. **The Firebase → Supabase third-party auth integration is unverified.** Supabase
    must be told to trust the Firebase project `sholovvo-blood-donation` (step 2 of
    the README) before any token is accepted. Whether the project's plan offers
@@ -2167,4 +2188,220 @@ one thing the widget assertions could not do.
 **Stage 8.3 has not been started.** It must not begin until Stage 8.2 is approved,
 and any write path still depends on the rules stage reconciling `firestore.rules`
 with §14.1.
+
+**Addendum, added by the Stage 8.3 recovery reconciliation — the paragraph above
+is left as it was written because it was true at the time, and it is no longer
+true.** Stage 8.3 was subsequently implemented and committed in `d27aee3`, the
+same commit as this stage, and **it was built before this stage was approved** —
+Stage 8.2 is still recorded as "awaiting approval" above, and no approval record
+for it exists in this file or in the Git history. Two consequences for anyone
+reading only this entry:
+
+- The **"Deliberately not built"** list above no longer describes the tree. This
+  stage genuinely built no create path, no image upload and no Supabase post
+  storage; Stage 8.3 has since built the create path, the image upload and the
+  post storage adapter. Read that list as the scope of 8.2, not as the state of
+  the repository.
+- Remaining issue 1 above — "The feed cannot be written, by design and by rules"
+  — is **half obsolete**. The rules half is still exactly as stated and still
+  unreconciled; the design half is not, because the feed can now be written. That
+  makes the rules reconciliation more urgent than this entry assumed, not less.
+
+See the Stage 8.3 entry below for the current state.
+
+---
+
+## Stage 8.3 — Post image storage and composer
+
+**Status: IMPLEMENTED — HARDENING IN PROGRESS. Not complete, not signed off, not
+deployed, not live-verified.** Committed in `d27aee3` ("Sholovvo UI and Feed
+implementation"), which also carries Stages 7, 8.1, 8.1.1 and 8.2 — the stage
+boundaries are not separable in Git. This entry was written by the recovery
+reconciliation, from the source tree and measured command results, not from the
+stage brief; there is no original Stage 8.3 completion report.
+
+### What "implemented" means here, and what it does not
+
+Five different states get conflated easily, and this stage is in only the first
+and second of them:
+
+| State | Stage 8.3 | Evidence |
+| --- | --- | --- |
+| **Implemented** | Yes | Every file below exists in the committed tree and is wired: `FeedScreen`'s `FloatingActionButton.extended` pushes `ComposePostScreen.route()`, and a publish calls `FeedController.prepend` |
+| **Unit-tested** | Partly | 61 tests exist; **one of them fails**. The controller, the repository and the storage adapter are covered; the screens are not covered at all |
+| **Approved** | **No** | No approval record exists for 8.3, and neither Stage 8.2 nor Stage 7 has been approved — 8.3 was built on top of an unapproved stage |
+| **Deployed** | **No** | `firestore.rules`, `firebase.json` and `docs/storage/*.sql` were not applied by this stage and nothing was deployed |
+| **Live-verified** | **No** | No post has ever been written to a real Firestore project, and no post photograph has ever been uploaded to real storage |
+
+### What is in the tree
+
+**Created — `lib/features/feed`**
+
+| File | Job |
+| --- | --- |
+| `domain/post_repository.dart` | the write port: `publish(PostDraft) → Result<Post>` |
+| `domain/post_image_storage.dart` | the storage port: `isConfigured`, `upload(ValidatedPhoto)`, `remove(objectPath)`, and `StoredPostImage` (url + path) |
+| `domain/post_draft.dart` | `PostDraft` (author snapshot, text, uploaded images), `PostAuthor` and `PostAuthor.unknown()`; **carries no uid** — the repository takes it from the session, because the create rule compares `authorUid` to `request.auth.uid` |
+| `data/post_writer.dart` | the narrow write seam: `authorUid`, `newPostId()`, `createPost(id, fields)`, so the repository holds no Firebase type |
+| `data/firestore_post_writer.dart` | `FirestorePostWriter` over `FirebaseAuth` + `FirebaseFirestore` — the only file in the write path that touches a Firebase type |
+| `data/firestore_post_repository.dart` | `FirestorePostRepository.publish`: session check, draft validation **before** any network call, `PostDocument.toCreateMap`, one `set` on a pre-allocated id, failure drops the entity |
+| `data/supabase_post_image_storage.dart` | `SupabasePostImageStorage`: `{uid}/post-{millis}-{n}.{ext}`, one-year cache control, a fresh ID token per call, and `ownPath()` refusing any delete whose first segment is not the caller's uid |
+| `application/compose_state.dart` | `ComposeState`: text, images, two busy flags, `isDirty`, and `issue` — the same `PostValidator` the mapper runs on read |
+| `application/compose_providers.dart` | `postRepositoryProvider`, `postImageStorageProvider`, `postPhotoPickerProvider`, `composeAuthorProvider`, and `ComposeController` (`updateText`/`addImage`/`removeImage`/`discard`/`publish`) under one `_busy` guard |
+| `presentation/compose_post_screen.dart` | the form: 560 dp measure, 6-line field, `PopScope(canPop: !isDirty)` + discard dialog, publish disabled while the draft has an issue **or** anything is in flight |
+| `presentation/compose_messages.dart` | `composeFailureMessage`, resolving a `ValidationFailure` against photo issues first and post issues second |
+| `presentation/widgets/compose_image_grid.dart` | an always-visible 2×2 grid of four cells, so the ceiling is visible rather than discovered |
+
+**Created — delivery material and tests**
+
+| File | Job / tests |
+| --- | --- |
+| `docs/storage/supabase-post-images.sql` | the `post-images` bucket and its two storage policies. **Delivered, not applied** |
+| `test/features/feed/compose_controller_test.dart` | 31 tests — **1 failing** (below) |
+| `test/features/feed/firestore_post_repository_test.dart` | 15 tests over `FakePostWriter`, pinning the exact document shape |
+| `test/features/feed/supabase_post_image_storage_test.dart` | 15 tests, including the `ownPath()` delete guard |
+| `test/support/fake_compose.dart` | fakes for the three ports; no tests of its own |
+
+**Modified**
+
+| File | Change |
+| --- | --- |
+| `lib/core/config/supabase_config.dart` | `postImagesBucket`, default `post-images`, as a **second bucket** rather than a subfolder of `avatars` |
+| `lib/features/feed/presentation/feed_screen.dart` | the compose FAB, and the bottom padding that clears it |
+| `lib/features/feed/application/feed_providers.dart` | `FeedController.prepend(post)` — no-ops before a page has loaded, dedupes by id, touches no cursor |
+| `lib/l10n/app_en.arb`, `app_bn.arb` + generated | **18 `feedCompose*` keys in both catalogues** (37 `feed*` keys in total); `untranslated.json` stayed `{}` |
+| `README.md`, `docs/ARCHITECTURE.md` (§14.3, §11 items 11–12), `docs/storage/README.md` | documentation |
+
+**Not changed:** `firestore.rules`, `firebase.json`, `.firebaserc`, `pubspec.yaml`,
+`pubspec.lock`, `firestore-rules-tests/` — none of them appears in the commit's
+100-file diff. There is still no `firestore.indexes.json`.
+
+### Known defects, recorded without being fixed
+
+1. **The suite is red, and this stage fails the project's own completion gate.**
+   The failing test, in full:
+
+   ```
+   test/features/feed/compose_controller_test.dart
+     group:  ComposeController.addImage
+     test:   reports uploading while the object is in flight
+     expect: state().isUploading — Expected: true, Actual: <false>   (line 138)
+   ```
+
+   It reproduces every run — `flutter test test/features/feed/compose_controller_test.dart`
+   gives `+30 -1` — so it is not a flake. The test calls `addImage` without
+   awaiting it and asserts on the next line, while `ComposeController.addImage`
+   awaits the **picker** (`compose_providers.dart:122`) before it sets
+   `isUploading: true` (line 144). The structurally identical publish test passes,
+   because `publish` sets `isPublishing` synchronously before its first await.
+   **Diagnosed only; nothing was changed.** Deciding whether the test needs to
+   yield to the event loop first, or the controller should set the flag before the
+   pick, is an owner decision: the second option changes what the UI promises
+   during a pick, and the test's own name asserts that promise.
+2. **`ComposePostScreen` has no widget tests and no visual review.** No file under
+   `test/` imports `ComposePostScreen` or quotes a `feedCompose*` key — verified by
+   search. So unverified by any test: the `PopScope`/discard flow, the
+   publish-disabled-while-uploading rule, the unconfigured-bucket fallback message,
+   the text counter, and all of `compose_image_grid`. `test/review/visual_review_test.dart`
+   has a `feed` group and **no compose group**, and `docs/visuals/stage8/` holds
+   only the five read-path renders. The 61 tests cover the logic around the screen,
+   not the screen, and the presentation layer of this stage is the largest
+   unverified surface in it (282 + 389 lines).
+3. **The malformed-document pagination dead-end** (found in 8.2, still present).
+   `FirestoreFeedRepository` computes `hasMore` from the raw document count
+   (`firestore_feed_repository.dart:39`) while dropping refused documents, so a
+   page can return zero posts with `hasMore: true`. `FeedState.isEmptyResult` is
+   then true, and the screen's empty branch (`feed_screen.dart:186-197`) returns
+   **before** the footer that holds **Load more**. A run of eleven malformed
+   newest documents renders a permanently empty feed, and pull-to-refresh re-reads
+   the same window. `loadMore()` itself would work; there is no control to press.
+   No test in `firestore_feed_repository_test.dart` or `feed_screen_test.dart`
+   covers "zero kept with `hasMore: true`".
+4. **The feed and the composer are unreachable in the shipped app.**
+   `feedPreviewProvider` still returns `const []` (`home_providers.dart:49-50`), and
+   the dashboard hides its community **See all** over an empty list
+   (`home_screen.dart:249-251`). `FeedScreen` is the only route to
+   `ComposePostScreen`, and the dashboard is the only route to `FeedScreen`. The
+   whole Stage 8 surface — read path, composer, image upload — therefore exists in
+   code and cannot be opened by a donor. This is disclosed here because it changes
+   the risk assessment of every other item: it is not a live exposure today, and it
+   is a blocker on shipping it. It also means `docs/storage/README.md` step 5.6,
+   which tells the owner to verify post photos by opening the feed, cannot be
+   followed as written.
+5. **Firestore Rules still do not match the approved §14.1 schema, and a write path
+   now exists.** `firestore.rules` is unchanged: post create checks only
+   `authorUid == request.auth.uid` plus an optional `donationRecordId` the entity
+   does not model; the update allow-list still names the singular `imageUrl` that
+   nothing writes; no branch lets `commentCount` change; likes remain a top-level
+   `post_likes/{likeId}` bound to a `userId` **field** rather than the document id,
+   so the same donor can like a post twice; and `reports` has no rule at all.
+   §14.1's decisions are preserved unchanged and remain unapplied. **`firestore-rules-tests/`
+   covers no feed collection at all** — its groups are donation history,
+   `response_claims`, notifications, `blood_requests` and the four P0 findings — so
+   the create path has no automated guard on either side.
+6. **Nothing in this stage has run against a live backend.** The `post-images`
+   bucket, its policies and the Firebase third-party-auth setting are unapplied
+   delivery material; no image byte has been transferred; and the app answers
+   `isConfigured: false` and hides the photo control when the `SUPABASE_*` defines
+   are absent, so the unconfigured path is the only one ever exercised here.
+7. **Client-side validation only.** `PostValidator`'s limits (2 000 characters, 4
+   images) are re-run before the write, but no rule enforces them; a different
+   client can write anything the create rule tolerates.
+8. **Optimistic time skew, by design.** `toCreateMap` writes
+   `FieldValue.serverTimestamp()` while the returned `Post` and the prepended card
+   carry the client clock. A donor with a wrong clock can see their post in the
+   wrong position until the next read — bounded, documented in §14.3, and
+   unverified against a real server.
+9. **Orphans on abandoned drafts are only best-effort cleaned.** `discard()` deletes
+   every uploaded object, but a failed delete is logged and not shown, and a
+   process killed mid-compose leaves the objects behind. There is no sweep job.
+
+### Outstanding tasks — hardening, in order
+
+None of these was started by this reconciliation.
+
+1. Disposition defect 1: the failing test — test-side or controller-side, an owner
+   decision.
+2. `flutter test` green and `flutter analyze` clean, recorded here, before the stage
+   can be called complete (the gate at the top of this file).
+3. Widget tests for `ComposePostScreen` and `compose_image_grid`, and a `compose`
+   capture group in the visual-review harness with renders in `docs/visuals/stage8/`.
+4. Fix the pagination dead-end (defect 3) and pin it with tests.
+5. Decide the reachability question (defect 4): populate `feedPreviewProvider`, or
+   add an explicit feed entry point, before any release.
+6. The rules stage reconciling `firestore.rules` with §14.1, **plus** the first
+   feed-collection rules tests. This now gates any live deployment, because the
+   write path exists in code.
+7. An owner-approved live session: apply `supabase-avatars.sql` and
+   `supabase-post-images.sql`, confirm the Firebase third-party-auth setting, then
+   one real publish with two photographs.
+
+### Verification
+
+Measured on the committed tree at `d27aee3`, at the time this entry was written:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Static analysis | `flutter analyze` | **No issues found** (98.3 s) |
+| Full suite | `flutter test` | **610 passed, 47 skipped, 1 failed** — the failure is defect 1 |
+| The failing test alone | `flutter test test/features/feed/compose_controller_test.dart` | `+30 -1`, reproducible |
+| Baseline for comparison | Stage 8.2's entry above | 550 passed, 47 skipped, 0 failed. The +61 executed tests are exactly this stage's three files (31 + 15 + 15), and one of them fails |
+| Format | `dart format --output=none --set-exit-if-changed lib test` (inspection only, wrote nothing) | **77 of 180 files** are not format-clean under Dart 3.13.7 — inherited from Stage 8.1's decision to avoid formatting churn, not caused by this stage |
+| Toolchain | `flutter --version` | Flutter 3.47.9 stable, Dart 3.13.7 |
+| Rules tests | `npm test` in `firestore-rules-tests/` | **Not run** — needs the Firestore emulator, and no rules changed here |
+| Live Firebase / Supabase | — | **Not run.** No emulator session, no device build, no browser pass, no network write |
+
+### Git state at the time of this entry
+
+`main` at `d27aee3`, working tree clean, no stash, no tags, one remote
+(`origin`). `refs/remotes/origin/main` equals `HEAD` locally, so the tree believes
+it is pushed; that was not verified against the network. Stages 7 → 8.3 are one
+squashed commit, so **8.3 cannot be separated from 8.2 by Git alone**, which
+matters if Stage 8.2's approval is later withheld.
+
+### Next stage
+
+Stage 8.3 must be hardened and approved before Stage 9 (normal blood search &
+maps) or any feed write is treated as shipped. The rules reconciliation is the
+blocking dependency for deployment, not for code.
 

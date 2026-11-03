@@ -20,10 +20,20 @@ presentation  →  domain  ←  data
 
 | Layer | May import | Must never import |
 | --- | --- | --- |
-| `presentation` | `domain`, `core` | `data`, `firebase_*`, `supabase_*` |
+| `presentation` | `domain`, `application`, `core` | `data`, `firebase_*`, `supabase_*` |
+| `application` | `domain`, `core`, the `data` implementations it constructs at the DI seam, and the Firebase SDKs needed to construct them | `presentation` |
 | `domain` | `core` | `data`, `presentation`, any SDK |
-| `data` | `domain`, `core` | `presentation` |
+| `data` | `domain`, `core` | `presentation`, `application` |
 | `core` | Flutter SDK, `core` | any feature |
+
+`application` is the layer every built feature has, and the one the diagram above
+predated. It holds the providers and the `Notifier` controllers, and
+it is the only layer besides `data` allowed to name a Firebase type —
+`feed_providers.dart`, `compose_providers.dart`, `profile_providers.dart` and
+`auth_providers.dart` all construct a `data` implementation behind a `domain` port.
+Screens import it to watch a provider; it never imports them back. Verified by
+search rather than by assertion: **no file under any `presentation/` directory in
+`lib/features` imports `firebase_*`, `cloud_firestore` or `storage_client`.**
 
 Consequences that matter:
 
@@ -52,7 +62,9 @@ lib/
   features/<feature>/
     domain/                     entities, repository interfaces, use cases
     data/                       DTOs, data sources, repository implementations
-    presentation/               screens, widgets, controllers (providers)
+    application/                providers and `Notifier` controllers; the DI seam
+                                where a `domain` port meets a `data` implementation
+    presentation/               screens, widgets, feature-local copy mapping
   design/                       design system: tokens, primitives (Stage 1)
     tokens/app_palette.dart     semantic colour roles, one instance per theme
   l10n/                         ARB catalogues + generated AppLocalizations
@@ -71,7 +83,7 @@ what is actually implemented.
 | `welcome` | `presentation` | unauthenticated landing screen |
 | `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, nearby requests and community preview; every data surface reads a provider seam that is empty until its own stage lands |
 | `profile` | `domain`, `data`, `application`, `presentation` | the signed-in donor's own profile: `UserProfile`, `DonationRecord`, validators, `FirestoreProfileRepository` over two documents, the profile screen and its edit form |
-| `feed` | `domain`, `data` | **Stage 8.1 only:** `Post`, `Comment`, `Report` entities with their validators and enums, and the pure `PostDocument` mapper. No repository, no provider, no screen, no network call |
+| `feed` | `domain`, `data`, `application`, `presentation` | **Stages 8.1, 8.2 and 8.3 — 8.3 implemented, hardening in progress, not signed off.** `Post`, `Comment`, `Report` entities with their validators and enums, and the pure `PostDocument` mapper (8.1); the read path — `FeedRepository`/`FirestoreFeedRepository` over a `FeedDocuments` seam, `FeedController`, `FeedScreen`, `FeedPostTile` (8.2); and the write path — `PostRepository`/`PostWriter` ports, `FirestorePostRepository`, `FirestorePostWriter`, `PostImageStorage`/`SupabasePostImageStorage`, `ComposeController`, `ComposePostScreen` and `compose_image_grid` (8.3). See §14, and `docs/PROJECT_STATE.md` for what is **not** yet verified about 8.3 |
 | `settings` | `presentation` | account summary, the appearance sheet, build information, sign-out |
 
 ## 3. State management
@@ -410,8 +422,10 @@ Carried deliberately, not forgotten:
    the Windows face — close in metrics to Noto Sans Bengali but not identical.
    A device pass is required before Stage 14; if either platform's default face
    clips or crowds, the fix is one bundled font, not a layout rewrite.
-10. **Profile photo upload has never run against real storage** (Stage 6). There
-    is no Supabase project in this workspace, so the bucket, the storage policies
+10. **Profile photo upload has never run against real storage** (Stage 6). No
+    bucket, policy or upload has ever been created or exercised **from this
+    repository** (item 12 records the `supabase/.temp/` CLI state and what it
+    does and does not prove), so the bucket, the storage policies
     and the Firebase third-party-auth setting are unapplied delivery material in
     `docs/storage/`. The app is honest about it — with no `SUPABASE_*` defines the
     sheet says upload is not set up — but "tested against fakes" is not
@@ -436,9 +450,27 @@ Carried deliberately, not forgotten:
     been applied** (Stage 8.3). `docs/storage/supabase-post-images.sql` creates
     `post-images` and its two policies; `SupabasePostImageStorage` uploads into it
     and deletes by path. Like the `avatars` bucket, it is delivery material: no
-    Supabase project exists in this workspace, so nothing has been exercised
-    against real storage and the app reports itself as unconfigured when the
-    `SUPABASE_*` defines are absent.
+    bucket, policy or Firebase third-party-auth setting has been applied **from
+    this repository**, nothing has been exercised against real storage, and the app
+    reports itself as unconfigured when the `SUPABASE_*` defines are absent. One
+    caveat on the older wording here: local, gitignored Supabase CLI state exists on
+    the development machine (`supabase/.temp/`, ignored by `.gitignore`), so a
+    project may have been linked by hand. Whether it carries either bucket is not
+    establishable from the repository and needs an owner check — see
+    `docs/storage/README.md`.
+13. **Stage 8.3 is implemented but not hardened** — the reconciliation record is
+    the Stage 8.3 entry in `docs/PROJECT_STATE.md`, and the short form is here so
+    this list cannot be read as "8.3 shipped cleanly". Four things are open:
+    `flutter test` has **one failing test** in `compose_controller_test.dart`
+    ("reports uploading while the object is in flight"), so the tree does not meet
+    the completion gate stated at the top of that file; `ComposePostScreen` and
+    `compose_image_grid` have **no widget tests and no visual render**; the feed
+    and the composer are **not reachable in the shipped app**, because
+    `feedPreviewProvider` is still empty and the dashboard hides the **See all**
+    that is the only route in; and the **malformed-document page** described in
+    §14.2 can render a permanently empty feed with no way to page past it. None of
+    these was introduced by this document's reconciliation, and none was fixed by
+    it either.
 
 ## 12. Profile data model and privacy (Stage 5)
 
@@ -748,6 +780,11 @@ upload or transaction anywhere in `lib/features/feed`. Nothing in
 `firestore.rules`, `firebase.json`, `.firebaserc`, the Firestore indexes or any
 Supabase setting was touched, and nothing was deployed.
 
+*This paragraph describes Stage 8.2's own scope, which was exactly that. It is no
+longer a description of the tree: Stage 8.3 (§14.3) added the create path, the
+image upload and the post storage adapter. Read "still not writable" as the stage
+boundary, not as the project state.*
+
 It was built against §14.1 as approved: `imageUrls` + `imagePaths`,
 `posts/{postId}/likes/{uid}` as the future likes path (declared as a constant,
 never addressed), `donationRecordId` not modelled. §14.1's table is still a
@@ -1042,4 +1079,44 @@ change to `firestore.rules`, `firebase.json`, `firestore.indexes.json` or any
 Supabase setting, and nothing deployed. The SQL in `docs/storage/` is delivered
 and unapplied, so every claim above about storage behaviour is a test against a
 fake — the gap §11 item 12 records and `docs/storage/README.md` repeats.
+
+### Verification status (recovery reconciliation)
+
+Everything above this line describes the design as built. This line records how
+much of it has actually been demonstrated, because the two are not equal here. The
+detailed record, with the commands and the numbers, is the Stage 8.3 entry in
+`docs/PROJECT_STATE.md`; §11 item 13 points at it.
+
+| Claim above | Implemented | Tested | Approved | Deployed | Live-verified |
+| --- | --- | --- | --- | --- | --- |
+| `publish` writes one `posts` document | Yes | Yes — 15 repository tests over `FakePostWriter` | No | No | No |
+| Draft validated before the network | Yes | Yes — within the 31 controller tests | No | No | No |
+| Photographs upload on pick | Yes | Yes — 15 storage tests against a fake | No | No | **No — no byte has ever been transferred** |
+| Abandoned drafts delete their objects | Yes | Yes — best-effort path pinned by tests | No | No | No |
+| `ownPath()` blocks foreign deletes | Yes | Yes — guard tested directly | No | No | No (server-side enforcement is the unapplied policy) |
+| The compose form behaves as described | Yes | **No — zero widget tests**; nothing under `test/` imports `ComposePostScreen` | No | No | No |
+| The form renders as designed | Yes | **No — no visual-review capture exists** | No | No | No |
+| The whole stage meets the project gate | — | **No — `flutter test` fails one test** | No | No | No |
+
+Three further gaps belong with the design rather than with the paperwork:
+
+- **The write path is unreachable.** `ComposePostScreen` sits behind
+  `FeedScreen`, and `FeedScreen`'s only route in is the dashboard's community
+  **See all**, which the dashboard hides while `feedPreviewProvider` is empty. So
+  the compose FAB described above, the prepend flow and the storage step-6
+  verification instructions in `docs/storage/README.md` cannot be exercised by a
+  donor or a reviewer without either populating that provider or adding an entry
+  point.
+- **Server-side enforcement does not exist yet.** The client guarantees this app's
+  writes; the create rule checks `authorUid` and nothing else (§11 item 11, §14.1),
+  so the field set, the 2 000-character ceiling and the four-image ceiling have no
+  rules behind them and no rules tests around them.
+- **`hasMore` is measured before refusals** (§14.2), so a page of refused documents
+  yields an empty list with `hasMore` true, and the screen's empty state replaces
+  the footer that holds **Load more**. The publish-to-feed flow inherits this: a
+  post written into a collection of unreadable documents would not appear.
+
+**Nothing in this subsection was fixed by the reconciliation that added it.** It is
+a statement of measured state, written so that the design record above cannot be
+read as a verification record.
 

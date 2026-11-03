@@ -1,8 +1,14 @@
 # Supabase Storage: profile photos and post photographs
 
 Everything in this folder is **delivery material**. None of it has been applied,
-nothing in the repository runs it, and no Supabase project exists in this
-workspace yet. The app is built to work without it: when the build carries no
+nothing in the repository runs it, and no bucket or policy in this document has
+ever been executed. The one honest qualification: the workspace now carries
+Supabase CLI local state under `supabase/.temp/` (gitignored, untracked, never
+read into a build), which is evidence that a project has been *linked* from this
+machine at some point. That is not the same as the SQL below being applied, and
+no project reference, URL or key is quoted here. Until someone runs the two SQL
+files and uploads a real byte, treat every statement in this folder as unapplied.
+The app is built to work without it: when the build carries no
 Supabase defines, the photo sheet says *"Photo upload is not set up in this
 build yet."*, the compose screen says the same about photographs, and neither
 offers a control that could only fail.
@@ -150,10 +156,19 @@ configured".
    Expected: `403` with `new row violates row-level security policy`. The same
    call to the donor's own folder with a token-less request must also fail.
 6. Post photographs: open the **Feed**, tap **Compose**, attach two photos, then
-   publish. In *Storage → post-images* two objects should appear under
+   publish. Read the reachability note below before attempting this step.
+   In *Storage → post-images* two objects should appear under
    `{firebaseUid}/`, and the feed should show the new post at the top after the
    snapshot confirms it. Attach a third photo and abandon the draft: a
    confirmation appears, and after it the objects should be gone again.
+
+   **The Feed is not currently reachable through normal navigation.**
+   `feedPreviewProvider` returns an empty list and the dashboard hides its
+   *See all* action, so there is no in-app path from the shell to
+   `ComposePostScreen` (recorded as a defect and an outstanding task in
+   `docs/PROJECT_STATE.md`, Stage 8.3). This step is therefore not executable as
+   written on a stock build; it needs either the navigation gap closed or a
+   temporary route added for the review, and neither has been done.
 
 ### 6. What each failure looks like in the app
 
@@ -168,10 +183,14 @@ configured".
 
 ## Known limitations (read before the Security stage)
 
-1. **No live verification yet.** There is no Supabase project in this workspace,
-   so no upload, download or delete has been exercised against real storage. All
-   storage behaviour is covered by unit and widget tests against fakes; the SQL
-   above has never been executed.
+1. **No live verification yet.** No upload, download or delete has been
+   exercised against real storage from this repository, and neither SQL file has
+   ever been executed. All storage behaviour is covered by unit and widget tests
+   against fakes. The gitignored `supabase/.temp/` CLI state (see the top of this
+   file) shows a project has been linked from this machine, but linking is not
+   applying: whether buckets or policies exist remotely, and whether the Firebase
+   third-party-auth setting has been turned on, is **not verifiable from here**
+   and has not been checked.
 2. **Firebase tokens arrive as the `anon` role.** Supabase has no `role` claim to
    read, so the policies carry the whole burden: `iss`, `aud` and
    `sub == (storage.foldername(name))[1]`. Anything that weakens those three
