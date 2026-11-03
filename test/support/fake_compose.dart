@@ -112,6 +112,14 @@ class FakePostImageStorage implements PostImageStorage {
   /// Holds both calls open, so the uploading spinner can be seen.
   Completer<void>? gate;
 
+  /// Completed the first time [upload] is entered.
+  ///
+  /// A [gate] can show how long an upload takes; it cannot show that one has
+  /// started. Without this a busy-state test has to guess how many microtasks the
+  /// code under test needs to reach the network, which is precisely the
+  /// assumption a test about an in-flight state must not make.
+  Completer<void> uploadStarted = Completer<void>();
+
   int uploadCalls = 0;
   final List<ValidatedPhoto> uploaded = <ValidatedPhoto>[];
   final List<String> removedPaths = <String>[];
@@ -120,6 +128,9 @@ class FakePostImageStorage implements PostImageStorage {
   Future<Result<StoredPostImage>> upload(ValidatedPhoto photo) async {
     final int index = uploadCalls++;
     uploaded.add(photo);
+    if (!uploadStarted.isCompleted) {
+      uploadStarted.complete();
+    }
     await _waitForGate();
     if (uploadFailure != null) {
       return FailureResult<StoredPostImage>(uploadFailure!);

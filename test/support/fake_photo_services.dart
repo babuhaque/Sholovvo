@@ -86,6 +86,20 @@ class FakePhotoPicker implements PhotoPicker {
   /// When set, the pick fails instead — a denied permission, an unreadable file.
   Failure? failure;
 
+  /// When set, [pick] waits on it before answering, so a test can sit inside the
+  /// picker the way a donor sits in front of a grid of thumbnails.
+  ///
+  /// Left null the call answers on the same microtask it always did, so no
+  /// existing test shifts its timing.
+  Completer<void>? gate;
+
+  /// Completed the first time [pick] is entered.
+  ///
+  /// The counterpart of `FakePostImageStorage.uploadStarted`: it lets a test
+  /// prove which wait it is measuring instead of assuming how many microtasks the
+  /// code under test needed to get here.
+  Completer<void> entered = Completer<void>();
+
   int calls = 0;
   PhotoSource? lastSource;
 
@@ -93,6 +107,13 @@ class FakePhotoPicker implements PhotoPicker {
   Future<Result<PhotoCandidate?>> pick(PhotoSource source) async {
     calls++;
     lastSource = source;
+    if (!entered.isCompleted) {
+      entered.complete();
+    }
+    final Completer<void>? pending = gate;
+    if (pending != null) {
+      await pending.future;
+    }
     if (failure != null) {
       return FailureResult<PhotoCandidate?>(failure!);
     }

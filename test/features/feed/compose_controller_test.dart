@@ -135,13 +135,45 @@ void main() {
       storage.gate = Completer<void>();
 
       final Future<void> pending = controller().addImage(PhotoSource.gallery);
+      // Not `expect` straight after the un-awaited call: `addImage` opens the
+      // platform picker before it uploads anything, so the flag would still be
+      // false and the assertion would be measuring the pick. The fake answers
+      // when the upload is genuinely entered, which is when the flag is set.
+      await storage.uploadStarted.future;
+
       expect(state().isUploading, isTrue);
+      expect(state().isBusy, isTrue);
       expect(state().images, isEmpty);
 
       storage.gate!.complete();
       await pending;
 
       expect(state().isUploading, isFalse);
+      expect(state().images, hasLength(1));
+    });
+
+    test('waiting for the picker is not reported as uploading', () async {
+      await setUpController();
+      picker.gate = Completer<void>();
+
+      final Future<void> pending = controller().addImage(PhotoSource.gallery);
+      await picker.entered.future;
+
+      // The distinction the flag exists to draw: a donor still choosing a file
+      // has nothing in flight. The sheet owns the screen during that wait, so a
+      // spinner on the form would describe a transfer that has not started, and
+      // the controller's own `_busy` guard rather than this flag is what keeps a
+      // second tap out.
+      expect(state().isUploading, isFalse);
+      expect(state().isBusy, isFalse);
+      expect(storage.uploadCalls, 0);
+      expect(state().images, isEmpty);
+
+      picker.gate!.complete();
+      await pending;
+
+      expect(state().isUploading, isFalse);
+      expect(storage.uploadCalls, 1);
       expect(state().images, hasLength(1));
     });
 
@@ -185,6 +217,8 @@ void main() {
         reason: 'the validator refused it, so there is nothing to upload',
       );
       expect(state().images, isEmpty);
+      // Rejected before the network, so the form never claimed a transfer.
+      expect(state().isUploading, isFalse);
     });
 
     test('a failed upload is reported and adds no image', () async {
