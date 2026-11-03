@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sholovvo_app/core/logging/app_logger.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/features/feed/application/feed_state.dart';
 import 'package:sholovvo_app/features/feed/data/firestore_feed_documents.dart';
@@ -49,6 +50,8 @@ final Provider<FeedRepository> feedRepositoryProvider =
 /// [maxEmptyPages].
 class FeedController extends Notifier<FeedState> {
   bool _fetching = false;
+
+  static const AppLogger _logger = AppLogger('feed.read');
 
   /// How many unreadable pages one operation walks past before it stops and
   /// lets the donor decide.
@@ -137,6 +140,12 @@ class FeedController extends Notifier<FeedState> {
     try {
       FeedCursor? cursor = after;
       int emptyPages = 0;
+
+      /// Documents refused by the pages this operation walked over, before the
+      /// list they belong to is decided. Kept separate from the state until the
+      /// read resolves, because a read that failed has not refused anything to
+      /// the donor — it has told them it could not read at all.
+      int refused = 0;
       FeedPage page;
 
       // The walk. A page is accepted as soon as it carries a post, or as soon
@@ -161,6 +170,7 @@ class FeedController extends Notifier<FeedState> {
         }
 
         page = resolved;
+        refused += page.skipped;
         if (page.posts.isNotEmpty ||
             !page.hasMore ||
             ++emptyPages >= maxEmptyPages) {
@@ -179,9 +189,16 @@ class FeedController extends Notifier<FeedState> {
       // posts is what the bad writes earned; blanking the good old ones is a
       // second, unearned penalty, and `hasMore` stays true so the footer still
       // offers the way on.
-      final List<Post> next = append || (page.posts.isEmpty && page.hasMore)
+      final bool keepsExisting = append || (page.posts.isEmpty && page.hasMore);
+      final List<Post> next = keepsExisting
           ? _append(state.posts, page.posts)
           : page.posts;
+
+      // The count belongs to the list, not to the last read: documents refused
+      // by an earlier page are still missing from what is on screen, so a read
+      // that appends adds its refusals to the ones already there rather than
+      // replacing them, and a read that replaces the list resets the account.
+      final int skippedTotal = (keepsExisting ? state.skipped : 0) + refused;
 
       state = FeedState(
         status: FeedStatus.ready,
@@ -189,7 +206,21 @@ class FeedController extends Notifier<FeedState> {
         cursor: page.cursor,
         hasMore: page.hasMore,
         loaded: true,
+        skipped: skippedTotal,
       );
+
+      // The operator-facing half of the count. A screen can only say "some posts
+      // could not be shown" to the person standing in front of it; this line is
+      // what reaches whoever maintains the collection, and it names the number
+      // rather than a document id so no other donor's post content lands in a
+      // log. It warns rather than logs at info because a mapper that is refusing
+      // documents means the stored data has drifted from the schema, which is
+      // what the rules reconciliation needs to be told about.
+      if (skippedTotal > 0) {
+        _logger.warning(
+          'Feed read skipped $skippedTotal unreadable post document(s)',
+        );
+      }
     } finally {
       _fetching = false;
     }

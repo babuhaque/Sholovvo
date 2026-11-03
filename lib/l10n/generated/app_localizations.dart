@@ -1400,6 +1400,30 @@ abstract class AppLocalizations {
   /// **'{count, plural, one{{count} comment} other{{count} comments}}'**
   String feedCommentCount(num count);
 
+  /// No description provided for @feedUnreadableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The feed could not be fully read'**
+  String get feedUnreadableTitle;
+
+  /// No description provided for @feedUnreadableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'There are more posts behind this, but they could not be read.'**
+  String get feedUnreadableBody;
+
+  /// No description provided for @feedSkippedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} post could not be shown} other{{count} posts could not be shown}}'**
+  String feedSkippedNotice(num count);
+
+  /// No description provided for @feedPostPhotoLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo shared by {name}'**
+  String feedPostPhotoLabel(String name);
+
   /// No description provided for @feedComposeAction.
   ///
   /// In en, this message translates to:

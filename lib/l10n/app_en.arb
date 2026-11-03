@@ -402,6 +402,25 @@
       }
     }
   },
+  "feedUnreadableTitle": "The feed could not be fully read",
+  "feedUnreadableBody": "There are more posts behind this, but they could not be read.",
+  "feedSkippedNotice": "{count, plural, one{{count} post could not be shown} other{{count} posts could not be shown}}",
+  "@feedSkippedNotice": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "feedPostPhotoLabel": "Photo shared by {name}",
+  "@feedPostPhotoLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
 
   "feedComposeAction": "Share an update",
   "feedComposeTitle": "New post",

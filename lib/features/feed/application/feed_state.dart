@@ -18,6 +18,11 @@ enum FeedStatus { initial, loading, ready, loadingMore, failure }
 /// meaningful together: a cursor without its list is a position in a document
 /// the screen is not showing, and a list without [hasMore] cannot say whether
 /// scrolling to the bottom achieved anything.
+///
+/// [skipped] travels with them for the same reason. A shorter list is only
+/// honest if the screen can say whether the collection was empty or merely
+/// unreadable, and that answer belongs to the read that produced the list, not
+/// to a second question asked later.
 @immutable
 final class FeedState {
   const FeedState({
@@ -27,6 +32,7 @@ final class FeedState {
     this.hasMore = false,
     this.failure,
     this.loaded = false,
+    this.skipped = 0,
   });
 
   final FeedStatus status;
@@ -52,6 +58,16 @@ final class FeedState {
   /// which are the same list but very different sentences.
   final bool loaded;
 
+  /// How many documents the reads that produced [posts] could not turn into a
+  /// post.
+  ///
+  /// Accumulated across a bounded empty-page walk and across pages, so it counts
+  /// every refusal behind what is on screen rather than only the last page's. It
+  /// is not a failure: a refused document does not fail a read. It is the number
+  /// that tells a donor their list is shorter than the collection, and tells
+  /// whoever maintains this app that the collection has drifted from the mapper.
+  final int skipped;
+
   bool get isEmpty => posts.isEmpty;
 
   /// A first load or retry with nothing on screen — the one case that earns a
@@ -72,6 +88,17 @@ final class FeedState {
   bool get isEmptyResult =>
       posts.isEmpty && loaded && !hasMore && status != FeedStatus.loading;
 
+  /// Nothing to show, and the collection is *not* exhausted: the newest window
+  /// was read, refused every document it held, and there are more behind it.
+  ///
+  /// The mirror image of [isEmptyResult] — same guards, [hasMore] inverted — and
+  /// the reason both exist: "no posts yet" and "the posts could not be read" are
+  /// one empty list apart and completely different claims. A screen that cannot
+  /// tell them apart tells a donor their community is quiet when the app has
+  /// actually failed to read it.
+  bool get isUnreadableResult =>
+      posts.isEmpty && loaded && hasMore && status != FeedStatus.loading;
+
   /// An error with nothing behind it, so the screen has to say so in place of
   /// the list rather than above it.
   bool get isFatalError =>
@@ -85,6 +112,7 @@ final class FeedState {
     Failure? failure,
     bool clearFailure = false,
     bool? loaded,
+    int? skipped,
   }) {
     return FeedState(
       status: status ?? this.status,
@@ -93,10 +121,12 @@ final class FeedState {
       hasMore: hasMore ?? this.hasMore,
       failure: clearFailure ? null : (failure ?? this.failure),
       loaded: loaded ?? this.loaded,
+      skipped: skipped ?? this.skipped,
     );
   }
 
   @override
   String toString() =>
-      'FeedState($status, ${posts.length} posts, hasMore: $hasMore)';
+      'FeedState($status, ${posts.length} posts, hasMore: $hasMore, '
+      'skipped: $skipped)';
 }

@@ -803,6 +803,27 @@ class AppLocalizationsBn extends AppLocalizations {
   }
 
   @override
+  String get feedUnreadableTitle => 'ফিড সম্পূর্ণভাবে পড়া যায়নি';
+
+  @override
+  String get feedUnreadableBody =>
+      'এর পেছনে আরও পোস্ট আছে, তবে সেগুলো পড়া যায়নি।';
+
+  @override
+  String feedSkippedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countStringটি পোস্ট দেখানো যায়নি';
+  }
+
+  @override
+  String feedPostPhotoLabel(String name) {
+    return '$name-এর শেয়ার করা ছবি';
+  }
+
+  @override
   String get feedComposeAction => 'একটি আপডেট শেয়ার করুন';
 
   @override

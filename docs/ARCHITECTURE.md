@@ -81,7 +81,7 @@ what is actually implemented.
 | `auth` | `domain`, `data`, `presentation`, `application` | `AuthUser`, `AuthRepository` interface, validators, `FirebaseAuthRepository`, error mapping, sign-in / register / reset / verification screens |
 | `splash` | `presentation` | 2 s brand reveal, no navigation of its own |
 | `welcome` | `presentation` | unauthenticated landing screen |
-| `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, nearby requests and community preview; every data surface reads a provider seam that is empty until its own stage lands |
+| `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, nearby requests and community preview; every data surface reads a provider seam, and the seam is empty until the stage that owns the collection lands — except the community preview, which is a projection of the feed's own controller (§14.2) |
 | `profile` | `domain`, `data`, `application`, `presentation` | the signed-in donor's own profile: `UserProfile`, `DonationRecord`, validators, `FirestoreProfileRepository` over two documents, the profile screen and its edit form |
 | `feed` | `domain`, `data`, `application`, `presentation` | **Stages 8.1, 8.2 and 8.3 — 8.3 implemented, hardening in progress, not signed off.** `Post`, `Comment`, `Report` entities with their validators and enums, and the pure `PostDocument` mapper (8.1); the read path — `FeedRepository`/`FirestoreFeedRepository` over a `FeedDocuments` seam, `FeedController`, `FeedScreen`, `FeedPostTile` (8.2); and the write path — `PostRepository`/`PostWriter` ports, `FirestorePostRepository`, `FirestorePostWriter`, `PostImageStorage`/`SupabasePostImageStorage`, `ComposeController`, `ComposePostScreen` and `compose_image_grid` (8.3). See §14, and `docs/PROJECT_STATE.md` for what is **not** yet verified about 8.3 |
 | `settings` | `presentation` | account summary, the appearance sheet, build information, sign-out |
@@ -109,9 +109,12 @@ Rules:
 - **A screen whose data belongs to a later stage reads a seam, not a placeholder
   value.** `home` renders a donor snapshot, nearby requests and a feed preview
   from three providers in `features/home/application/home_providers.dart`. The
-  donor snapshot is now a real projection over the signed-in donor's profile and
-  donation history (Stage 5); nearby requests and the feed preview still return an
-  empty list. The screen therefore has one "no data" path and one "has data" path
+  donor snapshot is a real projection over the signed-in donor's profile and
+  donation history (Stage 5); the feed preview is a projection of
+  `feedControllerProvider`, so the dashboard and the feed screen have one answer
+  to "what is the newest post" rather than two (§14.2); nearby requests still
+  return an empty list, because nothing owns `blood_requests` until Stage 9. The
+  screen therefore has one "no data" path and one "has data" path
   from day one, and the stage that owns each collection replaces one provider
   instead of rebuilding the layout. A hard-coded sample row would have been
   indistinguishable from real data on a screenshot.
@@ -260,7 +263,8 @@ the gate builds for a verified session: an `IndexedStack` of two live tabs under
 `NavigationBar`, or beside a `NavigationRail` at 720px and up, and each tab owns
 its own `Scaffold`. Which tab is showing is local `State`, not a route, so
 switching tabs cannot grow the stack, and a page pushed above the shell (the
-settings page, the profile form) returns to whichever tab was showing.
+settings page, the profile form, the feed and its composer) returns to whichever
+tab was showing.
 
 `ShellTab` has exactly the members that have a live destination — there is no
 placeholder tab waiting for a later stage, for the same reason the dashboard's
@@ -458,23 +462,28 @@ Carried deliberately, not forgotten:
     project may have been linked by hand. Whether it carries either bucket is not
     establishable from the repository and needs an owner check — see
     `docs/storage/README.md`.
-13. **Stage 8.3 is implemented but not hardened** — the reconciliation record is
-    the Stage 8.3 entry in `docs/PROJECT_STATE.md`, and the short form is here so
-    this list cannot be read as "8.3 shipped cleanly". **Three things are open:**
-    `ComposePostScreen` and `compose_image_grid` have **no widget tests and no
-    visual render**; the feed and the composer are **not reachable in the shipped
-    app**, because `feedPreviewProvider` is still empty and the dashboard hides the
-    **See all** that is the only route in; and the **malformed-document page**
-    described in §14.2 can render a permanently empty feed with no way to page past
-    it. A fourth item the reconciliation recorded here — **one failing test** in
-    `compose_controller_test.dart` — has since been **closed test-side**
-    (2026-11-03, `68f9ee8`): the test asserted the uploading flag before the
-    controller had finished awaiting the image picker, and now waits on a
+13. **Stage 8.3 is implemented, and hardened in steps — and is still not signed
+    off.** The detailed record is the Stage 8.3 entry in `docs/PROJECT_STATE.md`,
+    and the short form is here so this list cannot be read as "8.3 shipped
+    cleanly". The three things this entry carried as open are **closed**:
+    `ComposePostScreen` and `compose_image_grid` now have 73 widget tests over the
+    same fake ports, plus a `compose` capture group in the opt-in visual-review
+    harness (§14.3); the feed and the composer are **reachable**, because the
+    dashboard's community section previews the feed's own controller and offers
+    **Open the community** when it has nothing to preview (§14.2); and a page of
+    unreadable documents can no longer strand a donor on a permanently empty feed,
+    because the controller walks past up to five such pages (§14.2). The fourth
+    item — the failing test in `compose_controller_test.dart` — was closed earlier,
+    test-side (2026-11-03, `68f9ee8`): the test asserted the uploading flag before
+    the controller had finished awaiting the image picker, and now waits on a
     deterministic entry signal from the storage fake before asserting it. **No file
-    under `lib/` changed.** The suite is 612 passed, 47 skipped, 0 failed, which
-    satisfies the gate at the top of `docs/PROJECT_STATE.md` for today's tree and
-    says nothing about approval. None of the three open items was fixed by the
-    reconciliation, and none was fixed by the test fix either.
+    under `lib/` changed for that one.** What is genuinely open is not the client's
+    own behaviour: the rules reconciliation (item 11), any live verification at all
+    (items 10 and 12), the `ComposeController.discard()` / `_busy` race that §14.3
+    records, and the bounded-walk costs §14.2 states rather than hides. The suite is
+    712 passed, 58 skipped, 0 failed and `flutter analyze` is clean, which satisfies
+    the gate at the top of `docs/PROJECT_STATE.md` for today's tree and says nothing
+    about approval.
 
 ## 12. Profile data model and privacy (Stage 5)
 
@@ -842,7 +851,10 @@ posts
   every open screen for every post anyone publishes.
 
 One page costs at most eleven document reads. Ten pages cost 110 plus their
-round trips; nothing in the feature asks for the whole collection.
+round trips; nothing in the feature asks for the whole collection. An operation
+that has to walk past unreadable pages costs up to five of those windows —
+`maxEmptyPages`, see "Malformed documents, and why they are counted" below — and
+still never asks for more than fifty documents in one go.
 
 ### Malformed documents, and why they are counted
 
@@ -852,6 +864,46 @@ an error: one post written by a future version of the app, or by a console user,
 should not empty a donor's feed. The count is asserted by tests and is the
 number that tells a debugger whether the schema has drifted. No document's
 content reaches a debug message.
+
+**An empty page is not an empty feed.** The two facts above combine into a page
+that carries no post while the collection still has plenty: `hasMore` is decided
+from the **raw** window, before mapping, so eleven unreadable documents answer
+"ten posts, none of them readable, more pages behind". Reading that as "no posts
+yet" strands the donor, because the screen's empty state replaces the footer that
+holds **Load more** — the only control that could reach the readable posts behind
+the bad writes. Three changes close it, none of them in `domain` or `data`, whose
+contract was already right:
+
+- `FeedState.isEmptyResult` requires `!hasMore`. The empty card is now allowed to
+  say "No posts yet" only when the collection is exhausted *and* empty, which is
+  the only claim that sentence is entitled to make.
+- `FeedController` **walks**. Each operation re-asks with the cursor the refused
+  page returned, and stops at the first page that carries a post, at the end of the
+  collection, or at `FeedController.maxEmptyPages`. Walking is correct because the
+  cursor addresses raw Firestore documents rather than posts: a refused document
+  still moves it, so the next window starts where this one ended and no post is
+  skipped or repeated. A page that carries neither a post nor a position re-asks
+  with the cursor it was given, so the loop cannot spin on it.
+- The walk is **bounded at five pages** (`maxEmptyPages`). A collection malformed
+  all the way down is a data incident, not the bottom of a list, and an unbounded
+  loop would pay for a read every frame. Five is fifty documents scanned for one
+  tap — far past any plausible run of bad writes — and **Load more** stays on
+  screen throughout, so the walk continues by the donor's choice rather than by
+  machinery.
+
+The bound is a cost, and it is stated rather than hidden. A donor whose newest
+fifty documents are unreadable spends five reads and sees a list with nothing in it
+and a button under it: honest about there being more, silent about why this page is
+blank, and no closer to the readable posts than five more taps. That is the intended
+trade against an empty card that lies. Two limits stay open with it, and neither is
+cheap to answer from here: "malformed" and "genuinely empty" are distinguishable
+only because `hasMore` happens to say so — the query cannot express the difference,
+so anything that wanted to explain it would have to read, and only the controller
+knows which of the two it is holding — and `FeedPage.skipped` is **not surfaced to
+anyone**: no operator view, no diagnostic screen, no log line carries it, so schema
+drift today shows itself only as a feed with fewer posts than the collection
+contains. A home for that count belongs with the rules stage, which is the only
+other place that reads these documents.
 
 ### The controller: one read at a time
 
@@ -867,7 +919,10 @@ content reaches a debug message.
   pull-to-refresh landing on a page-in-flight would write two halves of different
   windows into one list, and a second tap on **Load more** would pay for the same
   page twice. The flag is checked in the controller rather than by disabling a
-  button because the refresh is a gesture, not a button.
+  button because the refresh is a gesture, not a button. **A walk is one read at a
+  time in the wider sense too:** the whole empty-page walk happens inside the
+  single guarded operation, so two taps on **Load more** cannot start two walks
+  racing through the same bad pages.
 - **A refresh does not blank the list.** With posts on screen the status stays
   `ready` while the read runs; a spinner over an empty list is a worse answer
   than one more second of stale-but-true posts.
@@ -875,7 +930,15 @@ content reaches a debug message.
   and fatal — the screen offers a retry. A failed `loadMore` or refresh keeps the
   posts, the cursor and `hasMore`, and surfaces the `Failure` so the screen can
   show a banner above a list that is still readable. The retry re-asks the same
-  cursor rather than skipping the page it failed to read.
+  cursor rather than skipping the page it failed to read, **including mid-walk**:
+  the failure branch returns before the walk consumes that page's cursor, so a
+  refusal on the third page of a walk leaves the cursor on the second and the retry
+  asks for the third again.
+- **A capped walk does not blank what the donor can already see.** A first-page
+  read that reaches `maxEmptyPages` without a readable document writes the empty
+  page it ended on *appended* to the posts already in state, not over them:
+  refusing to show *new* posts is what the bad writes earned, and replacing the
+  good old ones would be a second, unearned penalty.
 - **Duplicates are not appended.** A document rewritten with a new `createdAt`
   can legitimately appear in two windows; a feed that shows the same post twice
   looks broken even when the database agreed, so `_append` dedupes by id.
@@ -898,7 +961,11 @@ content reaches a debug message.
 | Time | relative to the minute, hour and day, then a calendar date after `feedCalendarAfterDays` (7). The `now` is injectable, so the boundaries are asserted rather than observed |
 
 The screen shows one of four exclusive states: a first-load spinner, a fatal
-error card with **Try again**, an empty card, or the list. `pumpAndSettle` is
+error card with **Try again**, an empty card, or the list. The empty card is
+reached only through `isEmptyResult`, which now requires `!hasMore` — a page that
+is empty because its documents were refused, not because the collection is, keeps
+the list branch and therefore keeps the footer with **Load more** in it.
+`pumpAndSettle` is
 unusable in its tests for the same reason as everywhere else in this app — the
 soft glow animates forever — so the widget tests pump explicit frames.
 
@@ -924,14 +991,53 @@ has no rule. Reading a document the rules permit is not an endorsement of the
 shape it is written in — which is why this stage draws counts and never touches
 them.
 
-### Navigation
+### Navigation, and the dashboard's preview of the feed
 
 Stage 7's two-tab shell is intact: `ShellTab` still has `home` and `profile`, and
 the feed is a pushed route (`FeedScreen.route()`, a `FadeSlidePageRoute`) above
-the shell rather than a third tab. The dashboard's community **See all** is the
-route in. It keeps the rule the requests section already had — no "See all"
-over an empty list, because that is a link to nothing — so the button appears
-exactly when the preview has a post in it.
+the shell rather than a third tab. `AppRoutes` still carries only the three auth
+routes — pushed feature screens own their own `route()` factory, so the feed added
+no route table entry and no duplicate navigation constant.
+
+The dashboard's community section is the only way in, and it is now always
+available rather than conditional on data existing:
+
+| The preview shows | The control | Copy |
+| --- | --- | --- |
+| posts | **See all** in the section header, and a tap on any preview card | `homeSeeAll` — "See all" |
+| nothing, because the collection is empty or the read walked to its cap | **Open the community** on the empty card | `homeFeedOpenAction` — "Open the community" |
+| nothing, because the first read failed | **Try again** on the error card, which re-runs the read | `feedRetry` — "Try again" |
+| nothing, because the read is in flight | a 22 dp spinner, the mark the feed's own footer uses | — |
+
+Both entry points push the same `FeedScreen.route()`, and its back button pops to
+the dashboard; there is one FeedScreen instance per push and no second copy of the
+route. The section keeps the rule the requests section already had — no "See all"
+over an empty list, because that is a link to nothing, and two existing tests
+assert it in the negative. What changed is that an empty community section is no
+longer a dead end: it offers the *page* rather than a list to see, which is where a
+first post would be written. "See all" promises a list; "Open the community"
+promises the screen, and both are true of what they open.
+
+**The preview is a projection, not a second read.** `feedPreviewProvider` watches
+`feedControllerProvider` and maps `state.posts.take(feedPreviewLimit)` — three, not
+a page — into the `FeedPostPreview` view models the card already accepted. Its type
+is unchanged, so every existing override still compiles and every layout test can
+still hand the dashboard a preview without a read. The dashboard triggers the
+controller's own `loadFirstPage()` once, in a post-frame callback, and only if the
+state has not loaded: the paging, the cursor, the one-read-at-a-time rule, the
+empty-page walk and the failure model all belong to the feed, and a dashboard that
+queried `posts` for itself would have two answers to "what is the newest post" and
+have to be told which one to believe. It also means a post the donor publishes is
+visible on the dashboard without a refresh, because `FeedController.prepend` puts it
+in the one list both screens read.
+
+Two consequences of sharing that state are accepted rather than fixed. The preview
+is as fresh as the last feed read and no fresher: it goes stale until someone
+refreshes the feed, and the dashboard has no pull-to-refresh gesture of its own —
+adding one would mean a second refresh path against the same controller, which is
+the thing the projection exists to avoid. And the shell's `IndexedStack` keeps both
+tabs mounted, so the dashboard's one read happens on sign-in whether or not anyone
+is looking at it: at most eleven documents, before the donor has asked for anything.
 
 ## 14.3 Compose and publish (Stage 8.3)
 
@@ -1084,6 +1190,56 @@ Supabase setting, and nothing deployed. The SQL in `docs/storage/` is delivered
 and unapplied, so every claim above about storage behaviour is a test against a
 fake — the gap §11 item 12 records and `docs/storage/README.md` repeats.
 
+### The composer under test (hardening step 3, 2026-11-03)
+
+The stage shipped with the controller, the repository and the storage adapter
+covered and the form itself unobserved. That gap is closed: **73 widget tests**
+across the two presentation files, built on the same fakes the logic tests use — a
+repository over `FakePostWriter`, `FakePostImageStorage`, and a photo picker that
+can be held open — with no network, no plugin and no arbitrary delay in any of
+them.
+
+| File | Tests | What it pins |
+| --- | --- | --- |
+| `test/features/feed/compose_post_screen_test.dart` | 40 | the empty form, the text rules as messages, the photo path end to end, publishing, leaving, the no-bucket build, both languages, the narrowest phone, and what a screen reader hears |
+| `test/features/feed/compose_image_grid_test.dart` | 33 | four cells whatever the draft holds, the add tile and its source sheet, removal naming the right photo, the in-place spinner, the grid frozen by a publish, and the same set of semantics assertions |
+
+The behaviours worth naming, because they are the ones this document claims:
+
+- **Add tile → source sheet → picker → upload → filled slot**, and the two ways it
+  does not work: a cancelled pick is silence, and a failed upload says what went
+  wrong and leaves the form usable.
+- **Publish waits for the photo still going up**, and a second tap cannot write a
+  second post.
+- **The discard flow exists as a tested thing rather than a `PopScope`**:
+  an untouched form closes without asking, a draft asks first, *keep editing* keeps
+  it, confirming deletes the uploaded object, and the system back button is guarded
+  the same way as the arrow. A draft holding only a photo is worth confirming too.
+- **The 2 000-character limit is a message, not a wall**; spaces are not a post;
+  the text is trimmed on write without being trimmed in the field.
+- **The unconfigured build says so and still publishes the text**, and a publish
+  the rules reject says which rule.
+- **Semantics, in both languages**: every control is named, the publish is called a
+  button and stops being one while it is busy, and — the finding this pass produced
+  — **a reader can press it, not only hear it**.
+
+That last one is the only production change the step made. `SolovvoButton`'s
+semantics node now carries the same `onTap` the `InkWell` below it gets: the widget
+wraps its child in `ExcludeSemantics` so the label is not read twice, and that also
+swallows the tap action Flutter would otherwise derive, leaving a node that
+announced "button" with no way to activate it — a TalkBack or VoiceOver user hearing
+a control they could not press. It is null while the button is disabled, so an inert
+button is still not offered as pressable.
+
+The visual-review harness gained a `compose` group: eleven captures — empty and
+drafted across light/dark and both languages, the source sheet, the no-bucket build
+and a wide four-photo draft. They run only under `SOLOVVO_VISUAL_REVIEW=1` and
+contribute the eleven skips the suite now reports. They were run and they pass, and
+they write to `build/review/`, which is gitignored: `docs/visuals/stage8/` still
+holds only the five read-path renders, so **the composer has been reviewed without
+having been committed**. Promoting those PNGs is an owner decision, not a code
+change.
+
 ### Verification status (recovery reconciliation)
 
 Everything above this line describes the design as built. This line records how
@@ -1094,42 +1250,58 @@ detailed record, with the commands and the numbers, is the Stage 8.3 entry in
 | Claim above | Implemented | Tested | Approved | Deployed | Live-verified |
 | --- | --- | --- | --- | --- | --- |
 | `publish` writes one `posts` document | Yes | Yes — 15 repository tests over `FakePostWriter` | No | No | No |
-| Draft validated before the network | Yes | Yes — within the 32 controller tests | No | No | No |
-| Photographs upload on pick | Yes | Yes — 15 storage tests against a fake | No | No | **No — no byte has ever been transferred** |
-| Abandoned drafts delete their objects | Yes | Yes — best-effort path pinned by tests | No | No | No |
+| Draft validated before the network | Yes | Yes — within the 32 controller tests, and shown on the form by the widget tests | No | No | No |
+| Photographs upload on pick | Yes | Yes — 15 storage tests against a fake, plus the screen path from add tile to filled slot | No | No | **No — no byte has ever been transferred** |
+| Abandoned drafts delete their objects | Yes | Yes — best-effort path pinned by tests, now including the confirm-and-close flow on the screen | No | No | No |
 | `ownPath()` blocks foreign deletes | Yes | Yes — guard tested directly | No | No | No (server-side enforcement is the unapplied policy) |
-| `isUploading` means the storage upload, not the pick | Yes | Yes — pinned by two gating tests, one holding the upload open (`storage.uploadStarted`) and one holding the pick open (`picker.entered`); no delays involved | No | No | No |
-| The compose form behaves as described | Yes | **No — zero widget tests**; nothing under `test/` imports `ComposePostScreen` | No | No | No |
-| The form renders as designed | Yes | **No — no visual-review capture exists** | No | No | No |
-| The whole stage meets the project gate | — | **Yes for today's tree** — 612 passed, 47 skipped, 0 failed and `flutter analyze` clean, measured on `68f9ee8`; a standing gate to re-run each step, not an approval | **No** | No | No |
+| `isUploading` means the storage upload, not the pick | Yes | Yes — pinned by two gating tests, one holding the upload open (`storage.uploadStarted`) and one holding the pick open (`picker.entered`); no delays involved, and the grid's in-place spinner is asserted separately | No | No | No |
+| The compose form behaves as described | Yes | **Yes — 73 widget tests** over `ComposePostScreen` and `compose_image_grid`, on the same fakes | No | No | No |
+| The form is usable by a screen reader | Yes | Yes for the contract: names, button state, and a press action a reader can activate (`SolovvoButton` now supplies `onTap`). No real TalkBack or VoiceOver pass has been made | No | No | No |
+| The form renders as designed | Yes | **Partly** — eleven `compose` captures exist in the harness and pass under `SOLOVVO_VISUAL_REVIEW=1`, but they are written to gitignored `build/review/` and are not in `docs/visuals/stage8/` | No | No | No |
+| The feed and composer can be reached from the dashboard | Yes | Yes — 17 pagination tests + the dashboard preview and navigation tests, and one shell-level push/pop test | No | No | No |
+| The whole stage meets the project gate | — | **Yes for today's tree** — 712 passed, 58 skipped, 0 failed and `flutter analyze` clean, measured on the tree at `a1e102f`; a standing gate to re-run each step, not an approval | **No** | No | No |
 
-Three further gaps belong with the design rather than with the paperwork:
+The gaps that belong with the design, now that the two above have moved:
 
-- **The write path is unreachable.** `ComposePostScreen` sits behind
-  `FeedScreen`, and `FeedScreen`'s only route in is the dashboard's community
-  **See all**, which the dashboard hides while `feedPreviewProvider` is empty. So
-  the compose FAB described above, the prepend flow and the storage step-6
-  verification instructions in `docs/storage/README.md` cannot be exercised by a
-  donor or a reviewer without either populating that provider or adding an entry
-  point.
 - **Server-side enforcement does not exist yet.** The client guarantees this app's
   writes; the create rule checks `authorUid` and nothing else (§11 item 11, §14.1),
   so the field set, the 2 000-character ceiling and the four-image ceiling have no
-  rules behind them and no rules tests around them.
-- **`hasMore` is measured before refusals** (§14.2), so a page of refused documents
-  yields an empty list with `hasMore` true, and the screen's empty state replaces
-  the footer that holds **Load more**. The publish-to-feed flow inherits this: a
-  post written into a collection of unreadable documents would not appear.
+  rules behind them and no rules tests around them. This is the blocking item for
+  any deployment, and the feed's own reachability makes it more urgent rather than
+  less: what the composer writes is now something a donor can actually do.
+- **`ComposeController.discard()` is not under the `_busy` guard.** `addImage` and
+  `publish` both take the guard; `discard` checks `state.isPublishing` only. Confirm
+  the discard prompt while a photo is still going up and the snapshot it deletes has
+  already been taken, so the upload that completes afterwards names an object no
+  state holds — an orphan in the bucket, and a form reset under an in-flight
+  operation. Recorded, deliberately not fixed while the compose upload-state contract
+  is being left alone; a fix belongs with the same controller and needs its own
+  step.
+- **An empty page is now survivable but still not explainable** (§14.2): a walk that
+  reaches its cap spends five reads and gives the donor a list with nothing in it and
+  a **Load more** under it, while `FeedPage.skipped` — the number that says *why* —
+  reaches nobody.
 
 **The reconciliation that added this subsection fixed nothing**, and it is written
 so that the design record above cannot be read as a verification record. Since it
-was written, exactly one row has moved: the failing controller test, closed on
+was written, three rows have moved. The failing controller test closed on
 2026-11-03 by `68f9ee8`, **test-side** — a test that asserted an in-flight state on
 the line after an unawaited call, measuring the image-picker await rather than the
-upload. `ComposeController`, `ComposeState` and every other file under `lib/` are
-unchanged, and the upload-state contract is now stated rather than inferred:
-waiting for the donor to choose a file is not uploading, `isUploading` covers the
-storage phase alone, the controller's private `_busy` guard spans the whole
-pick-then-upload flow, and a validator refusal never sets the flag. Everything else
-in the table above still reads as it did.
+upload; `ComposeController`, `ComposeState` and every other file under `lib/` were
+unchanged **by that fix**, and the upload-state contract is now stated rather than
+inferred: waiting for the donor to choose a file is not uploading, `isUploading`
+covers the storage phase alone, the controller's private `_busy` guard spans the
+whole pick-then-upload flow, and a validator refusal never sets the flag. The two
+presentation rows closed the same day under hardening step 3, which added the 73
+widget tests and the `compose` captures and changed exactly one production file:
+`SolovvoButton`'s semantics node. Step 4 then made the write path reachable and
+closed the empty-page dead end, touching five feed and home files under `lib/` for
+the first time since `d27aee3` — `feed_state.dart`, `feed_providers.dart`,
+`home_providers.dart`, `home_screen.dart`, `home_section.dart` — plus one
+localisation key in both catalogues. No `domain` or `data` file in either feature
+changed, and no rule, index, bucket or Supabase file did.
+Everything else in the table above still reads as it did, and the rows that say
+**No** under *Approved*, *Deployed* and *Live-verified* are the ones to weight: the
+suite being green is a gate, not a sign-off, and no Firestore Rules or Supabase
+upload has been verified by any of this work.
 

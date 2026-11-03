@@ -234,6 +234,10 @@
   "feedOnDate": "{date} তারিখে",
   "feedLikeCount": "{count} লাইক",
   "feedCommentCount": "{count} মন্তব্য",
+  "feedUnreadableTitle": "ফিড সম্পূর্ণভাবে পড়া যায়নি",
+  "feedUnreadableBody": "এর পেছনে আরও পোস্ট আছে, তবে সেগুলো পড়া যায়নি।",
+  "feedSkippedNotice": "{count}টি পোস্ট দেখানো যায়নি",
+  "feedPostPhotoLabel": "{name}-এর শেয়ার করা ছবি",
 
   "feedComposeAction": "একটি আপডেট শেয়ার করুন",
   "feedComposeTitle": "নতুন পোস্ট",

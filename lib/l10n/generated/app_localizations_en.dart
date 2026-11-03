@@ -847,6 +847,33 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get feedUnreadableTitle => 'The feed could not be fully read';
+
+  @override
+  String get feedUnreadableBody =>
+      'There are more posts behind this, but they could not be read.';
+
+  @override
+  String feedSkippedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString posts could not be shown',
+      one: '$countString post could not be shown',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String feedPostPhotoLabel(String name) {
+    return 'Photo shared by $name';
+  }
+
+  @override
   String get feedComposeAction => 'Share an update';
 
   @override

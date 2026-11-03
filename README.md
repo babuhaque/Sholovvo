@@ -18,21 +18,30 @@ Three things are true at once and belong in any resume-from-these-notes brief, s
 they are stated here rather than only in `docs/PROJECT_STATE.md`:
 
 - **The stage is implemented and the suite is green, and neither of those means
-  signed off.** `flutter analyze` reports no issues and `flutter test` reports 612
-  passed, 47 skipped, **0 failed**. The one red test the recovery audit found was a
+  signed off.** `flutter analyze` reports no issues and `flutter test` reports 712
+  passed, 58 skipped, **0 failed**, measured on the tree that carries the Step 3
+  and Step 4 hardening. The one red test the recovery audit found was a
   test-synchronisation defect in the composer's own suite, fixed test-side on
   2026-11-03 with no change to any production code: the test now waits until the
   storage upload has actually started before asserting the uploading state. By this
   project's gate a stage is only *done* when both commands pass, so the gate is met
-  for today's tree — while the presentation layer below is still untested, the feed
-  is still unreachable, and the rules still check nothing about a post.
-- **The feed is not yet reachable through normal navigation.** `FeedScreen` is
-  reached from the dashboard's community **See all**, which the dashboard hides
-  over an empty preview, and that preview provider is still empty by design. The
-  read path, the composer and the upload therefore exist in code and cannot be
-  opened in the shipped app.
-- **`ComposePostScreen` has no widget tests and no visual render.** Its 62 tests
-  cover the controller, the repository and the storage adapter, not the screen.
+  for today's tree — while the rules still check nothing about a post, and no
+  approval record exists for Stage 7, 8.2 or 8.3.
+- **The feed is reachable, and the two blockers that made it unreachable are
+  closed.** `FeedScreen` opens from the dashboard whether or not the community has
+  posts: the community section previews the feed's own controller, **See all**
+  appears when there is something to see, and a section with nothing to preview
+  carries an **Open the community** button instead. A page whose documents are all
+  unreadable no longer strands a donor on an empty screen — the controller walks
+  past up to five such pages, and **Load more** stays on screen for as long as the
+  collection has more in it. The composer sits behind that screen, so the read
+  path, the composer and the upload can now all be opened.
+- **The composer is tested where it is used.** Alongside its 62 logic tests,
+  `ComposePostScreen` and `compose_image_grid` have 73 widget tests, and the
+  visual-review harness has a `compose` group of eleven captures. Those captures
+  were taken and pass, but they are written to `build/review/`, which is
+  gitignored: `docs/visuals/stage8/` still holds only the five read-path renders,
+  so the composer has a review pass and no committed picture of itself.
 
 Stage 8.1 laid the foundations (`Post`, `Comment` and `Report` entities, a pure
 `Post` document mapper, shared photo primitives in `core/media`, one avatar and
@@ -141,9 +150,11 @@ gap recorded in `docs/PROJECT_STATE.md`.
 `lib/features/home` is a three-layer feature: `domain` view models, `application`
 provider seams, `presentation` widgets. The donor strip in
 `application/home_providers.dart` projects the signed-in donor's real profile and
-donation history (Stage 5); nearby requests and the feed preview are still **empty
-on purpose** — the collections behind them are read in Stage 9 and, for the feed,
-by the full `FeedScreen` that Stage 8.2 added. Each seam
+donation history (Stage 5), and the community preview
+(`feedPreviewProvider`) is now a projection of the feed's own
+`FeedController` — the newest three posts of the one page the feed has read,
+not a second query on `posts`. Nearby requests are still **empty on purpose**:
+the collection behind them is read in Stage 9. Each seam
 is replaced by the stage that owns its data; the layout renders both the empty and
 the populated path already, so nothing in `presentation` has to change when data
 arrives. Nothing on this screen is a placeholder number.
@@ -156,7 +167,11 @@ tabs under a `NavigationBar`, or beside a `NavigationRail` once the window is
 stage that adds a third destination adds one enum member and one destination, and
 nothing else on the bar changes. The full feed (Stage 8.2) is a route pushed
 above the shell for the same reason Settings is: it is a place you go to and come
-back from, not a place you live.
+back from, not a place you live. The dashboard's community section is the way in,
+by **See all** when the preview has posts and by **Open the community** when it
+does not, and the route pops back to the dashboard. Neither appears in
+`AppRoutes`, which still carries only the three auth routes: pushed feature
+screens own their own `route()` factory.
 
 Settings (`lib/features/settings`) is pushed above the shell rather than being a
 third tab: account (the session's own address, read-only), preferences (the same
@@ -237,9 +252,9 @@ blood group are never copied into a post.
 ### Reading it
 
 `FeedScreen` (`lib/features/feed/presentation`) is a pushed route above the
-two-tab shell, reached from the dashboard's community **See all** — which the
-dashboard currently hides, because the preview it summarizes is still an empty
-provider (see Status above and `docs/PROJECT_STATE.md`, Stage 8.3 defect 4). It
+two-tab shell. The dashboard's community section is the only way in, and it is
+always there: **See all** when the preview has a post in it, **Open the
+community** on the empty card when it does not (see *Home dashboard* above). It
 reads ten posts at a time:
 
 ```
@@ -265,11 +280,16 @@ posts
   `posts/{id}/comments` subcollection is addressed anywhere.
 - **A malformed post is dropped, not fatal.** It is counted in `FeedPage.skipped`
   so one bad document cannot empty the feed, and the count is what a debugger
-  reads to confirm the schema has drifted. **Caveat, unresolved:** `hasMore` is
-  decided from the raw document count, so a page whose documents are all refused
-  reports "empty" while still claiming more pages — and the screen's empty state
-  replaces the footer that holds **Load more**, leaving no way to page past the
-  run. See `docs/PROJECT_STATE.md`, Stage 8.3 known defect 3.
+  reads to confirm the schema has drifted. **And an empty page is not an empty
+  feed:** `hasMore` is decided from the raw document count, so a page can carry no
+  readable post and still have posts behind it. `FeedController` answers that by
+  walking — it re-asks with the cursor the refused page returned, up to
+  `maxEmptyPages` (five) times, and stops the moment a page has a post, the
+  collection runs out, or the bound is reached. `FeedState.isEmptyResult` requires
+  `!hasMore`, so the empty card — which would replace the footer holding **Load
+  more** — only appears when there is genuinely nothing to page to. The cost is
+  bounded and real: a capped walk is five reads, fifty documents scanned for one
+  tap. See `docs/ARCHITECTURE.md` §14.2.
 - **No composite index is needed.** One collection, one `orderBy`, no `where`:
   Firestore serves that from its automatic single-field index. There is no
   `firestore.indexes.json` in this repository and this stage did not add one.
@@ -311,12 +331,13 @@ testable without an app, in the same shape the read side earned:
 - **With no `SUPABASE_*` defines there is no photo control,** only a sentence saying
   upload is not set up — and the text half of the form still publishes.
 
-Two things the write path does not have yet. It has **no server-side enforcement**
-— see the rules paragraph below — and it has **no widget tests**: its 62 tests
-cover `ComposeController`, `FirestorePostRepository` and `SupabasePostImageStorage`,
-while `ComposePostScreen` and `compose_image_grid` are untested and have never been
-rendered. All 62 pass. Neither the bucket nor its policies has
-been applied, so no photograph has ever been uploaded for real. See
+What the write path still does not have is **server-side enforcement** — see the
+rules paragraph below. Its presentation layer is no longer untested:
+`ComposePostScreen` and `compose_image_grid` have 73 widget tests over the same
+fake ports, on top of the 62 that cover `ComposeController`,
+`FirestorePostRepository` and `SupabasePostImageStorage`, and the visual-review
+harness has a `compose` group. All 135 pass. Neither the bucket nor its policies
+has been applied, so no photograph has ever been uploaded for real. See
 `docs/PROJECT_STATE.md` (Stage 8.3) and `docs/ARCHITECTURE.md` §14.3.
 
 One distinction the tests now pin, because it was ambiguous enough to break a test:
