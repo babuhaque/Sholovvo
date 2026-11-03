@@ -320,5 +320,132 @@
   "themeLabel": "Theme",
   "themeSystem": "System",
   "themeLight": "Light",
-  "themeDark": "Dark"
+  "themeDark": "Dark",
+
+  "settingsTitle": "Settings",
+  "settingsAccountSection": "Account",
+  "settingsPreferencesSection": "Preferences",
+  "settingsAppearanceBody": "Theme and language. Changes apply straight away.",
+  "settingsAboutSection": "About",
+  "settingsBuildLabel": "Build",
+  "settingsBuildDevelopment": "Development",
+  "settingsBuildStaging": "Staging",
+  "settingsBuildProduction": "Production",
+  "settingsSignOutBody": "You will need your email and password to sign in again.",
+
+  "navHome": "Home",
+
+  "feedTitle": "Community",
+  "feedEmptyTitle": "No posts yet",
+  "feedEmptyBody": "When a donor shares an update, it appears here.",
+  "feedErrorTitle": "The feed could not be loaded",
+  "feedRetry": "Try again",
+  "feedLoadMore": "Load more",
+  "feedEndOfFeed": "You have reached the end of the feed",
+  "feedReadMore": "Read more",
+  "feedShowLess": "Show less",
+  "feedCopy": "Copy text",
+  "feedCopied": "Post text copied.",
+  "feedEdited": "Edited",
+  "feedJustNow": "Just now",
+  "feedMinutesAgo": "{count, plural, one{{count} minute ago} other{{count} minutes ago}}",
+  "@feedMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "feedHoursAgo": "{count, plural, one{{count} hour ago} other{{count} hours ago}}",
+  "@feedHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "feedDaysAgo": "{count, plural, one{{count} day ago} other{{count} days ago}}",
+  "@feedDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "feedOnDate": "On {date}",
+  "@feedOnDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "feedLikeCount": "{count, plural, one{{count} like} other{{count} likes}}",
+  "@feedLikeCount": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "feedCommentCount": "{count, plural, one{{count} comment} other{{count} comments}}",
+  "@feedCommentCount": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+
+  "feedComposeAction": "Share an update",
+  "feedComposeTitle": "New post",
+  "feedComposeTextLabel": "Your update",
+  "feedComposeTextHint": "Share news, a request, or a story from a blood drive.",
+  "feedComposeLimit": "Up to {count} characters",
+  "@feedComposeLimit": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "feedComposePhotosLabel": "Photos",
+  "feedComposeAddPhoto": "Add photo",
+  "feedComposeFromGallery": "Choose from gallery",
+  "feedComposeFromCamera": "Take a photo",
+  "feedComposeRemovePhoto": "Remove photo",
+  "feedComposeUploading": "Uploading your photo…",
+  "feedComposePublish": "Publish",
+  "feedComposePublished": "Your post is live.",
+  "feedComposePhotosNotConfigured": "Photo upload is not set up in this build yet.",
+  "feedComposeDiscardTitle": "Discard this post?",
+  "feedComposeDiscardBody": "Your text and photos will be deleted.",
+  "feedComposeDiscardConfirm": "Discard",
+  "feedComposeKeepEditing": "Keep editing",
+
+  "errorPostTextRequired": "Write something before publishing",
+  "errorPostTextTooLong": "Keep your post under {count} characters",
+  "@errorPostTextTooLong": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "errorPostTooManyImages": "Attach up to {count} photos",
+  "@errorPostTooManyImages": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

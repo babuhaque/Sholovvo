@@ -1,5 +1,5 @@
+import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/core/result/result.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 
 /// Object storage for profile photos, expressed without any storage SDK type.
 ///

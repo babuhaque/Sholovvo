@@ -1,5 +1,5 @@
 import 'package:sholovvo_app/core/error/failure.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/features/profile/domain/profile_validators.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';

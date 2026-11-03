@@ -26,7 +26,7 @@ enum PhotoIssue {
   unreadable,
 }
 
-/// The three image formats profile photos are accepted in.
+/// The three image formats this app stores.
 ///
 /// Chosen for what every target renders: the three platforms decode all three
 /// natively, and none of them needs a transcoding step on the client. HEIC is
@@ -85,15 +85,19 @@ final class ValidatedPhoto {
   String toString() => 'ValidatedPhoto(${format.name}, $byteLength bytes)';
 }
 
-/// The rules an uploaded profile photo must satisfy on this side.
+/// The rules an uploaded image must satisfy on this side.
 ///
-/// Client-side validation is a courtesy, never a security boundary: the bucket
-/// itself carries `file_size_limit` and `allowed_mime_types`, so a caller that
+/// Client-side validation is a courtesy, never a security boundary: each bucket
+/// carries its own `file_size_limit` and `allowed_mime_types`, so a caller that
 /// bypasses the app is still stopped by the server. These checks exist so a
 /// donor gets an answer immediately instead of after a 5 MB round trip.
+///
+/// Shared by every image the app stores — the profile avatar (Stage 6) and post
+/// photographs (Stage 8) — because the rules are about images, not about what
+/// the image is for.
 abstract final class PhotoValidator {
-  /// 5 MB. Well under the bucket limit in `docs/storage/`, and far more than a
-  /// 1024 px avatar needs — the picker downscales before this point.
+  /// 5 MB. Well under every bucket limit in `docs/storage/`, and far more than
+  /// a downscaled image needs — the picker resizes before this point.
   static const int maxBytes = 5 * 1024 * 1024;
 
   static const int maxMegabytes = maxBytes ~/ (1024 * 1024);
@@ -121,7 +125,9 @@ abstract final class PhotoValidator {
     if (format == null) {
       return FailureResult<ValidatedPhoto>(_reject(PhotoIssue.unsupportedType));
     }
-    return Success<ValidatedPhoto>(ValidatedPhoto._(bytes: bytes, format: format));
+    return Success<ValidatedPhoto>(
+      ValidatedPhoto._(bytes: bytes, format: format),
+    );
   }
 
   /// The format the bytes actually are, or `null` when it is none of the three.
@@ -167,7 +173,7 @@ abstract final class PhotoValidator {
   static ValidationFailure _reject(PhotoIssue issue) {
     return ValidationFailure(
       messageKey: issue.name,
-      debugMessage: 'Profile photo rejected: ${issue.name}',
+      debugMessage: 'Photo rejected: ${issue.name}',
     );
   }
 

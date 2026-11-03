@@ -1,9 +1,9 @@
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
+import 'package:sholovvo_app/core/media/photo_picker.dart';
 import 'package:sholovvo_app/core/result/result.dart';
-import 'package:sholovvo_app/features/profile/domain/photo_picker.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 
 /// [PhotoPicker] backed by the `image_picker` plugin.
 ///
@@ -11,8 +11,15 @@ import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 /// covered by the seam rather than by a test: a widget test cannot answer that
 /// channel, so everything downstream of [PhotoCandidate] is tested against a
 /// fake picker instead.
+///
+/// Lives in `core` rather than in a feature because it knows nothing about what
+/// an image is for. A second feature that needed its own copy would otherwise
+/// have to import the first feature's data layer, or duplicate the
+/// metadata-stripping arguments below — both of which are worse than one shared
+/// adapter.
 class ImagePickerPhotoPicker implements PhotoPicker {
-  ImagePickerPhotoPicker({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
+  ImagePickerPhotoPicker({ImagePicker? picker})
+    : _picker = picker ?? ImagePicker();
 
   final ImagePicker _picker;
 
@@ -22,6 +29,10 @@ class ImagePickerPhotoPicker implements PhotoPicker {
   /// so the result is sharp on every screen while a 12-megapixel phone photo
   /// becomes roughly 100 KB instead of 4 MB. The re-encode is also what turns
   /// an iOS HEIC capture into a JPEG, which is why HEIC never needs supporting.
+  ///
+  /// Tuned for an avatar. A caller that renders images much larger than that
+  /// should ask for its own dimension rather than raising this value, which
+  /// every existing upload path pays for.
   static const double maxDimension = 1024;
 
   /// High enough that the downscale is the visible quality loss, not this.

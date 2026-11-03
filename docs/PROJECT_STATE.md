@@ -15,8 +15,8 @@ not what was attempted. A stage is only marked done when `flutter analyze` and
 | 4 | Home dashboard UI | **Complete — approved** |
 | 5 | User profile system | **Complete — approved** |
 | 6 | Profile photo upload (Supabase Storage) | **Complete — approved** |
-| 7 | Navigation & settings | Not started |
-| 8 | Donor management & badges | Not started |
+| 7 | Navigation & settings | **Complete — awaiting approval** |
+| 8 | Social feed | **In progress — 8.1, 8.1.1 and 8.2 complete, awaiting approval** |
 | 9 | Normal blood search & maps | Not started |
 | 10 | Emergency blood request | Not started |
 | 11 | Donor matching & notifications | Not started |
@@ -25,8 +25,14 @@ not what was attempted. A stage is only marked done when `flutter analyze` and
 | 14 | Production preparation | Not started |
 
 Stage 6 was re-scoped by the client from the original plan's "social feed & image
-upload" to **profile photo upload on Supabase Storage**. The feed is not on the
-schedule any more; the names of Stages 7–14 are unchanged.
+upload" to **profile photo upload on Supabase Storage**, and the feed left the
+schedule at that point. The Stage 8.0 assessment brought it back: **Stage 8 is the
+social feed again**, and the donor management and badge work that used to occupy
+that slot is now unscheduled rather than renumbered, so the names of Stages 9–14
+are unchanged. Stage 8.1 delivered the feed's foundations only, Stage 8.1.1
+corrected this file's and the other documents' claims about the rules, and Stage
+8.2 delivered the read path — one paged, read-only `FeedScreen` — see the entries
+at the end of this file.
 
 ---
 
@@ -1448,17 +1454,23 @@ shows the CLI is linked to a project named "Sholovvo blood donation", so a
 project does exist. Whether the SQL, the bucket or the policies were ever applied
 to it is still unknown, so issues 2 and 3 stand unchanged.
 
-**Stage 7 — not started.** Before Stage 6's storage claims can be upgraded from
-"tested against fakes" to "verified", steps 1–5 of `docs/storage/README.md` have
-to be performed and their output recorded: the project, the Firebase provider,
-the applied SQL, the verification queries, and the `curl` negative test that must
-come back `403`.
+**Stage 7 was not started at that point.** Before Stage 6's storage claims can be
+upgraded from "tested against fakes" to "verified", steps 1–5 of
+`docs/storage/README.md` have to be performed and their output recorded: the
+project, the Firebase provider, the applied SQL, the verification queries, and
+the `curl` negative test that must come back `403`.
 
 The approved next workstream was not Stage 7. It was the Firestore rules
 remediation arising from the four P0 findings, because the application writes
 none of the affected collections yet: closing them now was a rules-only change,
 whereas closing them after Stages 10–11 would have forced a client migration.
-**That remediation is complete — see the next section.**
+**That remediation is complete — see "Security remediation — the four P0
+findings".**
+
+Stage 7 followed it and is now **complete, awaiting approval — see "Stage 7 —
+Navigation & Settings"**. The storage verification above is still outstanding and
+is not a Stage 7 dependency: neither the shell nor Settings reads or writes
+storage.
 
 ---
 
@@ -1525,4 +1537,634 @@ conflicts with `storage_client ^2.8.1` through `supabase_common`. `flutter pub
 get` could not resolve at all, so `analyze` and `test` could not run. The line
 was removed. Nothing else in the dependency set changed and `pubspec.lock` was
 not modified.
+
+---
+
+## Stage 7 — Navigation & Settings
+
+Completed 2 November 2026.
+
+### The three decisions, and why I did not wait for the answers
+
+The Stage 7 brief asked the owner to choose three things. The instruction to start
+arrived before those answers did, so the three recommendations in that brief were
+implemented as written. They are recorded here so any one of them can be
+reversed on its own without touching the other two.
+
+| Question | Implemented | Why |
+| --- | --- | --- |
+| Tab set | **Two live tabs** — Home and Profile. Settings is pushed above the shell | A third tab needs a third live destination, and Stage 7 has two. Stage 4's decision table already ruled out a bar whose tabs go nowhere: "A bar with four dead tabs would be worse than none" |
+| Settings contents | Account, Preferences (the existing appearance sheet), About, Sign out | Every row does something. A notification switch was refused: there is no push channel on Spark, and nothing reads such a flag until Stage 11 |
+| Sign-out | Settings only; the dashboard's button removed | Sign-out was the last control on a work surface, where a mis-tap costs a session, and the dashboard is now the first of two tabs rather than a page you leave |
+
+### What changed
+
+- **`lib/app/app_shell.dart` (new).** A `Scaffold` holding an `IndexedStack` of
+the two tabs, a `NavigationBar` below 720px and a `NavigationRail` beside the
+content at or above it. The enum `ShellTab` has exactly two members because two
+destinations exist; a third becomes one member and one destination. Both tabs
+are built and kept alive, so switching is instant and each keeps its scroll
+position.
+- **`lib/features/settings/` (new).** `SettingsScreen` (Account, Preferences,
+About, Sign out) and `SettingsTile`. The account row is read-only and says the
+address is managed by the sign-in account rather than showing a greyed-out field
+that looks broken.
+- **`lib/app/auth_gate.dart`.** A verified session now returns `AppShell`, not the
+dashboard.
+- **`lib/features/home/presentation/home_screen.dart`.** No longer owns a
+`Scaffold`, a sign-out button or the push to the profile. It takes a **required**
+`onOpenProfile` callback so a host that forgets to wire it cannot ship a header
+button that silently does nothing.
+- **`lib/features/profile/presentation/profile_screen.dart`.** No back arrow (it
+is a tab now, not a pushed page) and a settings gear in the AppBar. The screen's
+own state loading is unchanged.
+- **`lib/design/app_theme.dart`.** `navigationBarTheme` and
+`navigationRailTheme`, both resolved from the role palette: surface background,
+no surface tint, a `brandTint` selection indicator, and `brandInk` versus
+`textSecondary` for the selected and unselected labels — so the bar follows the
+dark palette without a second set of constants.
+- **`lib/l10n/app_en.arb` + `app_bn.arb`.** Eleven new keys, translated in both
+languages (`lib/l10n/untranslated.json` is `{}`), regenerated in-tree. Existing
+keys were reused rather than duplicated: `signOut`, `emailLabel`,
+`appearanceAndLanguage`, `profileTitle`, `profileEmailManaged`.
+
+### Deliberately not built
+
+Two things the obvious build would have included and this one does not:
+
+- **The palette button did not move off the Home header.** The Stage 3 record
+says the appearance sheet is opened from a header icon on Welcome *and* Home,
+and three existing tests assert that button is there. Replacing it with a gear
+would have traded a one-tap theme switch for a two-tap one and regressed an
+approved behaviour. Settings therefore re-hosts the same `AppearanceSheet`
+widget — not a copy of it — reached from the Profile tab's AppBar gear.
+- **There is no version row in About.** `pubspec.yaml` carries a version, but
+nothing in the app can read it without a platform plugin (`package_info_plus`),
+and a constant copied by hand drifts from the manifest. The card shows the brand
+and the build flavour instead, and the omission is documented in the widget.
+
+### Verified
+
+- `flutter analyze`: **no issues found**.
+- `flutter test`: **401 passed, 42 skipped, 0 failed** (the tree before this stage
+was 386 / 37). The 15 extra passing tests are the 15 added in the two new files,
+minus the dashboard sign-out test that moved, plus the header test that was split
+in two. The five extra skips are the new review captures.
+- **A real defect was found by the suite, not by review.** Walking the gate →
+Profile → Settings → Sign out path in `auth_gate_test.dart` failed with "Found 0
+widgets with type WelcomeScreen": the gate replaces the signed-in surface
+*underneath* the pushed Settings route but cannot pop it, so a donor would have
+signed out and been left staring at Settings. Fixed in `SettingsScreen._signOut`
+with `popUntil((route) => route.isFirst)` on success.
+- Five renders in `docs/visuals/stage7/`, produced with
+`$env:SOLOVVO_VISUAL_REVIEW=1; flutter test test/review/visual_review_test.dart`
+and the Nirmala plus MaterialIcons fonts loaded: the shell over the dashboard in
+light and dark, the Profile tab in Bengali, and Settings in English and Bengali.
+They are widget renders, not browser screenshots — see issue 6.
+
+### How the tests were changed
+
+The brief promised "two tests migrate". The honest figure is **four test files
+migrated and two added**:
+
+| File | Change |
+| --- | --- |
+| `test/features/home/home_screen_test.dart` | Hosts `HomeScreen` inside a `Scaffold`, as the shell does, and supplies `onOpenProfile`. The dashboard's sign-out tests were removed with the button they tested |
+| `test/features/home/home_profile_test.dart` | `onOpenProfile` is optional here because this file tests the header, not the tab. The one test that asserted "opens the profile" became two: "shows the initials" and "asks its host" |
+| `test/app/auth_gate_test.dart` | The sign-out test now walks Profile tab → gear → Sign out, which is the path a donor actually takes |
+| `test/review/visual_review_test.dart` | Five `HomeScreen` mounts became `AppShell`, plus the five new captures |
+| `test/support/auth_harness.dart` | Overrides `appConfigProvider`, which Settings reads and which throws by design when nothing has provided it |
+| `test/app/app_shell_test.dart` | **New**, 8 tests: both tab switches, the header avatar handing the tab over, no back arrow on the profile tab, Bangla labels, 320px Bangla with no overflow, and the rail replacing the bar above the breakpoint |
+| `test/features/settings/settings_screen_test.dart` | **New**, 7 tests: the account row, the build name for two flavours, the appearance sheet opening from the tile, a successful sign-out, a rejected sign-out that stays on screen, and Bangla at 320px |
+
+### Remaining issues
+
+1. **The eleven new Bengali strings have not been read by a native speaker.**
+They are mine, in the same position as the Stage 3 translations. The difference
+is that two of them (`হোম`, `সেটিংস`) are navigation labels a donor sees on every
+screen and cannot avoid, so a wrong word here is louder than wrong copy inside a
+sheet nobody has to open.
+2. **Both tabs stay alive.** `IndexedStack` keeps the unselected tab built, which
+is what makes switching instant and preserves its scroll offset. The cost is that
+the profile query runs before the donor opens that tab, and a future tab that
+starts a listener will be started on sign-in whether or not it is visited.
+3. **The rail has only been seen at one width.** A widget test at 720px and a
+phone-width render exist; no real tablet, landscape phone or foldable was run.
+`railBreakpoint = 720` matches `HomeScreen.twoColumnBreakpoint` on purpose, but it
+is a constant chosen to agree with the dashboard rather than a measurement.
+4. **The shell does not restore which tab was open.** A rebuild returns to Home,
+and nothing can open Settings directly — there are no deep links yet.
+5. **`popUntil(isFirst)` is blunt.** It assumes exactly one route above the gate's
+root, which is true today. A later stage that pushes something above the shell and
+then signs out from Settings will have to say which routes to keep.
+6. **No browser pass this stage.** The five stage renders come from the widget
+harness. The temporary browser entrypoint used in Stage 3 was not recreated, so
+nothing was checked in a real browser, and `Image.network` still cannot load
+inside the harness.
+7. **The account row is session state, not Firestore.** It shows the address the
+session signed in with, read from `AuthUser`. It therefore cannot show anyone
+else's address, but it is also not re-validated against the auth backend on open.
+8. Carried over from Stages 2–6, unchanged: no runtime test against the real
+Firebase project, no real-device or iOS verification, Supabase storage still
+unverified against a live project, `com.example.*` applicationId, and no push
+notifications on Spark.
+
+### Unplanned changes, disclosed
+
+- **`Material(type: MaterialType.transparency)` in `HomeScreen`.** Removing the
+Scaffold removed the `Material` ancestor the header's `InkWell` needs, and 31
+tests failed with "No Material widget found". The shell supplies one in the app;
+the wrapper covers any host that does not, and paints nothing, so
+`SoftGlowBackground` still shows through.
+- **`auth_harness.dart` gained an `appConfigProvider` override.** That provider is
+deliberately unimplemented until something provides it, and Settings is the first
+screen that reads it. The override is one line, but it means a future screen that
+reads config can pass tests that never exercise the "nothing provided it" path.
+
+### Next stage
+
+**Stage 8 — donor management & badges has not been started.** Stage 7 delivered
+no badge surface and no donor list, so Stage 8 owns all of that. It inherits two
+facts from here: the Profile tab is the natural home for a badge row, and the
+shell grows a third tab by adding one enum member and one destination — but only
+once a third destination actually exists.
+
+Nothing is committed or deployed. The working tree holds the stage for review;
+the five renders above and this document are part of it.
+
+---
+
+## Stage 8.1 — Feed foundations
+
+Completed 3 November 2026.
+
+### Scope confirmed: Stage 8 is the social feed
+
+The Stage 8.0 assessment recommended it and the recommendation stands: **Stage 8
+is the social feed**, and the donor management and badge work that the tracker
+previously listed against Stage 8 is unscheduled rather than renumbered. This
+supersedes the closing paragraph of the Stage 7 entry above, which was written
+before 8.0 ran. Stage 8.1 is foundations only: entities, a mapper, and the two
+refactors they need. There is no feed screen, no repository, no provider, no
+Firestore read or write, no sample data and no rules change.
+
+### What changed
+
+| Path | Change |
+| --- | --- |
+| `lib/core/media/photo.dart` | **Moved** from `features/profile/domain/profile_photo.dart`. `PhotoIssue`, `PhotoFormat`, `PhotoCandidate`, `ValidatedPhoto`, `PhotoValidator`; logic unchanged, docs generalised from "profile photo" to "photo" |
+| `lib/core/media/photo_picker.dart` | **Moved** from `features/profile/domain/photo_picker.dart`, unchanged |
+| `lib/core/media/image_picker_photo_picker.dart` | **Moved** from `features/profile/data/`. See the disclosure below — this one went further than the brief |
+| `lib/features/feed/domain/entities/{post,comment,report}.dart` | **New.** Three immutable entities, three validators, three issue enums, two report enums |
+| `lib/features/feed/data/models/post_document.dart` | **New.** `PostDocument.toMap` / `fromMap`, pure, over plain maps |
+| `lib/design/widgets/blood_group_badge.dart` | `BloodGroupBadgeVariant {pill, square}` and a `size`, so the dashboard's 44 dp tile and the pill are one widget with two approved looks |
+| `lib/design/widgets/initials_avatar.dart` | `InitialsAvatarVariant {brand, muted}` and one shared initials derivation |
+| `lib/features/home/presentation/widgets/home_cards.dart` | Its private `BloodGroupBadge` and `_InitialsAvatar` deleted; the shared widgets render the same 44 dp tile and 40 dp disc |
+| `ios/Runner/Info.plist` | Both photo purpose strings widened to cover "a profile picture or a photo to share in a post". No new key, no behaviour change |
+| 6 lib files, 6 test files | Imports only, reordered to keep `directives_ordering` satisfied |
+
+Deleted: `lib/features/profile/domain/profile_photo.dart`,
+`lib/features/profile/domain/photo_picker.dart`,
+`lib/features/profile/data/image_picker_photo_picker.dart`, and
+`test/features/profile/profile_photo_test.dart` (moved, not dropped — see the test
+table below).
+
+### The move that went further than the brief, disclosed
+
+The brief named `PhotoValidator`, `PhotoCandidate`, `PhotoFormat` and
+`PhotoPicker`. The `image_picker` adapter went too. Leaving it in
+`features/profile/data` would have left the feed two bad options: import another
+feature's data layer, which the layering in `docs/ARCHITECTURE.md` §1 does not
+allow, or re-derive `maxWidth: 1024`, `imageQuality: 85` and
+`requestFullMetadata: false` — and a second hand-written copy of those three is
+how a photo's GPS coordinates end up in a post. It is an adapter with no profile
+knowledge, so it moved. `ProfilePhotoStorage` and `SupabasePhotoStorage` did
+**not** move: `uploadAvatar`, `removeAvatar` and the `{uid}/avatar-{millis}.{ext}`
+path are avatar-shaped, and a post image has different ownership rules.
+
+### Two behaviour differences, disclosed
+
+Both are small, both are in the consolidated widgets, and neither changes the
+dashboard:
+
+1. **A nameless muted avatar shows a person icon, not `?`.** The two private
+   copies disagreed — the shared one drew `?`, the dashboard's drew the icon.
+   The icon won, because an invented `?` in a 40 dp disc reads as a name the
+   donor chose, and the design system's own rationale for the brand variant says
+   the same thing.
+2. **One initials rule for both variants: first letter of the first and last
+   word.** The dashboard's copy used the first two characters of the name, so a
+   three-word name would have read differently in the two places. This is
+   identical for every one- and two-word name, which covers every name in the
+   tests and the visual harness (including the Bengali two-word fixture), and
+   the dashboard's feed provider still returns `const []`, so no rendered screen
+   in this tree changes.
+
+### Deliberately not built
+
+No rule, index, bucket or policy was added; no repository, no provider, no
+screen, no publish/edit/delete/like/comment/save/report operation, no fake feed
+data, no moderation status and no follow graph. The last two were considered and
+recorded as absences in the entities: a status field implies an enforcement
+pipeline Spark cannot run, and following needs counters and rules that no part
+of Stage 8 reads.
+
+### Verified
+
+- `flutter analyze`: **no issues found**.
+- `flutter test`: **497 passed, 42 skipped, 0 failed** (the tree before this
+  stage was 404 / 42 / 0). The 93 extra passes are 70 feed tests and 23 shared
+  widget tests; `PhotoValidator`'s tests moved with the file and count the same.
+  The 42 skips are unchanged — they are the visual-review captures, which still
+  need `SOLOVVO_VISUAL_REVIEW=1`.
+- **`dart format` was run on the touched paths and that turned out to be wrong.**
+  It reformatted six test files this stage never modified, because the tree is
+  not format-clean under the current SDK. Those six were restored with
+  `git checkout --`, and the six files this stage *did* touch were restored and
+  had their one-line import change re-applied by hand, so the diff contains no
+  formatting churn outside new files.
+- **A real defect was found by the suite.** `PostDocument.fromMap` returned
+  timestamps through `Timestamp.toDate()`, which answers in the device's zone,
+  while `DateTime` equality is false for the same instant in two zones. A post
+  read on a phone in Dhaka would not have equalled the post that was written.
+  The mapper now normalises to UTC, and one new test pins it.
+- Not run, and why: `firestore-rules-tests/` (`npm test`) needs the Firestore
+  emulator and this stage changed no rules; `flutter pub get` was not needed
+  because no dependency changed; no visual-render pass, because no screen
+  changed.
+
+### How the tests were changed
+
+| File | Change |
+| --- | --- |
+| `test/core/media/photo_test.dart` | **Moved** from `test/features/profile/profile_photo_test.dart`, assertions unchanged, import path updated |
+| `test/features/feed/post_test.dart` | **New**, 14 tests: text boundaries at 2 000/2 001, 0/4/5 images, more paths than URLs, negative counters, unmodifiable lists, value equality, no text in `toString` |
+| `test/features/feed/comment_test.dart` | **New**, 9 tests: the 500 boundary, a reply without a parent, the comment id being separate from its path |
+| `test/features/feed/report_test.dart` | **New**, 15 tests: wire-name round trips, `hateSpeech` → `hate_speech`, unknown values refused rather than folded into `other`, the 300-note limit |
+| `test/features/feed/post_document_test.dart` | **New**, 32 tests: required-field set, optional omission, UTC timestamps (including the local-time regression), full round trip, every missing and malformed field, 0/4/5 images, 2 000/2 001 text, and that no donor text reaches a debug message |
+| `test/design/blood_group_badge_test.dart` | **New**, 7 tests: pill radius, padding and type, the large pill, the 44 dp square with the medium radius, a 36 dp square, `large` ignored by the square, and both colours following light and dark |
+| `test/design/initials_avatar_test.dart` | **New**, 16 tests: initial derivation (one, two and three words, stray whitespace, Bengali runes, empty name), the brand disc scaling with its size, the muted disc keeping `labelMedium`, the photo path, a blank URL, both sizes, and theming |
+| 6 profile/support test files | Imports only |
+
+No existing test was weakened, deleted or skipped.
+
+### Public API changes
+
+- `PhotoValidator`, `PhotoCandidate`, `PhotoFormat`, `ValidatedPhoto`,
+  `PhotoIssue`, `PhotoPicker` and `PhotoSource` are now at
+  `package:sholovvo_app/core/media/photo.dart` and
+  `.../core/media/photo_picker.dart`. Every importer was updated; nothing else
+  about them changed.
+- `BloodGroupBadge` gained `variant` and `size` and kept `large`; the default is
+  still the pill, so existing call sites are untouched.
+- `InitialsAvatar` gained `variant`; the default is still `brand`.
+- No package id, machine identifier, ARB key, provider name or route changed.
+
+### Remaining issues
+
+1. **The existing feed rules do not match these types — and were not touched.**
+   `firestore.rules` already contains `posts/{postId}`,
+   `posts/{postId}/comments/{commentId}` and a top-level `post_likes` block,
+   written before the feed was designed. They are **not approved** for this
+   feed, and the schema has not been reconciled with them: the update rule
+   allows `imageUrl` (singular) where the mapper writes `imageUrls` +
+   `imagePaths`; likes are `post_likes/{likeId}` with a `userId` field rather
+   than the per-post subcollection the mapper names; create permits a
+   `donationRecordId` that `Post` does not model; no branch lets `commentCount`
+   change; and post create checks no field shape at all. `reports` has no rule.
+   Nothing reads or writes the feed, so nothing is exposed today. This item
+   originally said the rules "know nothing about the feed"; that was false, and
+   Stage 8.1.1 records the correction and the proposed schema
+   (`docs/ARCHITECTURE.md` §14.1).
+2. **Post images are unverified in every sense.** `Post.imagePaths` names
+   objects that no bucket can hold yet. The `avatars` bucket is deliberately not
+   reused: its policies require the first path segment to equal the caller's
+   `sub`, which is an avatar layout, not a post layout. Bucket, policies and
+   client are all unbuilt.
+3. **Nothing in this stage has run against a live backend.** Every claim is a
+   test over literal maps and fakes, as in Stages 2–7.
+4. **Author names and photos will go stale by design.** A post carries a
+   snapshot rather than a reference, which costs zero extra reads and leaves old
+   posts showing old names. Recorded in the entity's documentation.
+5. **The limits are chosen, not measured.** 2 000 characters, 4 images, 500 per
+   comment and 300 per report are my judgements; none has been checked against a
+   Firestore document limit or a rules expression, and the rules stage may have
+   to restate them — two copies of a limit is exactly how they drift.
+6. **Brand spelling is still unresolved.** The brief for this stage asks for
+   "Sholovvo" in user-facing documentation. The codebase says "Solovvo"
+   everywhere — `core/brand/app_brand.dart`, the iOS purpose strings, the README
+   heading and every document — and `docs/ARCHITECTURE.md` §11 item 2 records it
+   as a one-line change pending a decision. Nothing was renamed here: a
+   foundations stage is the wrong place to rename a product, and doing it
+   half-way (new text in one spelling, existing text in the other) would be
+   worse than either. The new text in this stage avoids the brand name rather
+   than picking a side, so the decision is still one change to one constant plus
+   a search-and-replace.
+
+### Next stage
+
+**Stage 8.1.1 — schema and documentation alignment — followed this entry.** It
+changed three documents and nothing else; this entry is left as it was written,
+with the corrections recorded below.
+
+**Stage 8.2 — the feed read path — has not been started.** It inherits three
+things: the entity and mapper contracts are fixed and tested, so it can be built
+against them without changing them; the existing rules disagree with those
+contracts, so the reconciliation below has to be approved before anything is
+written to Firestore; and the author snapshot means the feed does not need a
+join to render a card.
+
+Nothing is committed or deployed. No rules, index, bucket, policy or Firebase
+configuration was touched, and no network call was made by the app.
+
+---
+
+## Stage 8.1.1 — Feed schema and documentation alignment
+
+**Status: complete, awaiting approval. Documents and a decision record only — no
+Dart file, rule, index, bucket or configuration was changed.**
+
+### Why it exists
+
+The Stage 8.1 verification read `firestore.rules` instead of trusting the notes
+that said the feed had no rules, and found the opposite: `posts`,
+`posts/{id}/comments` and `post_likes` rules have existed since before Stage 8.
+They disagree with the Stage 8.1 model in five places, and `reports` is unruled
+altogether. Three documents claimed otherwise. This stage fixes the statements
+and records the decision that the rules stage will implement.
+
+### What changed
+
+| File | Change |
+| --- | --- |
+| `README.md` | The `## Feed` closing paragraph no longer claims the rules are empty. It states that `posts`/`comments`/`post_likes` rules exist, are not approved for this feed, that the schema is unreconciled, that `reports` has no rule, and that no Feed backend work is authorised. |
+| `docs/ARCHITECTURE.md` | §11 item 11 rewritten from "knows nothing about the feed" to the five specific mismatches. §14's closing subsection rewritten, and a new §14.1 added with the audit table, the four schema decisions and the Rules changes they will need. |
+| `docs/PROJECT_STATE.md` | Tracker row 8, the stage note under it, Stage 8.1's remaining issue 1, and this section. |
+
+No `lib/` file, test, rule, index, manifest, ARB file or configuration was
+touched, so the analysis and test results from Stage 8.1 still stand.
+
+### The disagreements, in one line each
+
+- **Images.** The post update rule permits `imageUrl`; `PostDocument` writes
+  `imageUrls` and `imagePaths`. A post with images could be corrected by nothing.
+- **Likes.** Rules use a top-level `post_likes/{likeId}` with a `userId` field;
+  the mapper declares `posts/{postId}/likes`. Both cannot be right.
+- **`donationRecordId`.** Create accepts one and validates it against
+  `donation_history`; no entity, screen or design asks for it.
+- **`commentCount`.** No update branch allows it to change, so the counter the
+  feed card reads could never move.
+- **`reports`.** No rule of any kind. Nothing can write a report today, and
+  nothing would allow one if the UI arrived first.
+- **Create shape.** The collections here that fix a document shape
+  (`blood_requests`, `response_claims`, `donation_ratings`, `donation_history`)
+  all assert `keys().hasAll`/`hasOnly` and `createdAt == request.time`; the post
+  create rule asserts `authorUid` and nothing else. `/users` is deliberately
+  permissive; `/posts` looks like a rule nobody finished.
+
+### Decisions proposed (none applied)
+
+`docs/ARCHITECTURE.md` §14.1 carries the table and the reasoning. In short:
+keep `imageUrls` + `imagePaths`; move likes to `posts/{postId}/likes/{uid}` so
+the document id is the liker; drop `donationRecordId` rather than model a field
+with no surface; add a create-only `reports/{reportId}`; write timestamps as
+server timestamps while the entity keeps its optimistic `DateTime`.
+
+### Deliberately not done
+
+- `firestore.rules` was not edited, even where the audit found a gap. Rules are a
+  separate, separately reviewed stage, and changing them here would ship an
+  unreviewed permission change alongside a documentation fix.
+- `PostDocument`, `Post`, `Comment` and `Report` were not touched, so no test
+  changed and no mapper behaviour moved.
+- No repository, provider, screen, index or bucket; no Stage 8.2 work.
+
+### Verified
+
+- `flutter analyze`: **no issues found** (19.7 s). No Dart file changed, so the
+  suite was not re-run; Stage 8.1's 497 passed / 42 skipped / 0 failed stands.
+- No documentation linter exists in this repository, so consistency was checked
+  by reading the three files back against `firestore.rules` line by line. The
+  only cross-references that remain unverified are the ones a build cannot see:
+  whether §14.1's proposal is the schema the owner wants.
+- `git status` shows the same 48 entries as before this stage (modified, staged
+  and untracked together); the three files above are the only ones this stage
+  changed. `firestore.rules`, `firebase.json`, `.firebaserc`, `pubspec.yaml`,
+  `pubspec.lock` and `firestore-rules-tests/` produce no diff at all.
+
+### Remaining issues
+
+1. **The mismatches are still real.** Documentation now describes them; only the
+   rules stage can close them, and it must not be skipped before any write path
+   ships.
+2. **`reports` remains unruled.** Correct as a deny-all default, wrong the moment
+   a Report button exists.
+3. **The proposal is a proposal.** Stage 8.2 must be built against an approved
+   schema, not against §14.1 as if it were decided.
+4. **Subcollections outlive their parents.** Neither the current rules nor the
+   proposal deletes comments or likes when a post is deleted; that cleanup needs
+   an explicit decision.
+5. **Brand spelling is still open** — see Stage 8.1's remaining issue 6. This
+   stage again avoids the name in new text rather than picking a side.
+
+### Next stage
+
+**Stage 8.2 — the feed read path — has not been started, and should not begin
+until the §14.1 schema is approved or amended.**
+
+> Stage 8.2 followed this entry. §14.1 was approved as written, so 8.2 was built
+> against it — `imageUrls` + `imagePaths`, `posts/{postId}/likes/{uid}` declared
+> but never addressed, no `donationRecordId` in `Post` — and the rules were left
+> untouched, so this entry's remaining issues still stand. See below.
+
+## Stage 8.2 — Feed read path and UI
+
+**Status: complete, awaiting approval. One paged, read-only feed. No Firestore
+write, no rules change, no index, no deployment, no Supabase change.**
+
+### The audit that came first
+
+The brief required a read-access audit before any code, because a feed that is
+built and then refused by the rules is a wasted stage. Four questions, four
+answers, all checked against `firestore.rules` itself rather than against notes:
+
+| Question | Answer |
+| --- | --- |
+| Can a signed-in user read posts? | Yes. `match /posts/{postId} { allow read: if request.auth != null; }` |
+| Is the intended query compatible with that rule? | Yes. The rule has no field condition, so it authorises a **list** over the collection as well as a `get`; `orderBy` + `limit` + `startAfterDocument` needs nothing added |
+| Does `PostDocument` match the approved schema? | Yes for reads. It maps `imageUrls`/`imagePaths`, `likeCount`, `commentCount`, the three timestamps and the author snapshot; it does not model `donationRecordId`. No mapper change was required |
+| Does the required composite index exist? | None is required. One collection, one `orderBy` on `createdAt`, no `where` — Firestore's automatic single-field index serves it. No `firestore.indexes.json` exists and none was added |
+
+The audit therefore cleared the stage to proceed, and nothing had to be worked
+around. The rule is permissive enough that a **write** gap remains the real risk;
+that is why this stage only reads.
+
+### What changed
+
+**Created — `lib/features/feed`**
+
+| File | Job |
+| --- | --- |
+| `domain/feed_page.dart` | `FeedCursor` (empty interface), `FeedPage` — posts, cursor, `hasMore`, `skipped` |
+| `domain/feed_repository.dart` | the port: `pageSize = 10`, one method `loadPage({after})` |
+| `data/feed_documents.dart` | `FeedDocument` + the `FeedDocuments` transport seam |
+| `data/firestore_feed_documents.dart` | the query, `SnapshotCursor`, the auth check |
+| `data/firestore_feed_repository.dart` | page assembly: over-fetch by one, map, count refusals, cut the window |
+| `application/feed_state.dart` | `FeedStatus` and `FeedState` with the four display predicates |
+| `application/feed_providers.dart` | `feedRepositoryProvider`, `FeedController`, `feedControllerProvider` |
+| `presentation/feed_messages.dart` | `Failure` → copy, and relative time |
+| `presentation/expandable_post_text.dart` | the six-line clamp with a measured **Read more** |
+| `presentation/widgets/feed_post_tile.dart` | one post: header, text, up to four images, read-only counts, copy |
+| `presentation/feed_screen.dart` | the screen: four exclusive states, paging, refresh, responsive measure |
+
+**Created — tests**
+
+| File | Tests |
+| --- | --- |
+| `test/support/fake_feed.dart` | fake documents seam and fake repository (no tests of its own) |
+| `test/features/feed/firestore_feed_repository_test.dart` | 13 |
+| `test/features/feed/feed_controller_test.dart` | 13 |
+| `test/features/feed/feed_messages_test.dart` | 10 |
+| `test/features/feed/feed_screen_test.dart` | 16 |
+| `test/review/visual_review_test.dart` | 5 captures in a `feed` group, gated like the rest of the file |
+
+**Modified**
+
+| File | Change |
+| --- | --- |
+| `lib/features/home/presentation/home_screen.dart` | the community section's **See all** now pushes `FeedScreen.route()` instead of reporting "Coming soon" |
+| `lib/core/error/firestore_error_mapper.dart` | moved out of `features/profile/data` so the feed can map Firestore codes without importing another feature's data layer (§1). Import paths updated in `firestore_profile_repository.dart`, `storage_error_mapper.dart` and their tests |
+| `lib/l10n/app_en.arb`, `app_bn.arb` + generated | 19 feed keys in both catalogues; `untranslated.json` stayed empty |
+| `test/features/home/home_screen_test.dart` | one new test (23 total) and an optional `feedRepository` override on the harness |
+| `lib/design/widgets/empty_state_card.dart` | `mainAxisSize: MainAxisSize.min` on the text column — see the unplanned change below |
+| `test/review/visual_review_test.dart` | a `feed` capture group loading the harness's `_PushedFeed` and a seeded `FakeFeedRepository` |
+| `docs/visuals/stage8/` | five renders: populated light en, populated dark bn, wide with pictures, empty, and a failed read |
+| `README.md`, `docs/ARCHITECTURE.md` (§14.2, §11 item 11), this file | documentation |
+
+### The query, and what it costs
+
+```
+posts.orderBy('createdAt', descending: true)
+     .limit(FeedRepository.pageSize + 1)
+     .startAfterDocument(last kept DocumentSnapshot)
+```
+
+Ten posts per page, at most eleven document reads per page, no listener, no
+`where`, no subcollection, and no query that can return the collection. `hasMore`
+is exact because of the lookahead, and the eleventh document is never mapped or
+drawn. The cursor is the last **kept** snapshot, so a post published between two
+reads cannot shift the window; a cursor from another producer is refused with a
+`ValidationFailure` rather than coerced. A malformed document is dropped and
+counted in `FeedPage.skipped`, because one bad document must not empty a news
+feed.
+
+### Two decisions worth naming
+
+- **"Load more" is a button, not a scroll trigger.** Automatic paging spends a
+  read the donor did not ask for, and on the Spark plan a mis-measured viewport
+  can spend a page per frame. The cost is one tap; the benefit is that every read
+  corresponds to an intent.
+- **The dashboard's "See all" appears only when the preview has a post in it.**
+  That is the rule the requests section already used and two existing tests
+  assert ("no See all over nothing"), so the new navigation was wired behind that
+  condition rather than replacing it. **Consequence, disclosed:**
+  `feedPreviewProvider` still returns an empty list, so on the shipped dashboard
+  the button does not yet appear. The route, the wiring and its test exist; the
+  preview is populated by a later stage. Nothing about the dashboard's
+  appearance changed.
+
+### Deliberately not built
+
+No create, edit, delete, like, unlike, save, unsave, comment, reply, report,
+image upload, Supabase post storage, batch, transaction or any other Firestore
+write. No realtime listener. No fake or hardcoded post in production code — the
+only posts anywhere are in `test/`. No third tab: the shell still has exactly
+`home` and `profile`.
+
+### Screenshots
+
+Five widget renders are in [`docs/visuals/stage8/`](visuals/stage8). They are
+produced by the existing `SOLOVVO_VISUAL_REVIEW=1` harness and are *not* golden
+tests: it asserts nothing, it loads a real font, and it seeds posts through the
+same `feedRepositoryProvider` seam the widget tests use.
+
+| File | What it shows |
+| --- | --- |
+| `01-feed-light-en.png` | populated, light, English — a six-line collapse with **Read more**, four posts, read-only counts |
+| `02-feed-dark-bn.png` | populated, dark, Bangla — Bengali digits in the counts and the relative times |
+| `03-feed-wide-with-images-light-en.png` | the 900 dp measure on a 1000 dp window, with one and four pictures |
+| `04-feed-empty-light-en.png` | the empty card, centred and compact |
+| `05-feed-error-dark-en.png` | a failed first read: the sentence for the failure, and **Try again** |
+
+Two caveats, both visible in the files: the harness answers every network image
+with 400, so pictures draw the tile's broken-image glyph rather than a photo;
+and these are widget renders, not browser captures, because the temporary web
+entrypoint used in Stage 3 was not recreated.
+
+### Two unplanned changes, disclosed
+
+Neither was in the brief. Both were found by looking at the renders, which is the
+one thing the widget assertions could not do.
+
+- **`EmptyStateCard` stretched to the full viewport.** Its inner `Column` used
+  the default `MainAxisSize.max`, which is invisible inside the unbounded scroll
+  views every other caller puts it in, and stretched the card to the whole
+  remaining height in the feed's `SliverFillRemaining` — an 864 dp card with one
+  line of text at the top. Fixed with `mainAxisSize: MainAxisSize.min`. Every
+  existing caller is inside an unbounded column, so their appearance is
+  unchanged; two assertions in `feed_screen_test.dart` now pin the compact height.
+- **Pictures had no height cap.** At the 900 dp measure a square grid cell was
+  over 400 dp tall and a single 16:10 picture over 500, so one photograph filled
+  the screen. `_PostImages` now measures its own width and caps the draw at
+  300 dp, keeping the cell width and cropping instead. At a phone width nothing
+  changes: the single picture is still 16:10 and the cells are still square.
+
+### Verified
+
+- `dart format` on the files this stage changed.
+- `flutter analyze`: **no issues found** (9.6 s).
+- `flutter test`: **550 passed, 47 skipped, 0 failed**.
+  - 53 new tests over the 497/42 baseline: 13 repository + 13 controller + 10
+    messages + 16 screen + 1 dashboard navigation.
+  - The skips are 47 rather than 42 because five new captures joined
+    `test/review/visual_review_test.dart`, which is gated on
+    `SOLOVVO_VISUAL_REVIEW=1` and contributes every skip in this repository.
+    Nothing was skipped to make this stage pass, and the same five captures pass
+    when the variable is set (`flutter test test/review/visual_review_test.dart`
+    → 47 passed).
+- Existing tests were not weakened and no assertion was deleted. The one place
+  this stage had to be careful is the dashboard's "See all" rule, which two
+  existing tests assert in the negative; both still pass unchanged.
+- `firestore.rules`, `firebase.json`, `.firebaserc`, `pubspec.yaml`,
+  `pubspec.lock` and `firestore-rules-tests/` produce **no diff at all**, and
+  nothing was deployed.
+
+### Remaining issues
+
+1. **The feed cannot be written, by design and by rules.** Every §14.1 mismatch
+   is still real: `imageUrls` cannot be corrected under the current update rule,
+   `commentCount` cannot move, `reports` has no rule, and `post_likes` disagrees
+   with the declared likes path. The rules stage must run before any write path
+   ships.
+2. **The feed has never run against a real Firestore project.** There is no
+   emulator or test account on this machine, so the query is verified by unit
+   tests over a fake documents seam, not by a live read. The audit confirms the
+   shape is permitted; it cannot confirm the data.
+3. **`feedPreviewProvider` is still empty**, so the dashboard's "See all" is
+   wired but not reachable in the shipped app (see the decision above).
+4. **Post images are drawn but never load in tests.** The test renderer answers
+   every network image with 400, so the tile's `errorBuilder` is what keeps the
+   four-image test green — it proves the layout, not the picture. There is also
+   still no bucket, policy or upload client for post images.
+5. **Paging is manual.** A donor who wants fifty posts taps **Load more** five
+   times. That is the deliberate trade recorded above, not an oversight, but it
+   is a UX decision the owner may want to revisit once the write path exists.
+6. **No realtime updates.** A newly published post appears only after a refresh.
+7. **Brand spelling is still open** — see Stage 8.1's remaining issue 6.
+
+### Next stage
+
+**Stage 8.3 has not been started.** It must not begin until Stage 8.2 is approved,
+and any write path still depends on the rules stage reconciling `firestore.rules`
+with §14.1.
 

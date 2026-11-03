@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/error/firestore_error_mapper.dart';
 import 'package:sholovvo_app/core/result/result.dart';
-import 'package:sholovvo_app/features/profile/data/firestore_error_mapper.dart';
 import 'package:sholovvo_app/features/profile/data/profile_documents.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
 import 'package:sholovvo_app/features/profile/domain/profile_repository.dart';
@@ -62,7 +62,8 @@ class FirestoreProfileRepository implements ProfileRepository {
       final String uid = _requireUid();
       if (profile.uid != uid) {
         throw const PermissionFailure(
-          debugMessage: 'Refusing to write a profile that names another account',
+          debugMessage:
+              'Refusing to write a profile that names another account',
         );
       }
 
@@ -89,10 +90,12 @@ class FirestoreProfileRepository implements ProfileRepository {
   Future<Result<void>> setAvailability(bool isAvailable) {
     return _run(() async {
       final String uid = _requireUid();
-      await _users.doc(uid).set(
-        ProfileDocuments.availabilityFields(isAvailable),
-        SetOptions(merge: true),
-      );
+      await _users
+          .doc(uid)
+          .set(
+            ProfileDocuments.availabilityFields(isAvailable),
+            SetOptions(merge: true),
+          );
     });
   }
 
@@ -100,10 +103,9 @@ class FirestoreProfileRepository implements ProfileRepository {
   Future<Result<void>> setPhotoUrl(String? photoUrl) {
     return _run(() async {
       final String uid = _requireUid();
-      await _users.doc(uid).set(
-        ProfileDocuments.photoFields(photoUrl),
-        SetOptions(merge: true),
-      );
+      await _users
+          .doc(uid)
+          .set(ProfileDocuments.photoFields(photoUrl), SetOptions(merge: true));
     });
   }
 

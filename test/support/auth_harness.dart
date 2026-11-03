@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/app/auth_gate.dart';
 import 'package:sholovvo_app/app/router/app_routes.dart';
+import 'package:sholovvo_app/core/config/app_config.dart';
 import 'package:sholovvo_app/core/preferences/app_preferences.dart';
 import 'package:sholovvo_app/design/tokens/app_motion.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
@@ -45,6 +46,11 @@ Widget authHarness({
       ),
       if (preferences != null)
         preferencesStoreProvider.overrideWithValue(preferences),
+      // Settings reads the build flavour. Every other screen tolerates the
+      // provider throwing, so this only matters once a test walks into Settings.
+      appConfigProvider.overrideWithValue(
+        const AppConfig(flavor: AppFlavor.development),
+      ),
     ],
     child: wrap == null ? app : wrap(app),
   );

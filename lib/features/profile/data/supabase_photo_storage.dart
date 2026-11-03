@@ -1,9 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sholovvo_app/core/config/supabase_config.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/error/storage_error_mapper.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/core/result/result.dart';
-import 'package:sholovvo_app/features/profile/data/storage_error_mapper.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 import 'package:sholovvo_app/features/profile/domain/profile_photo_storage.dart';
 import 'package:storage_client/storage_client.dart';
 

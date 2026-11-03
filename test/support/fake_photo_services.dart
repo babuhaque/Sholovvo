@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
+import 'package:sholovvo_app/core/media/photo_picker.dart';
 import 'package:sholovvo_app/core/result/result.dart';
-import 'package:sholovvo_app/features/profile/domain/photo_picker.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 import 'package:sholovvo_app/features/profile/domain/profile_photo_storage.dart';
 
 /// In-memory [ProfilePhotoStorage] for tests.

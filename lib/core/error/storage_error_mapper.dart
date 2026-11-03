@@ -1,5 +1,5 @@
 import 'package:sholovvo_app/core/error/failure.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 
 /// Translates a Supabase Storage error into a [Failure].
 ///
@@ -12,6 +12,13 @@ import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 /// an RLS violation sentence, a size/mime violation sentence, and a raw socket
 /// error turned into a message by `storage_client` — so both the status and the
 /// text are inspected here rather than trusting either alone.
+///
+/// It lives in `core/error` rather than in one feature for the same reason as
+/// `firestore_error_mapper`: two features upload images (profile avatars since
+/// Stage 8.1, feed post photos since Stage 8.3) and two copies of this switch is
+/// how a rejected upload ends up as "check your connection" on one screen and
+/// "your file is too large" on the other. Nothing here imports
+/// `storage_client`: the mapping is over strings.
 Failure mapStorageErrorToFailure({
   required String message,
   String? statusCode,
@@ -23,7 +30,9 @@ Failure mapStorageErrorToFailure({
 
   // A missing, expired or unverifiable token. Retrying as the same user cannot
   // help; signing in again can.
-  if (status == 401 || text.contains('invalid jwt') || text.contains('jwt expired')) {
+  if (status == 401 ||
+      text.contains('invalid jwt') ||
+      text.contains('jwt expired')) {
     return AuthFailure(
       debugMessage: 'Storage rejected the bearer token: $message',
       cause: cause,
@@ -95,7 +104,9 @@ Failure mapStorageErrorToFailure({
       text.contains('socket') ||
       text.contains('timed out')) {
     return NetworkFailure(
-      code: text.contains('timed out') ? FailureCode.timeout : FailureCode.network,
+      code: text.contains('timed out')
+          ? FailureCode.timeout
+          : FailureCode.network,
       debugMessage: message,
       cause: cause,
       stackTrace: stackTrace,

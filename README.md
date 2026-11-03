@@ -6,11 +6,21 @@ Blood donation and social networking platform for Android and iOS.
 
 ## Status
 
-Stage 6 of 14 complete (approved) — the app runs in Bangla and English,
-in light and dark, remembers both choices, a signed-in donor lands on a responsive
-home dashboard, can maintain their own profile with a split between what others
-may read and what only they can, and can add, change or remove a profile photo
-through Supabase Storage. See
+Stage 8.2 complete (awaiting approval). **Stage 8 is the social feed**, and 8.2
+makes it **readable**: a paged, pull-to-refresh `FeedScreen` over one Firestore
+query on `posts`, with the dashboard's community **See all** as the route in.
+Nothing in the feed can be written — no post, like, comment, save, report or
+upload — and no rule, index or backend setting was changed. Stage 8.1 laid the
+foundations (`Post`, `Comment` and `Report` entities, a pure `Post` document
+mapper, shared photo primitives in `core/media`, one avatar and one blood-group
+badge instead of two of each), and 8.1.1 aligned the schema documents with the
+rules. Everything through Stage 7 still
+stands: the app runs in Bangla and English, in light and dark, remembers both
+choices, and a signed-in donor lands in a two-tab shell: a responsive home
+dashboard and their own profile, with a settings page (account, appearance,
+about, sign out) pushed above them. They can maintain their profile with a split
+between what others may read and what only they can, and can add, change or
+remove a profile photo through Supabase Storage. See
 [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) for the stage tracker and
 per-stage verification results.
 
@@ -87,10 +97,14 @@ The same states captured from the built web app in a real browser live in
 [`docs/visuals/stage4-browser/`](docs/visuals/stage4-browser) and
 [`docs/visuals/stage5-browser/`](docs/visuals/stage5-browser) — that is the pass
 that catches things a widget render cannot, such as a sheet background that does
-not follow a theme switch. Stage 6 has widget renders only
-([`docs/visuals/stage6/`](docs/visuals/stage6)): there is no Supabase project, so
-there is no live upload to photograph, and the widget renderer cannot load
-`Image.network` (the avatar shows its initials fallback there).
+not follow a theme switch. Stages 6, 7 and 8 have widget renders only
+([`docs/visuals/stage6/`](docs/visuals/stage6),
+[`docs/visuals/stage7/`](docs/visuals/stage7),
+[`docs/visuals/stage8/`](docs/visuals/stage8)): Stage 6 has no Supabase project,
+so there is no live upload to photograph, and the temporary browser entrypoint
+used in Stage 3 was not recreated for any of them. The Stage 8 set covers the
+feed populated in light English and dark Bangla, at the wide measure with
+pictures, empty, and after a failed read.
 
 ## Home dashboard
 
@@ -99,10 +113,29 @@ provider seams, `presentation` widgets. The donor strip in
 `application/home_providers.dart` projects the signed-in donor's real profile and
 donation history (Stage 5); nearby requests and the feed preview are still **empty
 on purpose** — the collections behind them are read in Stage 9 and, for the feed,
-in a later stage that has not been scheduled. Each seam
+by the full `FeedScreen` that Stage 8.2 added. Each seam
 is replaced by the stage that owns its data; the layout renders both the empty and
 the populated path already, so nothing in `presentation` has to change when data
 arrives. Nothing on this screen is a placeholder number.
+
+## Navigation and settings
+
+`lib/app/app_shell.dart` is the signed-in surface: an `IndexedStack` of two live
+tabs under a `NavigationBar`, or beside a `NavigationRail` once the window is
+720px wide. There are exactly two tabs because exactly two destinations exist; a
+stage that adds a third destination adds one enum member and one destination, and
+nothing else on the bar changes. The full feed (Stage 8.2) is a route pushed
+above the shell for the same reason Settings is: it is a place you go to and come
+back from, not a place you live.
+
+Settings (`lib/features/settings`) is pushed above the shell rather than being a
+third tab: account (the session's own address, read-only), preferences (the same
+appearance sheet Welcome and Home open, not a copy), about (brand and build
+flavour), and **sign out** — which used to be the last control on the dashboard
+and now lives here, where a mis-tap cannot cost a session. There is deliberately
+no notification switch: nothing on Spark can deliver one, and a switch that
+changes nothing is worse than no switch. Signing out pops back to the gate before
+the gate swaps the session, because a pushed route survives the swap.
 
 ## Profile
 
@@ -142,6 +175,81 @@ failed change leaves the previous photo whole; a removal clears the field first
 and then deletes the object, so the card can never point at a missing file.
 Without the Supabase defines the sheet reports that upload is not set up and
 offers nothing that could only fail.
+
+## Feed
+
+Stage 8 is the social feed. **8.1** added the foundations — three immutable
+entities and one mapper — and **8.2** adds the read path: one screen, one
+repository, one provider, one query. Nothing in the feed can be created, edited,
+deleted, liked, saved, commented on, reported or uploaded to; there is no sample
+data in production code, and `firestore.rules` was not touched in either stage.
+
+| Type | Holds | Refuses |
+| --- | --- | --- |
+| `Post` | author `uid`, name and photo, text, up to 4 image URLs and their storage paths, like/comment counts, three timestamps | blank text, text over 2 000 characters, more than 4 images, a negative counter |
+| `Comment` | author `uid`, name and photo, text, an optional parent and the name being replied to | blank text, text over 500 characters, a reply with no parent |
+| `Report` | reporter `uid`, target type and id, the target author, a reason, an optional note | a missing reporter, target or target author; a note over 300 characters |
+
+Each rule is a validator returning an issue value, and `PostDocument` maps a
+`Post` to and from a plain map in `data` — the only file in the feature that
+touches `cloud_firestore`. A malformed document is refused with the issue that
+names the field; nothing is quietly replaced with a default, and nothing a donor
+wrote reaches a debug message.
+
+The author's name and photo are a **snapshot from write time**, not a lookup per
+card: one read per feed row instead of one per author is what keeps the feed
+inside the Spark plan. The cost is that a renamed or re-photographed donor keeps
+the old values on posts they already published. Phone, street address, area and
+blood group are never copied into a post.
+
+### Reading it
+
+`FeedScreen` (`lib/features/feed/presentation`) is a pushed route above the
+two-tab shell, reached from the dashboard's community **See all**. It reads ten
+posts at a time:
+
+```
+posts
+  .orderBy('createdAt', descending: true)
+  .limit(11)                          // page size + 1, to answer hasMore exactly
+  .startAfterDocument(lastSnapshot)   // every page after the first
+```
+
+- **A `DocumentSnapshot` cursor, not an offset.** A post published between two
+  pages cannot shift the window, because the cursor addresses a document rather
+  than a position. `SnapshotCursor` lives in `data`; the domain sees only an
+  empty `FeedCursor` interface.
+- **Eleven reads per page, at most.** The extra document answers `hasMore` and is
+  never mapped or drawn. There is no realtime listener and no query that could
+  return the whole collection; **Load more** is a button, so no scroll position
+  spends a read the donor did not ask for.
+- **One read at a time.** A second `loadMore`, or a pull-to-refresh landing on a
+  page in flight, is refused rather than merged into the list. A failed load-more
+  keeps the page and the cursor, so the retry re-asks the same question.
+- **Counts are read, not fetched.** `likeCount` and `commentCount` come from the
+  post document and are displayed read-only; no `posts/{id}/likes` or
+  `posts/{id}/comments` subcollection is addressed anywhere.
+- **A malformed post is dropped, not fatal.** It is counted in `FeedPage.skipped`
+  so one bad document cannot empty the feed, and the count is what a debugger
+  reads to confirm the schema has drifted.
+- **No composite index is needed.** One collection, one `orderBy`, no `where`:
+  Firestore serves that from its automatic single-field index. There is no
+  `firestore.indexes.json` in this repository and this stage did not add one.
+- **The read is permitted by the rules as they stand.**
+  `allow read: if request.auth != null` on `/posts/{postId}` has no field
+  condition, so it covers a list query for a signed-in caller.
+
+`firestore.rules` was **not touched by Stage 8.1, 8.1.1 or 8.2**, but it is not
+empty on the feed: it already has a `posts` block, a nested `comments` block and
+a top-level `post_likes` block. Those rules predate the feed design and are **not
+approved** for it — they allow updating a singular `imageUrl` where the mapper
+writes `imageUrls` and `imagePaths`, they keep likes at `post_likes/{likeId}`
+instead of under a post, they permit a `donationRecordId` the entity does not
+model, and no branch lets `commentCount` change. The Feed schema has **not** been
+reconciled with them, and `reports` has **no rule at all**. That is why this
+stage only reads: every write would land on a rule nobody has approved.
+Reconciliation is a later, separately approved stage. See
+`docs/ARCHITECTURE.md` §14.1 and §14.2.
 
 ## Security rules
 

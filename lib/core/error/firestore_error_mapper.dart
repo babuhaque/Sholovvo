@@ -8,6 +8,12 @@ import 'package:sholovvo_app/core/error/failure.dart';
 /// testable against a live project. A code string is data, and data can be
 /// enumerated in a unit test.
 ///
+/// It lives in `core/error` rather than in one feature because two features
+/// now read Firestore (profile since Stage 5, feed since Stage 8.2) and a second
+/// copy of this switch is how `permission-denied` ends up meaning one thing on
+/// the profile screen and something else in the feed. Nothing here imports
+/// `cloud_firestore`: the mapping is over strings.
+///
 /// Anything unrecognised stays [UnexpectedFailure] with the original code kept
 /// in `debugMessage`, so a new backend code is diagnosable from a log instead of
 /// disappearing into "something went wrong".
@@ -18,8 +24,8 @@ Failure mapFirestoreCodeToFailure(
   StackTrace? stackTrace,
 }) {
   return switch (code) {
-    // Signed in, but the rules refused the write. In this app that almost
-    // always means the payload names a document the caller does not own.
+    // Signed in, but the rules refused the read or the write. In this app that
+    // almost always means the payload names a document the caller does not own.
     'permission-denied' => PermissionFailure(
       debugMessage: debugMessage ?? code,
       cause: cause,

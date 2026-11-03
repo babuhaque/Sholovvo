@@ -42,6 +42,12 @@ class EmptyStateCard extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              // Left unbounded, this column is only as tall as its text and the
+              // card hugs it. Inside a bounded-height parent — the feed's
+              // `SliverFillRemaining` — the default would stretch the card to
+              // the whole viewport, which reads as a broken card rather than a
+              // calm empty state.
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
                   title,

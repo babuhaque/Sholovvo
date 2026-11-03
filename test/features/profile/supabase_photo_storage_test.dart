@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/features/profile/data/supabase_photo_storage.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 
 /// The storage base a configured project produces.
 const String _storageUrl = 'https://demo.supabase.co/storage/v1';

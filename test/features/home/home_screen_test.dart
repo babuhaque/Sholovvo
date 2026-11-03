@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/app/appearance_sheet.dart';
-import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/design/tokens/app_palette.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
-import 'package:sholovvo_app/features/auth/presentation/widgets/auth_error_banner.dart';
+import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
+import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
+import 'package:sholovvo_app/features/feed/domain/feed_repository.dart';
+import 'package:sholovvo_app/features/feed/presentation/feed_screen.dart';
 import 'package:sholovvo_app/features/home/application/home_providers.dart';
 import 'package:sholovvo_app/features/home/domain/home_dashboard.dart';
 import 'package:sholovvo_app/features/home/presentation/home_screen.dart';
@@ -19,6 +21,7 @@ import 'package:sholovvo_app/features/profile/application/profile_providers.dart
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 
 import '../../support/fake_auth_repository.dart';
+import '../../support/fake_feed.dart';
 import '../../support/fake_profile_repository.dart';
 import '../../support/test_app.dart';
 
@@ -44,6 +47,10 @@ const Size _tablet = Size(900, 1200);
 ///
 /// [profile] is the donor document the header and the donor strip read; it stays
 /// `null` unless a test asks for it, which is the state of a new account.
+///
+/// [feedRepository] is what the pushed [FeedScreen] reads. It stays `null` for
+/// every test that never leaves the dashboard, which keeps the lazy
+/// `feedRepositoryProvider` unbuilt and the tests clear of Firestore.
 Future<FakeAuthRepository> _pumpHome(
   WidgetTester tester, {
   AuthUser user = verifiedUser,
@@ -51,6 +58,7 @@ Future<FakeAuthRepository> _pumpHome(
   UserProfile? profile,
   List<NearbyRequestSummary>? requests,
   List<FeedPostPreview>? feed,
+  FeedRepository? feedRepository,
   ThemeMode themeMode = ThemeMode.light,
   Locale locale = const Locale('en'),
   Size size = _tallPhone,
@@ -73,11 +81,21 @@ Future<FakeAuthRepository> _pumpHome(
         // Watched by the real donor-strip provider when a test does not stub it.
         profileRepositoryProvider.overrideWithValue(profiles),
         if (donor != null) donorSnapshotProvider.overrideWithValue(donor),
-        if (requests != null) nearbyRequestsProvider.overrideWithValue(requests),
+        if (requests != null)
+          nearbyRequestsProvider.overrideWithValue(requests),
         if (feed != null) feedPreviewProvider.overrideWithValue(feed),
+        if (feedRepository != null)
+          feedRepositoryProvider.overrideWithValue(feedRepository),
       ],
       child: testApp(
-        home: HomeScreen(user: user),
+        // Mounted the way the shell mounts it: the dashboard is a tab, and its
+        // "coming soon" snackbars are hosted by the `Scaffold` above it. The
+        // shell supplies that one in the app; here it is spelled out.
+        home: Scaffold(
+          // The host supplies this in the app; a no-op is enough here, because
+          // switching tabs is the shell's contract and is tested with the shell.
+          body: HomeScreen(user: user, onOpenProfile: () {}),
+        ),
         themeMode: themeMode,
         locale: locale,
       ),
@@ -325,6 +343,36 @@ void main() {
       expect(find.text('No open requests nearby'), findsOneWidget);
     });
 
+    testWidgets('the community "See all" opens the feed', (
+      WidgetTester tester,
+    ) async {
+      // Only the feed has content, so the single "See all" on screen is the
+      // community one — the requests section still hides its own over an empty
+      // list.
+      final FakeFeedRepository feedRepository = FakeFeedRepository(
+        posts: <Post>[fakePost(text: 'Donated at Dhaka Medical today.')],
+      );
+      await _pumpHome(
+        tester,
+        feed: <FeedPostPreview>[_post()],
+        feedRepository: feedRepository,
+      );
+
+      expect(find.byType(FeedScreen), findsNothing);
+
+      await _tapVisible(tester, find.text('See all'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(FeedScreen), findsOneWidget);
+      // The route carries the full post, read from the repository rather than
+      // from the dashboard preview.
+      expect(find.text('From the community'), findsNothing);
+      expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
+      expect(feedRepository.calls, 1);
+    });
+
     testWidgets('counts one unit and one donation in the singular', (
       WidgetTester tester,
     ) async {
@@ -354,9 +402,7 @@ void main() {
       final double requests = tester
           .getTopLeft(find.text('Requests near you'))
           .dy;
-      final double feed = tester
-          .getTopLeft(find.text('From the community'))
-          .dy;
+      final double feed = tester.getTopLeft(find.text('From the community')).dy;
       expect(feed, greaterThan(requests));
     });
 
@@ -368,9 +414,7 @@ void main() {
       final double requests = tester
           .getTopLeft(find.text('Requests near you'))
           .dy;
-      final double feed = tester
-          .getTopLeft(find.text('From the community'))
-          .dy;
+      final double feed = tester.getTopLeft(find.text('From the community')).dy;
       expect(feed, closeTo(requests, 1));
     });
 
@@ -505,8 +549,14 @@ void main() {
         find.text('রক্ত দেওয়া আর রক্ত চাওয়ার সবকিছু এক জায়গায়।'),
         findsOneWidget,
       );
-      expect(find.widgetWithText(SolovvoButton, 'রক্তের অনুরোধ'), findsOneWidget);
-      expect(find.widgetWithText(SolovvoButton, 'ডোনার খুঁজুন'), findsOneWidget);
+      expect(
+        find.widgetWithText(SolovvoButton, 'রক্তের অনুরোধ'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(SolovvoButton, 'ডোনার খুঁজুন'),
+        findsOneWidget,
+      );
       expect(find.text('ডোনার স্ট্যাটাস'), findsOneWidget);
       expect(find.text('এখনো দেওয়া হয়নি'), findsNWidgets(3));
       expect(find.text('আপনার কাছের অনুরোধ'), findsOneWidget);
@@ -534,24 +584,6 @@ void main() {
       expect(find.text('৩ বার রক্তদান'), findsOneWidget);
       expect(find.textContaining('২ ইউনিট দরকার'), findsOneWidget);
       expect(find.textContaining('2 ইউনিট'), findsNothing);
-    });
-  });
-
-  group('HomeScreen sign-out', () {
-    testWidgets('a rejected sign-out is reported and the dashboard stays', (
-      WidgetTester tester,
-    ) async {
-      final FakeAuthRepository repo = await _pumpHome(tester);
-      repo.signOutFailure = const NetworkFailure(debugMessage: 'offline');
-
-      await _tapVisible(
-        tester,
-        find.widgetWithText(SolovvoButton, 'Sign out'),
-      );
-
-      expect(repo.signOutCalls, 1);
-      expect(find.byType(AuthErrorBanner), findsOneWidget);
-      expect(find.byType(HomeScreen), findsOneWidget);
     });
   });
 }

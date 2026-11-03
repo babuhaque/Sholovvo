@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
-import 'package:sholovvo_app/features/profile/data/firestore_error_mapper.dart';
+import 'package:sholovvo_app/core/error/firestore_error_mapper.dart';
 
+/// The mapper moved to `core/error` in Stage 8.2, when the feed became its
+/// second caller. The assertions are unchanged; only the import path is.
 void main() {
   group('mapFirestoreCodeToFailure', () {
     test('a refused write is a permission failure, not a generic error', () {

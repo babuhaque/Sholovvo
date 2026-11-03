@@ -42,6 +42,7 @@ final class SupabaseConfig {
     this.url = '',
     this.publishableKey = '',
     this.avatarBucket = defaultAvatarBucket,
+    this.postImagesBucket = defaultPostImagesBucket,
     this.rejection,
   });
 
@@ -67,6 +68,15 @@ final class SupabaseConfig {
   /// is what the storage policies in `docs/storage/` are written against.
   static const String defaultAvatarBucket = 'avatars';
 
+  /// The bucket community post photos live in.
+  ///
+  /// A second bucket rather than a subfolder of [defaultAvatarBucket], because
+  /// the two have different lifetimes and different limits: an avatar is
+  /// replaced in place and at most one exists per account, while post photos
+  /// accumulate four per post and outlive the screen that uploaded them. Keeping
+  /// them apart also means a policy mistake on one cannot expose the other.
+  static const String defaultPostImagesBucket = 'post-images';
+
   /// Project URL, e.g. `https://abcdefgh.supabase.co`. Empty when unset.
   final String url;
 
@@ -74,6 +84,8 @@ final class SupabaseConfig {
   final String publishableKey;
 
   final String avatarBucket;
+
+  final String postImagesBucket;
 
   /// Non-null when the build supplied a key this client must not use.
   final SupabaseKeyRejection? rejection;

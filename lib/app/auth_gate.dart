@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sholovvo_app/app/app_shell.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/design/tokens/app_palette.dart';
 import 'package:sholovvo_app/design/tokens/app_spacing.dart';
@@ -8,7 +9,6 @@ import 'package:sholovvo_app/design/widgets/solovvo_card.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
 import 'package:sholovvo_app/features/auth/presentation/verify_email_screen.dart';
-import 'package:sholovvo_app/features/home/presentation/home_screen.dart';
 import 'package:sholovvo_app/features/splash/presentation/splash_screen.dart';
 import 'package:sholovvo_app/features/welcome/presentation/welcome_screen.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
@@ -70,7 +70,9 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     if (!user.isEmailVerified) {
       return VerifyEmailScreen(user: user);
     }
-    return HomeScreen(user: user);
+    // The shell, not the dashboard: since Stage 7 a verified session owns a tab
+    // bar, and the dashboard is only the first of its two tabs.
+    return AppShell(user: user);
   }
 }
 

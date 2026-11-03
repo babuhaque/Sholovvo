@@ -2,15 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sholovvo_app/core/error/failure.dart';
-import 'package:sholovvo_app/core/result/result.dart';
-import 'package:sholovvo_app/design/motion/fade_slide_route.dart';
 import 'package:sholovvo_app/design/tokens/app_spacing.dart';
 import 'package:sholovvo_app/design/widgets/soft_glow_background.dart';
-import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
-import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
-import 'package:sholovvo_app/features/auth/presentation/widgets/auth_error_banner.dart';
+import 'package:sholovvo_app/features/feed/presentation/feed_screen.dart';
 import 'package:sholovvo_app/features/home/application/home_providers.dart';
 import 'package:sholovvo_app/features/home/domain/home_dashboard.dart';
 import 'package:sholovvo_app/features/home/presentation/widgets/donor_status_card.dart';
@@ -20,7 +15,6 @@ import 'package:sholovvo_app/features/home/presentation/widgets/home_quick_actio
 import 'package:sholovvo_app/features/home/presentation/widgets/home_section.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
-import 'package:sholovvo_app/features/profile/presentation/profile_screen.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
 /// Where a verified, signed-in donor lands: their status, the two things they
@@ -30,10 +24,24 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// 5. The nearby requests and the feed stay empty until their own stages, and
 /// every section says so in its own words rather than showing a zero, a spinner
 /// or a sample row.
+///
+/// Since Stage 7 this is one tab of the app shell rather than the whole
+/// signed-in surface, so it no longer owns a `Scaffold`, a sign-out button or
+/// the push to the profile — the shell owns all three.
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key, required this.user});
+  const HomeScreen({
+    super.key,
+    required this.user,
+    required this.onOpenProfile,
+  });
 
   final AuthUser user;
+
+  /// Supplied by the shell, which owns which tab is showing.
+  ///
+  /// Required rather than optional so a host that forgets to wire it cannot
+  /// ship a header button that silently does nothing.
+  final VoidCallback onOpenProfile;
 
   /// Above this width the two list sections sit side by side instead of
   /// stacking, which is what makes the dashboard worth opening on a tablet or
@@ -45,31 +53,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  Failure? _failure;
-  bool _busy = false;
-
-  Future<void> _signOut() async {
-    if (_busy) {
-      return;
-    }
-
-    setState(() {
-      _busy = true;
-      _failure = null;
-    });
-    final Result<void> result = await ref.read(authRepositoryProvider).signOut();
-    if (!mounted) {
-      return;
-    }
-    setState(() => _busy = false);
-    // The gate watches the auth stream, so it swaps this screen for the welcome
-    // screen on its own once the sign-out lands.
-    result.fold(
-      onSuccess: (void _) {},
-      onFailure: (Failure failure) => setState(() => _failure = failure),
-    );
-  }
-
   /// The honest response for an action whose screen does not exist yet.
   ///
   /// A disabled button would read as a bug and a fake screen would be a lie, so
@@ -77,21 +60,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _comingSoon() {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(context.l10n.homeComingSoon)),
-      );
-  }
-
-  /// Opens the donor's own profile. Pushed above the gate like every other form,
-  /// so signing out from the home screen still swaps the whole stack.
-  void _openProfile() {
-    unawaited(
-      Navigator.of(context).push(
-        FadeSlidePageRoute<void>(
-          page: ProfileScreen(user: widget.user),
-        ),
-      ),
-    );
+      ..showSnackBar(SnackBar(content: Text(context.l10n.homeComingSoon)));
   }
 
   @override
@@ -121,10 +90,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final Widget feedSection = _FeedSection(
       posts: feed,
       onComingSoon: _comingSoon,
+      // The community preview is the dashboard's way into the feed, so its
+      // "See all" is the one placeholder on this screen that now opens a real
+      // page instead of reporting "Coming soon".
+      onSeeAll: () => unawaited(Navigator.of(context).push(FeedScreen.route())),
     );
 
-    return Scaffold(
-      body: SoftGlowBackground(
+    // The header's avatar is an `InkWell`, which needs a `Material` ancestor.
+    // The shell's `Scaffold` provides one in the app, but this screen also gets
+    // mounted on its own by tests, and a transparent material adds the ancestor
+    // without painting over the glow below it.
+    return Material(
+      type: MaterialType.transparency,
+      child: SoftGlowBackground(
         child: SafeArea(
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
@@ -146,7 +124,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       children: <Widget>[
                         HomeHeader(
                           profile: profile,
-                          onProfileTap: _openProfile,
+                          onProfileTap: widget.onOpenProfile,
                         ),
                         const SizedBox(height: AppSpacing.xl),
                         if (user.isEmailVerified) ...<Widget>[
@@ -161,12 +139,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           style: text.displaySmall?.copyWith(fontSize: 30),
                         ),
                         const SizedBox(height: AppSpacing.xs),
-                        Text(l10n.homeDashboardSubtitle, style: text.bodyMedium),
+                        Text(
+                          l10n.homeDashboardSubtitle,
+                          style: text.bodyMedium,
+                        ),
                         const SizedBox(height: AppSpacing.xl),
-                        if (_failure != null) ...<Widget>[
-                          AuthErrorBanner(failure: _failure!),
-                          const SizedBox(height: AppSpacing.md),
-                        ],
                         DonorStatusCard(donor: donor),
                         const SizedBox(height: AppSpacing.lg),
                         HomeQuickActions(
@@ -189,14 +166,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           const SizedBox(height: AppSpacing.xl),
                           feedSection,
                         ],
-                        const SizedBox(height: AppSpacing.xl),
-                        SolovvoButton(
-                          label: l10n.signOut,
-                          icon: Icons.logout_rounded,
-                          variant: SolovvoButtonVariant.secondary,
-                          isLoading: _busy,
-                          onPressed: _busy ? null : _signOut,
-                        ),
                       ],
                     ),
                   ),
@@ -245,10 +214,7 @@ class _RequestsSection extends StatelessWidget {
           for (final NearbyRequestSummary request in requests)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-              child: NearbyRequestCard(
-                request: request,
-                onTap: onComingSoon,
-              ),
+              child: NearbyRequestCard(request: request, onTap: onComingSoon),
             ),
       ],
     );
@@ -257,10 +223,17 @@ class _RequestsSection extends StatelessWidget {
 
 /// Community preview: posts when there are any, one honest empty card when not.
 class _FeedSection extends StatelessWidget {
-  const _FeedSection({required this.posts, required this.onComingSoon});
+  const _FeedSection({
+    required this.posts,
+    required this.onComingSoon,
+    required this.onSeeAll,
+  });
 
   final List<FeedPostPreview> posts;
   final VoidCallback onComingSoon;
+
+  /// Opens the full feed. Supplied by the screen, which owns the navigator.
+  final VoidCallback onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -269,7 +242,14 @@ class _FeedSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        HomeSectionHeader(title: l10n.homeFeedTitle),
+        HomeSectionHeader(
+          title: l10n.homeFeedTitle,
+          // The same rule as the requests section: no link over a list with
+          // nothing in it, because the dashboard has nothing to preview.
+          action: posts.isEmpty
+              ? null
+              : TextButton(onPressed: onSeeAll, child: Text(l10n.homeSeeAll)),
+        ),
         const SizedBox(height: AppSpacing.sm),
         if (posts.isEmpty)
           HomeEmptyCard(

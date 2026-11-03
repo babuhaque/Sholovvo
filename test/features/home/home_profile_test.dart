@@ -9,7 +9,6 @@ import 'package:sholovvo_app/features/home/presentation/widgets/home_header.dart
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
-import 'package:sholovvo_app/features/profile/presentation/profile_screen.dart';
 
 import '../../support/fake_auth_repository.dart';
 import '../../support/fake_profile_repository.dart';
@@ -28,6 +27,7 @@ Future<FakeProfileRepository> _pumpHome(
   AuthUser user = verifiedUser,
   UserProfile? profile,
   DonationHistory? history,
+  VoidCallback? onOpenProfile,
 }) async {
   tester.view.physicalSize = _phone;
   tester.view.devicePixelRatio = 1;
@@ -47,7 +47,12 @@ Future<FakeProfileRepository> _pumpHome(
         authRepositoryProvider.overrideWithValue(repo),
         profileRepositoryProvider.overrideWithValue(profiles),
       ],
-      child: testApp(home: HomeScreen(user: user)),
+      child: testApp(
+        home: HomeScreen(
+          user: user,
+          onOpenProfile: onOpenProfile ?? () {},
+        ),
+      ),
     ),
   );
   await tester.pump();
@@ -147,9 +152,7 @@ void main() {
   });
 
   group('the header profile entry point', () {
-    testWidgets('shows the donor\'s initials and opens their profile', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('shows the donor\'s initials', (WidgetTester tester) async {
       await _pumpHome(tester, profile: filledProfile);
 
       final Finder avatar = find.descendant(
@@ -161,13 +164,31 @@ void main() {
         tester.widget<InitialsAvatar>(avatar).name,
         filledProfile.displayName,
       );
-
-      await tester.tap(avatar);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-
-      expect(find.byType(ProfileScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    // The tap used to push a route from here. Since the profile is a tab of the
+    // shell, the dashboard asks its host to switch tabs instead, so this test
+    // pins the hand-off and the shell's own suite pins what happens next.
+    testWidgets('asks its host to show the profile', (
+      WidgetTester tester,
+    ) async {
+      int opened = 0;
+      await _pumpHome(
+        tester,
+        profile: filledProfile,
+        onOpenProfile: () => opened++,
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(HomeHeader),
+          matching: find.byType(InitialsAvatar),
+        ),
+      );
+      await tester.pump();
+
+      expect(opened, 1);
     });
   });
 }

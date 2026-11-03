@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/app/auth_gate.dart';
 import 'package:sholovvo_app/features/auth/presentation/verify_email_screen.dart';
@@ -118,7 +119,19 @@ void main() {
       await passSplash(tester);
       expect(find.byType(HomeScreen), findsOneWidget);
 
-      // The dashboard is taller than a phone screen, so the sign-out control
+      // Since Stage 7 the only way out is Settings, so the test walks the path a
+      // donor does: the profile tab, its gear, then the button.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Profile'),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await settleRoute(tester);
+
+      // The settings page is taller than a phone screen, so the sign-out control
       // starts below the fold. A tap at an off-screen point hits nothing and
       // the sign-out would silently never be called.
       await tester.ensureVisible(find.text('Sign out'));

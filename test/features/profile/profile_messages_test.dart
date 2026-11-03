@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/features/profile/presentation/profile_messages.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 

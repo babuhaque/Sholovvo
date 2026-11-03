@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/media/photo_picker.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/design/motion/fade_slide_route.dart';
 import 'package:sholovvo_app/design/tokens/app_palette.dart';
@@ -17,7 +18,6 @@ import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
 import 'package:sholovvo_app/features/profile/application/profile_photo_providers.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
-import 'package:sholovvo_app/features/profile/domain/photo_picker.dart';
 import 'package:sholovvo_app/features/profile/domain/profile_photo_storage.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/features/profile/presentation/profile_edit_screen.dart';
@@ -29,6 +29,7 @@ import 'package:sholovvo_app/features/profile/presentation/widgets/profile_detai
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_identity_card.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_photo_sheet.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_privacy_card.dart';
+import 'package:sholovvo_app/features/settings/presentation/settings_screen.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
 /// The signed-in donor's own profile: what others see, what only they see, and
@@ -263,7 +264,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.profileTitle),
+        // No back arrow: since Stage 7 this screen is a tab of the shell rather
+        // than a page pushed on top of the dashboard, so there is nothing behind
+        // it to go back to. Pushed screens still get theirs from the framework.
+        automaticallyImplyLeading: false,
         actions: <Widget>[
+          IconButton(
+            onPressed: () => unawaited(
+              Navigator.of(context).push(SettingsScreen.route(widget.user)),
+            ),
+            tooltip: l10n.settingsTitle,
+            icon: const Icon(Icons.settings_outlined),
+          ),
           // Creating the first profile and editing a later one are the same
           // form, so the action is enabled as soon as the screen knows whether a
           // document exists.

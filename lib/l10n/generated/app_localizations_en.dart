@@ -688,4 +688,241 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themeDark => 'Dark';
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsAccountSection => 'Account';
+
+  @override
+  String get settingsPreferencesSection => 'Preferences';
+
+  @override
+  String get settingsAppearanceBody =>
+      'Theme and language. Changes apply straight away.';
+
+  @override
+  String get settingsAboutSection => 'About';
+
+  @override
+  String get settingsBuildLabel => 'Build';
+
+  @override
+  String get settingsBuildDevelopment => 'Development';
+
+  @override
+  String get settingsBuildStaging => 'Staging';
+
+  @override
+  String get settingsBuildProduction => 'Production';
+
+  @override
+  String get settingsSignOutBody =>
+      'You will need your email and password to sign in again.';
+
+  @override
+  String get navHome => 'Home';
+
+  @override
+  String get feedTitle => 'Community';
+
+  @override
+  String get feedEmptyTitle => 'No posts yet';
+
+  @override
+  String get feedEmptyBody => 'When a donor shares an update, it appears here.';
+
+  @override
+  String get feedErrorTitle => 'The feed could not be loaded';
+
+  @override
+  String get feedRetry => 'Try again';
+
+  @override
+  String get feedLoadMore => 'Load more';
+
+  @override
+  String get feedEndOfFeed => 'You have reached the end of the feed';
+
+  @override
+  String get feedReadMore => 'Read more';
+
+  @override
+  String get feedShowLess => 'Show less';
+
+  @override
+  String get feedCopy => 'Copy text';
+
+  @override
+  String get feedCopied => 'Post text copied.';
+
+  @override
+  String get feedEdited => 'Edited';
+
+  @override
+  String get feedJustNow => 'Just now';
+
+  @override
+  String feedMinutesAgo(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString minutes ago',
+      one: '$countString minute ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String feedHoursAgo(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString hours ago',
+      one: '$countString hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String feedDaysAgo(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString days ago',
+      one: '$countString day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String feedOnDate(String date) {
+    return 'On $date';
+  }
+
+  @override
+  String feedLikeCount(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString likes',
+      one: '$countString like',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String feedCommentCount(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString comments',
+      one: '$countString comment',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get feedComposeAction => 'Share an update';
+
+  @override
+  String get feedComposeTitle => 'New post';
+
+  @override
+  String get feedComposeTextLabel => 'Your update';
+
+  @override
+  String get feedComposeTextHint =>
+      'Share news, a request, or a story from a blood drive.';
+
+  @override
+  String feedComposeLimit(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'Up to $countString characters';
+  }
+
+  @override
+  String get feedComposePhotosLabel => 'Photos';
+
+  @override
+  String get feedComposeAddPhoto => 'Add photo';
+
+  @override
+  String get feedComposeFromGallery => 'Choose from gallery';
+
+  @override
+  String get feedComposeFromCamera => 'Take a photo';
+
+  @override
+  String get feedComposeRemovePhoto => 'Remove photo';
+
+  @override
+  String get feedComposeUploading => 'Uploading your photo…';
+
+  @override
+  String get feedComposePublish => 'Publish';
+
+  @override
+  String get feedComposePublished => 'Your post is live.';
+
+  @override
+  String get feedComposePhotosNotConfigured =>
+      'Photo upload is not set up in this build yet.';
+
+  @override
+  String get feedComposeDiscardTitle => 'Discard this post?';
+
+  @override
+  String get feedComposeDiscardBody => 'Your text and photos will be deleted.';
+
+  @override
+  String get feedComposeDiscardConfirm => 'Discard';
+
+  @override
+  String get feedComposeKeepEditing => 'Keep editing';
+
+  @override
+  String get errorPostTextRequired => 'Write something before publishing';
+
+  @override
+  String errorPostTextTooLong(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'Keep your post under $countString characters';
+  }
+
+  @override
+  String errorPostTooManyImages(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'Attach up to $countString photos';
+  }
 }

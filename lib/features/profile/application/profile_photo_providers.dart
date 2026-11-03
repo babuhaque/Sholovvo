@@ -2,12 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/core/config/supabase_config.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/media/image_picker_photo_picker.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
+import 'package:sholovvo_app/core/media/photo_picker.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
-import 'package:sholovvo_app/features/profile/data/image_picker_photo_picker.dart';
 import 'package:sholovvo_app/features/profile/data/supabase_photo_storage.dart';
-import 'package:sholovvo_app/features/profile/domain/photo_picker.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 import 'package:sholovvo_app/features/profile/domain/profile_photo_storage.dart';
 
 /// The photo backend.

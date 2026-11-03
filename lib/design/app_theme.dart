@@ -102,6 +102,53 @@ abstract final class AppTheme {
         ),
       ),
       iconTheme: IconThemeData(color: palette.textSecondary),
+      // The shell's two navigation surfaces. Both sit on the raised surface with
+      // no elevation: on a cream page a shadowed bar reads as a second layer,
+      // and the brand tint already marks the selected destination.
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: palette.surface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: palette.brandTint,
+        elevation: 0,
+        iconTheme: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+          return IconThemeData(
+            size: 24,
+            color: states.contains(WidgetState.selected)
+                ? palette.brandInk
+                : palette.textSecondary,
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (Set<WidgetState> states) => TextStyle(
+            fontSize: 12,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w600
+                : FontWeight.w500,
+            color: states.contains(WidgetState.selected)
+                ? palette.brandInk
+                : palette.textSecondary,
+          ),
+        ),
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: palette.surface,
+        indicatorColor: palette.brandTint,
+        selectedIconTheme: IconThemeData(size: 24, color: palette.brandInk),
+        unselectedIconTheme: IconThemeData(
+          size: 24,
+          color: palette.textSecondary,
+        ),
+        selectedLabelTextStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: palette.brandInk,
+        ),
+        unselectedLabelTextStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: palette.textSecondary,
+        ),
+      ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         // Inverted against the page in both themes, so a toast reads as an

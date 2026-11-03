@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/core/result/result.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
 
 import '../../support/fake_photo_services.dart';
 
@@ -67,30 +67,37 @@ void main() {
       expect(photo.byteLength, 128);
     });
 
-    test('reports the extension and content type each format actually needs', () {
-      final Map<PhotoFormat, List<String>> expected = <PhotoFormat, List<String>>{
-        PhotoFormat.jpeg: <String>['image/jpeg', 'jpg'],
-        PhotoFormat.png: <String>['image/png', 'png'],
-        PhotoFormat.webp: <String>['image/webp', 'webp'],
-      };
+    test(
+      'reports the extension and content type each format actually needs',
+      () {
+        final Map<PhotoFormat, List<String>> expected =
+            <PhotoFormat, List<String>>{
+              PhotoFormat.jpeg: <String>['image/jpeg', 'jpg'],
+              PhotoFormat.png: <String>['image/png', 'png'],
+              PhotoFormat.webp: <String>['image/webp', 'webp'],
+            };
 
-      expected.forEach((PhotoFormat format, List<String> pair) {
-        expect(format.mimeType, pair[0]);
-        expect(format.extension, pair[1]);
-      });
-    });
+        expected.forEach((PhotoFormat format, List<String> pair) {
+          expect(format.mimeType, pair[0]);
+          expect(format.extension, pair[1]);
+        });
+      },
+    );
 
     test('an empty pick is refused before anything else is checked', () {
       expect(_issueOf(Uint8List(0)), PhotoIssue.empty);
     });
 
-    test('a file over the limit is refused, and the limit itself is allowed', () {
-      expect(_issueOf(jpegBytes(length: PhotoValidator.maxBytes)), isNull);
-      expect(
-        _issueOf(jpegBytes(length: PhotoValidator.maxBytes + 1)),
-        PhotoIssue.tooLarge,
-      );
-    });
+    test(
+      'a file over the limit is refused, and the limit itself is allowed',
+      () {
+        expect(_issueOf(jpegBytes(length: PhotoValidator.maxBytes)), isNull);
+        expect(
+          _issueOf(jpegBytes(length: PhotoValidator.maxBytes + 1)),
+          PhotoIssue.tooLarge,
+        );
+      },
+    );
 
     test('a file that is not one of the three formats is refused', () {
       expect(_issueOf(textBytes()), PhotoIssue.unsupportedType);

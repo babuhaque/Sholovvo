@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
-import 'package:sholovvo_app/features/profile/data/storage_error_mapper.dart';
-import 'package:sholovvo_app/features/profile/domain/profile_photo.dart';
+import 'package:sholovvo_app/core/error/storage_error_mapper.dart';
+import 'package:sholovvo_app/core/media/photo.dart';
 
 void main() {
   group('mapStorageErrorToFailure: identity problems', () {

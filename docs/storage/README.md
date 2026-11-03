@@ -1,15 +1,21 @@
-# Profile photos on Supabase Storage (Stage 6)
+# Supabase Storage: profile photos and post photographs
 
 Everything in this folder is **delivery material**. None of it has been applied,
 nothing in the repository runs it, and no Supabase project exists in this
 workspace yet. The app is built to work without it: when the build carries no
 Supabase defines, the photo sheet says *"Photo upload is not set up in this
-build yet."* and offers no control that could only fail.
+build yet."*, the compose screen says the same about photographs, and neither
+offers a control that could only fail.
 
-- `supabase-avatars.sql` — the bucket and the two storage policies.
+- `supabase-avatars.sql` — the `avatars` bucket and its two storage policies (Stage 6).
+- `supabase-post-images.sql` — the `post-images` bucket and its two storage policies (Stage 8.3).
 - This file — the order of operations, how to verify, and what is still unproven.
 
-## What the app does
+Both buckets belong in **one** Supabase project, because both depend on the same
+Firebase third-party auth integration. Step 2 below is the shared prerequisite;
+steps 3a and 3b are the two SQL files.
+
+## What the app does — profile photo
 
 | Step | Where | Effect |
 | --- | --- | --- |
@@ -26,6 +32,26 @@ Two ordering rules are the whole design and are covered by tests:
   A failed replacement leaves the profile exactly as it was.
 - **Removal:** clear the field → delete the object. The worst case is an orphaned
   object nobody links to, never a profile pointing at a missing file.
+
+## What the app does — post photographs
+
+| Step | Where | Effect |
+| --- | --- | --- |
+| Pick | `ImagePickerPhotoPicker` | The same adapter and the same 1024 px / quality 85 downscale as the avatar sheet |
+| Check | `PhotoValidator` | Same 5 MB cap, same magic-byte format sniffing, plus `PostValidator`'s four-image ceiling for the draft as a whole |
+| Upload | `SupabasePostImageStorage.upload` | `POST` to `post-images/{firebaseUid}/post-{millis}-{n}.{ext}` with the donor's **Firebase ID token** as the bearer |
+| Remove one | `ComposeController.removeImage` | The image leaves the draft immediately, then the object is deleted best-effort by **path** (`Post.imagePaths` is stored beside the URLs so nothing has to parse a URL) |
+| Publish | `FirestorePostRepository.publish` | One `posts` document create, after the text and the images have already been validated |
+| Abandon | `ComposeController.discard` | Every object the draft uploaded is deleted, because no document will ever own them |
+
+Two rules differ from the avatar flow and are covered by tests:
+
+- **Upload on pick, not on publish.** Four photographs in one request means one
+  opaque failure and no way to tell which file is stuck; uploading immediately
+  gives each photo its own outcome while the text stays editable.
+- **The draft owns its objects until a document does.** A publish that fails
+  leaves the photos in place so a retry is one tap; a draft that is thrown away
+  takes its objects with it.
 
 ## Order of operations
 
@@ -61,7 +87,7 @@ or project does not offer it, **stop here and report it** — the alternative
 moving to Supabase Auth) changes the authentication model and needs your
 decision. No workaround for this has been implemented.
 
-### 3. Apply the SQL
+### 3a. Apply the avatars SQL
 
 Paste `supabase-avatars.sql` into *SQL Editor* and run it. It creates:
 
@@ -74,6 +100,18 @@ Paste `supabase-avatars.sql` into *SQL Editor* and run it. It creates:
 donors see. It also means the image URL needs no Authorization header, which is
 what `Image.network` can actually send. Never store anything private in this
 bucket.
+
+### 3b. Apply the post images SQL
+
+Paste `supabase-post-images.sql` into the same project and run it. It creates:
+
+- bucket `post-images`: public read, 5 MB, `image/jpeg`, `image/png`, `image/webp`
+- the same two policies with `bucket_id = 'post-images'` in place of `'avatars'`
+- no update policy (a photograph is never overwritten), no select policy
+
+Skipping this step is safe and visible: the compose screen keeps working and
+reports that photographs are not set up, so a text-only post can still be
+published.
 
 ### 4. Build the app with the defines
 
@@ -111,6 +149,11 @@ configured".
 
    Expected: `403` with `new row violates row-level security policy`. The same
    call to the donor's own folder with a token-less request must also fail.
+6. Post photographs: open the **Feed**, tap **Compose**, attach two photos, then
+   publish. In *Storage → post-images* two objects should appear under
+   `{firebaseUid}/`, and the feed should show the new post at the top after the
+   snapshot confirms it. Attach a third photo and abandon the draft: a
+   confirmation appears, and after it the objects should be gone again.
 
 ### 6. What each failure looks like in the app
 
@@ -151,12 +194,21 @@ configured".
    `users/{uid}`; the current rules still do not validate its shape. That is the
    same gap Stage 5 listed for the future Security stage, and it was not changed
    here — rules were neither edited nor deployed.
+8. **Post images have the same two gaps, one per record.** `posts.imageUrls` and
+   `posts.imagePaths` are arrays of strings the rules do not inspect, and the
+   feed reads them on the assumption that a corrupt entry fails to load rather
+   than taking the screen with it. Deleting a post does not delete its
+   photographs, because the feed has no delete yet.
 
 ## Rolling back
 
 Only to remove the feature entirely (not to make an upload work):
 
 ```sql
+drop policy if exists "post-images: donor uploads into their own folder" on storage.objects;
+drop policy if exists "post-images: donor deletes from their own folder" on storage.objects;
+delete from storage.buckets where id = 'post-images'; -- empties the bucket as well
+
 drop policy if exists "avatars: donor uploads into their own folder" on storage.objects;
 drop policy if exists "avatars: donor deletes from their own folder" on storage.objects;
 delete from storage.buckets where id = 'avatars'; -- empties the bucket as well

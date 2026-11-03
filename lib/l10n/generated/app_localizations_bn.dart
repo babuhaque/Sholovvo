@@ -673,4 +673,212 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get themeDark => 'গাঢ়';
+
+  @override
+  String get settingsTitle => 'সেটিংস';
+
+  @override
+  String get settingsAccountSection => 'অ্যাকাউন্ট';
+
+  @override
+  String get settingsPreferencesSection => 'পছন্দসমূহ';
+
+  @override
+  String get settingsAppearanceBody =>
+      'থিম ও ভাষা। পরিবর্তন সঙ্গে সঙ্গে প্রযোজ্য হবে।';
+
+  @override
+  String get settingsAboutSection => 'অ্যাপ সম্পর্কে';
+
+  @override
+  String get settingsBuildLabel => 'বিল্ড';
+
+  @override
+  String get settingsBuildDevelopment => 'ডেভেলপমেন্ট';
+
+  @override
+  String get settingsBuildStaging => 'স্টেজিং';
+
+  @override
+  String get settingsBuildProduction => 'প্রোডাকশন';
+
+  @override
+  String get settingsSignOutBody =>
+      'আবার সাইন ইন করতে ইমেইল ও পাসওয়ার্ড লাগবে।';
+
+  @override
+  String get navHome => 'হোম';
+
+  @override
+  String get feedTitle => 'কমিউনিটি';
+
+  @override
+  String get feedEmptyTitle => 'এখনো কোনো পোস্ট নেই';
+
+  @override
+  String get feedEmptyBody =>
+      'কোনো রক্তদাতা কিছু শেয়ার করলে তা এখানে দেখা যাবে।';
+
+  @override
+  String get feedErrorTitle => 'ফিডটি লোড করা যায়নি';
+
+  @override
+  String get feedRetry => 'আবার চেষ্টা করুন';
+
+  @override
+  String get feedLoadMore => 'আরও দেখুন';
+
+  @override
+  String get feedEndOfFeed => 'সব পোস্ট দেখা হয়ে গেছে';
+
+  @override
+  String get feedReadMore => 'আরও পড়ুন';
+
+  @override
+  String get feedShowLess => 'কম দেখান';
+
+  @override
+  String get feedCopy => 'লেখাটি কপি করুন';
+
+  @override
+  String get feedCopied => 'পোস্টের লেখাটি কপি হয়েছে।';
+
+  @override
+  String get feedEdited => 'সম্পাদিত';
+
+  @override
+  String get feedJustNow => 'এইমাত্র';
+
+  @override
+  String feedMinutesAgo(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countString মিনিট আগে';
+  }
+
+  @override
+  String feedHoursAgo(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countString ঘণ্টা আগে';
+  }
+
+  @override
+  String feedDaysAgo(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countString দিন আগে';
+  }
+
+  @override
+  String feedOnDate(String date) {
+    return '$date তারিখে';
+  }
+
+  @override
+  String feedLikeCount(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countString লাইক';
+  }
+
+  @override
+  String feedCommentCount(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countString মন্তব্য';
+  }
+
+  @override
+  String get feedComposeAction => 'একটি আপডেট শেয়ার করুন';
+
+  @override
+  String get feedComposeTitle => 'নতুন পোস্ট';
+
+  @override
+  String get feedComposeTextLabel => 'আপনার আপডেট';
+
+  @override
+  String get feedComposeTextHint =>
+      'খবর, অনুরোধ, বা রক্তদান শিবিরের একটি গল্প শেয়ার করুন।';
+
+  @override
+  String feedComposeLimit(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'সর্বোচ্চ $countString অক্ষর';
+  }
+
+  @override
+  String get feedComposePhotosLabel => 'ছবি';
+
+  @override
+  String get feedComposeAddPhoto => 'ছবি যোগ করুন';
+
+  @override
+  String get feedComposeFromGallery => 'গ্যালারি থেকে বেছে নিন';
+
+  @override
+  String get feedComposeFromCamera => 'ছবি তুলুন';
+
+  @override
+  String get feedComposeRemovePhoto => 'ছবি সরান';
+
+  @override
+  String get feedComposeUploading => 'আপনার ছবি আপলোড হচ্ছে…';
+
+  @override
+  String get feedComposePublish => 'পোস্ট করুন';
+
+  @override
+  String get feedComposePublished => 'আপনার পোস্ট প্রকাশিত হয়েছে।';
+
+  @override
+  String get feedComposePhotosNotConfigured =>
+      'এই বিল্ডে ছবি আপলোড এখনো চালু হয়নি।';
+
+  @override
+  String get feedComposeDiscardTitle => 'এই পোস্টটি বাতিল করবেন?';
+
+  @override
+  String get feedComposeDiscardBody => 'আপনার লেখা ও ছবি মুছে যাবে।';
+
+  @override
+  String get feedComposeDiscardConfirm => 'বাতিল করুন';
+
+  @override
+  String get feedComposeKeepEditing => 'লেখা চালিয়ে যান';
+
+  @override
+  String get errorPostTextRequired => 'পোস্ট করার আগে কিছু লিখুন';
+
+  @override
+  String errorPostTextTooLong(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'আপনার পোস্ট $countString অক্ষরের কম রাখুন';
+  }
+
+  @override
+  String errorPostTooManyImages(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'সর্বোচ্চ $countStringটি ছবি যোগ করুন';
+  }
 }

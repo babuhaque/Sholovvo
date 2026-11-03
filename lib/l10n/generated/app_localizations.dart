@@ -1213,6 +1213,312 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dark'**
   String get themeDark;
+
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @settingsAccountSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get settingsAccountSection;
+
+  /// No description provided for @settingsPreferencesSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferences'**
+  String get settingsPreferencesSection;
+
+  /// No description provided for @settingsAppearanceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme and language. Changes apply straight away.'**
+  String get settingsAppearanceBody;
+
+  /// No description provided for @settingsAboutSection.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsAboutSection;
+
+  /// No description provided for @settingsBuildLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Build'**
+  String get settingsBuildLabel;
+
+  /// No description provided for @settingsBuildDevelopment.
+  ///
+  /// In en, this message translates to:
+  /// **'Development'**
+  String get settingsBuildDevelopment;
+
+  /// No description provided for @settingsBuildStaging.
+  ///
+  /// In en, this message translates to:
+  /// **'Staging'**
+  String get settingsBuildStaging;
+
+  /// No description provided for @settingsBuildProduction.
+  ///
+  /// In en, this message translates to:
+  /// **'Production'**
+  String get settingsBuildProduction;
+
+  /// No description provided for @settingsSignOutBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will need your email and password to sign in again.'**
+  String get settingsSignOutBody;
+
+  /// No description provided for @navHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get navHome;
+
+  /// No description provided for @feedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Community'**
+  String get feedTitle;
+
+  /// No description provided for @feedEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No posts yet'**
+  String get feedEmptyTitle;
+
+  /// No description provided for @feedEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'When a donor shares an update, it appears here.'**
+  String get feedEmptyBody;
+
+  /// No description provided for @feedErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The feed could not be loaded'**
+  String get feedErrorTitle;
+
+  /// No description provided for @feedRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get feedRetry;
+
+  /// No description provided for @feedLoadMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Load more'**
+  String get feedLoadMore;
+
+  /// No description provided for @feedEndOfFeed.
+  ///
+  /// In en, this message translates to:
+  /// **'You have reached the end of the feed'**
+  String get feedEndOfFeed;
+
+  /// No description provided for @feedReadMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Read more'**
+  String get feedReadMore;
+
+  /// No description provided for @feedShowLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Show less'**
+  String get feedShowLess;
+
+  /// No description provided for @feedCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy text'**
+  String get feedCopy;
+
+  /// No description provided for @feedCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Post text copied.'**
+  String get feedCopied;
+
+  /// No description provided for @feedEdited.
+  ///
+  /// In en, this message translates to:
+  /// **'Edited'**
+  String get feedEdited;
+
+  /// No description provided for @feedJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Just now'**
+  String get feedJustNow;
+
+  /// No description provided for @feedMinutesAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} minute ago} other{{count} minutes ago}}'**
+  String feedMinutesAgo(num count);
+
+  /// No description provided for @feedHoursAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} hour ago} other{{count} hours ago}}'**
+  String feedHoursAgo(num count);
+
+  /// No description provided for @feedDaysAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} day ago} other{{count} days ago}}'**
+  String feedDaysAgo(num count);
+
+  /// No description provided for @feedOnDate.
+  ///
+  /// In en, this message translates to:
+  /// **'On {date}'**
+  String feedOnDate(String date);
+
+  /// No description provided for @feedLikeCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} like} other{{count} likes}}'**
+  String feedLikeCount(num count);
+
+  /// No description provided for @feedCommentCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} comment} other{{count} comments}}'**
+  String feedCommentCount(num count);
+
+  /// No description provided for @feedComposeAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Share an update'**
+  String get feedComposeAction;
+
+  /// No description provided for @feedComposeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New post'**
+  String get feedComposeTitle;
+
+  /// No description provided for @feedComposeTextLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Your update'**
+  String get feedComposeTextLabel;
+
+  /// No description provided for @feedComposeTextHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Share news, a request, or a story from a blood drive.'**
+  String get feedComposeTextHint;
+
+  /// No description provided for @feedComposeLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to {count} characters'**
+  String feedComposeLimit(num count);
+
+  /// No description provided for @feedComposePhotosLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get feedComposePhotosLabel;
+
+  /// No description provided for @feedComposeAddPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Add photo'**
+  String get feedComposeAddPhoto;
+
+  /// No description provided for @feedComposeFromGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose from gallery'**
+  String get feedComposeFromGallery;
+
+  /// No description provided for @feedComposeFromCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get feedComposeFromCamera;
+
+  /// No description provided for @feedComposeRemovePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove photo'**
+  String get feedComposeRemovePhoto;
+
+  /// No description provided for @feedComposeUploading.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading your photo…'**
+  String get feedComposeUploading;
+
+  /// No description provided for @feedComposePublish.
+  ///
+  /// In en, this message translates to:
+  /// **'Publish'**
+  String get feedComposePublish;
+
+  /// No description provided for @feedComposePublished.
+  ///
+  /// In en, this message translates to:
+  /// **'Your post is live.'**
+  String get feedComposePublished;
+
+  /// No description provided for @feedComposePhotosNotConfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo upload is not set up in this build yet.'**
+  String get feedComposePhotosNotConfigured;
+
+  /// No description provided for @feedComposeDiscardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard this post?'**
+  String get feedComposeDiscardTitle;
+
+  /// No description provided for @feedComposeDiscardBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your text and photos will be deleted.'**
+  String get feedComposeDiscardBody;
+
+  /// No description provided for @feedComposeDiscardConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get feedComposeDiscardConfirm;
+
+  /// No description provided for @feedComposeKeepEditing.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get feedComposeKeepEditing;
+
+  /// No description provided for @errorPostTextRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Write something before publishing'**
+  String get errorPostTextRequired;
+
+  /// No description provided for @errorPostTextTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep your post under {count} characters'**
+  String errorPostTextTooLong(num count);
+
+  /// No description provided for @errorPostTooManyImages.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach up to {count} photos'**
+  String errorPostTooManyImages(num count);
 }
 
 class _AppLocalizationsDelegate

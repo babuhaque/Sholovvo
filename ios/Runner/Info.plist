@@ -28,11 +28,15 @@
 	<true/>
 	<!-- Stage 6: the profile photo picker. `image_picker` reads the library only
 	     when metadata is requested (this app passes requestFullMetadata: false),
-	     but App Store review requires the purpose string to exist regardless. -->
+	     but App Store review requires the purpose string to exist regardless.
+	     Stage 8.1 widened the wording: the same picker will choose post photos,
+	     so a string that promises only a profile picture would misdescribe the
+	     request the donor is being asked to approve. No new permission is
+	     requested and no behaviour changed. -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Solovvo uses your photo library so you can choose a profile picture.</string>
+	<string>Solovvo uses your photo library so you can choose a profile picture or a photo to share in a post.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Solovvo uses the camera so you can take a profile picture.</string>
+	<string>Solovvo uses the camera so you can take a profile picture or a photo to share in a post.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

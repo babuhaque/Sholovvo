@@ -46,6 +46,8 @@ lib/
     result/                     Result<T> sealed type
     logging/                    AppLogger
     firebase/                   Firebase initialisation + result type
+    media/                      photo picking + validation (size, MIME, magic
+                                bytes, metadata stripping) shared by features
     preferences/                persisted theme/language + their providers
   features/<feature>/
     domain/                     entities, repository interfaces, use cases
@@ -67,8 +69,10 @@ what is actually implemented.
 | `auth` | `domain`, `data`, `presentation`, `application` | `AuthUser`, `AuthRepository` interface, validators, `FirebaseAuthRepository`, error mapping, sign-in / register / reset / verification screens |
 | `splash` | `presentation` | 2 s brand reveal, no navigation of its own |
 | `welcome` | `presentation` | unauthenticated landing screen |
-| `home` | `domain`, `application`, `presentation` | authenticated dashboard: donor status strip, the two headline actions, nearby requests and community preview; every data surface reads a provider seam that is empty until its own stage lands |
+| `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, nearby requests and community preview; every data surface reads a provider seam that is empty until its own stage lands |
 | `profile` | `domain`, `data`, `application`, `presentation` | the signed-in donor's own profile: `UserProfile`, `DonationRecord`, validators, `FirestoreProfileRepository` over two documents, the profile screen and its edit form |
+| `feed` | `domain`, `data` | **Stage 8.1 only:** `Post`, `Comment`, `Report` entities with their validators and enums, and the pure `PostDocument` mapper. No repository, no provider, no screen, no network call |
+| `settings` | `presentation` | account summary, the appearance sheet, build information, sign-out |
 
 ## 3. State management
 
@@ -202,7 +206,8 @@ background, and a `backgroundColor: context.palette.surface` argument is resolve
 *once*, when the sheet opens. Anything colourful inside the sheet then follows a
 later theme switch while the card behind it does not. Sheets, dialogs and drawers
 take their surface from the relevant sub-theme in `AppTheme`
-(`bottomSheetTheme`, `dialogTheme`, …), which is rebuilt per palette.
+(`bottomSheetTheme`, `dialogTheme`, `navigationBarTheme`, …), which is rebuilt
+per palette.
 
 **Persistence** is `shared_preferences`, read once in `bootstrap()` before
 `runApp`, so the first painted frame is already in the saved theme and language.
@@ -235,15 +240,28 @@ and that widget — alone — decides which screen exists:
 splash (2 s reveal, or while the stored session resolves)
    ├── no session            → WelcomeScreen
    ├── session, unverified   → VerifyEmailScreen
-   └── session, verified     → HomeScreen
+   └── session, verified     → AppShell
 ```
+
+**The shell is not a route.** `AppShell` (`lib/app/app_shell.dart`) is the widget
+the gate builds for a verified session: an `IndexedStack` of two live tabs under a
+`NavigationBar`, or beside a `NavigationRail` at 720px and up, and each tab owns
+its own `Scaffold`. Which tab is showing is local `State`, not a route, so
+switching tabs cannot grow the stack, and a page pushed above the shell (the
+settings page, the profile form) returns to whichever tab was showing.
+
+`ShellTab` has exactly the members that have a live destination — there is no
+placeholder tab waiting for a later stage, for the same reason the dashboard's
+seams render empty rather than fake.
 
 Consequences, all deliberate:
 
 - **No screen navigates to a destination.** The four auth forms call
   `popUntil(route.isFirst)` on success and let the stream do the rest. Signing out,
   confirming an email, or a token revoking on the server all land the user in the
-  right place without any screen knowing about any other.
+  right place without any screen knowing about any other. The one place a screen
+  does pop on its own is `SettingsScreen` after a successful sign-out: a route
+  pushed **above** the gate survives the gate swapping the widget underneath it.
 - **The 2 s brand reveal always runs**, even when the session resolves from disk in
   20 ms, because the brief asks for it. The gate holds the splash rather than the
   splash holding the gate.
@@ -398,6 +416,29 @@ Carried deliberately, not forgotten:
     `docs/storage/`. The app is honest about it — with no `SUPABASE_*` defines the
     sheet says upload is not set up — but "tested against fakes" is not
     "verified", and the difference is recorded in `docs/PROJECT_STATE.md`.
+11. **The feed rules predate the feed design and are not approved** (Stage
+    8.1.1). `firestore.rules` has had `posts/{postId}`,
+    `posts/{postId}/comments/{commentId}` and `post_likes/{likeId}` since before
+    Stage 8, and none of them has been reviewed against §14. The post update
+    rule allows a singular `imageUrl` where the mapper writes `imageUrls` and
+    `imagePaths`; likes are a top-level `post_likes/{likeId}` collection with a
+    `userId` field, not the per-post subcollection the mapper names; create
+    permits a `donationRecordId` that `Post` does not model; no branch lets
+    `commentCount` change; and the post create rule checks no field shape at all.
+    `reports` has no rule. Stage 8.2 **reads** `posts` (§14.2); Stage 8.3
+    **creates** them (§14.3), so a donor now writes through a rule that only
+    checks `authorUid`. What the client guarantees instead is that a create
+    carries exactly the mapper's field set, validated before the network; what
+    the rules will guarantee once reconciled is that no *other* client can write
+    something this feed would refuse. §14.1 records the proposed canonical schema
+    and every Rules change it will need.
+12. **Post images have a bucket, a policy and a client, and none of them has
+    been applied** (Stage 8.3). `docs/storage/supabase-post-images.sql` creates
+    `post-images` and its two policies; `SupabasePostImageStorage` uploads into it
+    and deletes by path. Like the `avatars` bucket, it is delivery material: no
+    Supabase project exists in this workspace, so nothing has been exercised
+    against real storage and the app reports itself as unconfigured when the
+    `SUPABASE_*` defines are absent.
 
 ## 12. Profile data model and privacy (Stage 5)
 
@@ -531,4 +572,474 @@ no upload has run against real storage. Every claim above about storage
 behaviour is a test against a fake. "Known limitations" in
 `docs/storage/README.md` lists the gap first, and `docs/PROJECT_STATE.md`
 repeats it for this stage.
+
+## 14. Feed foundations (Stage 8.1)
+
+**Stage 8 is the social feed** — posts, comments, likes, saves, reports. The
+stage that used to sit in this slot, donor management and badges, is unscheduled
+rather than renumbered. Stage 8.1 delivers the feed's *foundations*: types, a
+mapper, and the refactors they need. It contains no reads, no writes, no
+provider, no screen and no sample data.
+
+### What exists, and what it refuses
+
+| Type | Fields | Refused because |
+| --- | --- | --- |
+| `Post` | `id`, `authorUid`, `authorName`, `authorPhotoUrl?`, `text`, `imageUrls`, `imagePaths`, `likeCount`, `commentCount`, `createdAt`, `updatedAt`, `editedAt?` | blank text, text over 2 000 characters, more than 4 images, more paths than URLs, a negative counter |
+| `Comment` | `id`, `authorUid`, `authorName`, `authorPhotoUrl?`, `text`, `parentId?`, `replyToName?`, `createdAt` | blank text, text over 500 characters, a reply with no parent |
+| `Report` | `id`, `reporterUid`, `target`, `targetId`, `targetAuthorUid`, `reason`, `note?`, `createdAt` | a missing reporter, target or target author; a note over 300 characters |
+
+Every rule is a pure `*Validator` returning a `*Issue` enum member, following the
+convention §4 sets for `AuthFieldIssue`: values travel between layers, and only
+the presentation layer turns one into a sentence. The entities wrap their image
+lists in `List.unmodifiable` in the constructor, so a `Post` that exists is a
+`Post` no caller can mutate behind another's back.
+
+Three absences are deliberate:
+
+- **No `postId` on `Comment`.** A comment lives at
+  `posts/{id}/comments/{id}`, so the parent post *is* its path. A copy in the
+  body could disagree with the address, and there is no rule that could stop it.
+- **No moderation status, and no follow graph.** Both were considered and left
+  out. A status field would imply an enforcement pipeline that Spark cannot run
+  (no Functions, §7), and a report is a signal a human reads in a later stage,
+  not a switch that hides a post. Following would need its own counters, rules
+  and query shapes, and nothing in Stage 8 reads it.
+- **No private profile fields.** A post carries the author's `uid`, display name
+  and photo URL — the three fields §12 marks as readable by any signed-in
+  account. Phone, street address, canonical area and blood group are never
+  copied into a post. A feed that leaked the area of a donor who publishes it
+  only for matching would undo Stage 5 in one query.
+
+### The author snapshot is a trade-off
+
+The name and photo on a post are a **snapshot taken at write time**, not a
+reference resolved at read time. The alternative — reading `users/{uid}` for
+every author of every card — costs one extra read per row on a Spark plan whose
+whole design (§12) is built around keeping reads proportional to what the donor
+is looking at. The price is staleness: a donor who changes their name or photo
+keeps the old one on posts they already wrote. That is accepted, and it is
+recorded in the entity's own documentation rather than left to be discovered.
+
+### The mapper
+
+`PostDocument` (`lib/features/feed/data/models/`) is a set of pure functions
+over plain maps, in the shape §12 established for the profile:
+
+| Direction | Behaviour |
+| --- | --- |
+| `toMap` | omits `id` (it is the document's address, so a field could disagree with it), writes `createdAt`/`updatedAt`/`editedAt` as `Timestamp.fromDate(…toUtc())`, writes the optional fields only when they are set, and always writes both image lists even when they are empty |
+| `fromMap` | returns `Result<Post>`: `ValidationFailure` whose `messageKey` is the `PostIssue` name, or a `Post` |
+
+The asymmetry in the image lists is the reason the shape is fixed: a key that is
+always present is a key a rule can require, whereas an absent one makes every
+rule test for absence too. It also means `0 images` reads back as `0 images`
+rather than as a missing field that might mean something else.
+
+`fromMap` never substitutes a value. Absent text is not an empty post, an
+unknown counter is not zero, and a malformed image list is not an empty one;
+each is refused with the issue that names the field. Anything the mapper does
+not recognise — a field a later stage adds — is ignored, because a reader that
+fails on unknown keys cannot survive being deployed before the writer. The
+debug message names the field's `runtimeType` and never its content: a
+malformed post must not put what a donor wrote into a log.
+
+The mapper is the only file in `lib/features/feed` that imports
+`cloud_firestore`, and it is in `data`, where §1 allows it. No repository, no
+data source and no provider exist yet.
+
+### The two refactors this stage needed
+
+Neither is feed code, and both had to happen before a feed feature could be
+built without copies:
+
+- **`lib/core/media/`.** `PhotoValidator`, `PhotoCandidate`, `PhotoFormat`,
+  `ValidatedPhoto`, `PhotoIssue` and `PhotoPicker` moved out of
+  `features/profile/domain`. The avatar-shaped parts stayed where they were:
+  `ProfilePhotoStorage` and `SupabasePhotoStorage` speak `uploadAvatar` and
+  build `{uid}/avatar-{millis}.{ext}`, which is not a shape a post image has.
+  The `image_picker` adapter moved too, which the brief did not name: leaving it
+  in `features/profile/data` would force the feed to import another feature's
+  data layer — an import across feature boundaries that §1's layering does not
+  allow — or to re-derive the same
+  `maxWidth`/`imageQuality`/`requestFullMetadata: false` arguments, and a
+  second copy of those is how EXIF location ends up in a post.
+- **`BloodGroupBadge` and `InitialsAvatar`.** Each existed twice after Stage 4
+  wrote private copies in the dashboard. Both now live in `design/widgets`
+  with an explicit variant — `pill`/`square`, `brand`/`muted` — because the two
+  appearances were both approved and neither is a mistake. The dashboard's
+  square 44 dp tile and its muted 40 dp disc are rendered by the shared widgets
+  at exactly those sizes, so this is a consolidation with no visual change.
+
+### What Stage 8.1 does not do
+
+Nothing reads or writes `posts`, `comments` or `reports`; there is no
+repository, no provider and no screen. Post images have no bucket and no client.
+Stage 8.2 — the read path — and the rules stage both remain pending.
+
+`firestore.rules` was **not modified** by Stage 8.1 or 8.1.1, but it is not empty
+on the feed: `posts/{postId}`, its nested `comments`, and a top-level
+`post_likes` block already exist. They were written before the feed was designed,
+they are **not approved** for it, and the schema has not been reconciled with
+them. `reports` has no rule. No Feed backend implementation has been authorised.
+§14.1 records the differences and the proposal.
+
+### 14.1 Proposed canonical schema (Stage 8.1.1 — proposed, not implemented)
+
+The rules, the entities and the mapper disagree with each other. Nothing in the
+table below has been applied to `firestore.rules` or to any Dart file; it is a
+decision record for the stage that reconciles them.
+
+| Concern | `firestore.rules` today | Stage 8.1 types | Proposed |
+| --- | --- | --- | --- |
+| Post fields | `authorUid` checked; every other field free | 9 required, plus `authorPhotoUrl` and `editedAt` | exactly the mapper's set, and nothing else |
+| Post images | update permits the singular `imageUrl` | `imageUrls` + `imagePaths`, 0–4, paths ≤ urls | keep both lists; `imageUrl` is deleted |
+| Comments | `posts/{id}/comments/{cid}`; create checks `authorUid` only; no update | `id`, `authorUid`, `authorName`, `authorPhotoUrl?`, `text`, `parentId?`, `replyToName?`, `createdAt` | same path and fields; rules gain the shape, text ≤ 500, `createdAt == request.time` |
+| Likes | `post_likes/{likeId}`, field `userId` | `posts/{postId}/likes` (a constant only) | `posts/{postId}/likes/{uid}` — the document id is the liker's uid |
+| Reports | no rule at all | `id`, `reporterUid`, `target`, `targetId`, `targetAuthorUid`, `reason`, `note?`, `createdAt` | new `reports/{reportId}`, create-only for the client |
+| Required vs allowed | no `hasAll`/`hasOnly` on post create | `PostDocument.requiredFields` | rules mirror that list on create |
+| Author identity | `authorUid == request.auth.uid` on create, immutable on update | `authorUid` plus name/photo snapshot | keep, and make the snapshot immutable on update too |
+| Timestamps | posts unconstrained; the other validated collections require `createdAt == request.time` | mapper writes a client `Timestamp.fromDate(now)` | server timestamps on write; the entity keeps the optimistic value |
+
+**Images: `imageUrls` + `imagePaths`, not `imageUrl`.** No client has ever
+written the singular field — it exists only in an update allow-list, so it is a
+field the update rule reserves and nothing produces. Two lists are needed for a
+second reason the singular field cannot express: a URL cannot be turned back into
+the storage object to delete it without parsing the URL, and the storage policies
+for post images will key on the path. The paired list is also what makes
+"delete an image from a post" possible without leaking the object.
+
+**Likes: a subcollection, not `post_likes`.** `post_likes/{likeId}` needs a
+chosen document id, a rule that binds that id to the caller — today's rule binds
+only the `userId` field, so the same person can like the same post twice under
+two ids — and a separate cleanup when a post is deleted. Three things that can
+each be got wrong. `posts/{postId}/likes/{uid}` makes a duplicate like
+impossible (the id is the uid), makes unliking a delete by address, and needs no
+`postId` or `userId` field at all, because the path already carries both. The
+card still reads the post's own `likeCount`, so the subcollection is addressed
+one document at a time and never counted. Firestore does not delete
+subcollections with their parent, so cleanup is a task either way — but this way
+it is a task with an addressable list rather than a query.
+
+**`donationRecordId`: drop it.** The rule accepts one and validates it deeply
+against `donation_history`, but no screen offers it, no entity models it and no
+design calls for it. A permissions rule for a field that cannot be written is a
+field waiting to be written by someone. If the badge/feed link is wanted later,
+it comes back as its own decision with its own test.
+
+**`commentCount` needs a path.** No branch of the post update rule allows
+`commentCount` to change, so a comment could be created and the count frozen
+forever. The proposal is the same `±1` shape the like counter already has, with
+the comment create and the counter increment committed together.
+
+**Rules changes this will need** — all of them later, in the rules stage, none
+of them now: the post create rule gains `hasAll`/`hasOnly`, text size and image
+count checks; the post update rule swaps `imageUrl` for `imageUrls`,
+`imagePaths`, `editedAt`, `updatedAt` and `commentCount`; `post_likes` is
+replaced by the subcollection rules (which also removes a top-level collection
+that nothing else references); `comments` gains a create shape and keeps its
+current no-update stance; and `reports` is written from scratch, create-only.
+
+## 14.2 The feed read path (Stage 8.2)
+
+The feed is now **readable and still not writable**. One screen, one repository,
+one provider, one query; no create, edit, delete, like, save, comment, report,
+upload or transaction anywhere in `lib/features/feed`. Nothing in
+`firestore.rules`, `firebase.json`, `.firebaserc`, the Firestore indexes or any
+Supabase setting was touched, and nothing was deployed.
+
+It was built against §14.1 as approved: `imageUrls` + `imagePaths`,
+`posts/{postId}/likes/{uid}` as the future likes path (declared as a constant,
+never addressed), `donationRecordId` not modelled. §14.1's table is still a
+proposal with respect to the rules, and this stage did not move it.
+
+### The layers
+
+| Layer | File | Job |
+| --- | --- | --- |
+| `domain` | `feed_page.dart` | `FeedCursor` (an empty interface), `FeedPage` — posts, cursor, `hasMore`, `skipped` |
+| `domain` | `feed_repository.dart` | the port: `pageSize = 10` and one method, `loadPage({after})` |
+| `data` | `feed_documents.dart` | the transport seam: `FeedDocument` (id, fields, cursor) over `FeedDocuments.fetch({limit, after})` |
+| `data` | `firestore_feed_documents.dart` | the only class holding a `Query`; `SnapshotCursor` lives here |
+| `data` | `firestore_feed_repository.dart` | assembles a page: over-fetch by one, map, count refusals, cut the window |
+| `application` | `feed_state.dart`, `feed_providers.dart` | `FeedState`, `FeedController`, `feedRepositoryProvider` |
+| `presentation` | `feed_screen.dart`, `widgets/feed_post_tile.dart`, `expandable_post_text.dart`, `feed_messages.dart` | the screen, one card, the six-line clamp, and the copy mapping |
+
+The split between the two `data` files is what makes the read path testable
+without an emulator: `FeedDocuments` is four members wide, so a fake can answer
+with exactly the documents a test wants to describe, while the query itself
+stays in one file that a reader can check against the rules in a minute.
+
+### The query, and the cursor
+
+```
+posts
+  .orderBy('createdAt', descending: true)
+  .limit(pageSize + 1)
+  .startAfterDocument(lastSnapshot)   // every page after the first
+```
+
+- **`createdAt` descending** is the only `orderBy` and there is no `where`, which
+  is why no composite index is needed: Firestore indexes single fields
+  automatically, and a composite index only becomes necessary when a filter and
+  a sort disagree. There is no `firestore.indexes.json` in this repository and
+  this stage did not create one.
+- **`limit(pageSize + 1)`** answers `hasMore` exactly rather than by guessing
+  from a page that happens to be full. The extra document is never mapped and
+  never drawn: the window is cut back to `pageSize`, so a page of exactly ten
+  does not advertise an eleventh page that does not exist.
+- **The cursor is the last kept `DocumentSnapshot`**, not an offset and not a
+  field value. A post published between two reads therefore cannot shift the
+  window — offsets skip and duplicate rows when the list grows from the front,
+  which is exactly where a feed grows. `SnapshotCursor` is opaque outside
+  `data`: `FeedCursor` is an empty interface, so `domain` and `application`
+  pass a cursor around without importing Firestore.
+- **A cursor from another producer is refused** with `ValidationFailure` rather
+  than coerced into a query, because paging from a foreign snapshot would
+  silently return whatever happens to sort after it.
+- **No snapshot listener.** `get()` once per page. A realtime feed would bill
+  every open screen for every post anyone publishes.
+
+One page costs at most eleven document reads. Ten pages cost 110 plus their
+round trips; nothing in the feature asks for the whole collection.
+
+### Malformed documents, and why they are counted
+
+Each document goes through `PostDocument.fromMap`. One that fails validation is
+dropped and counted into `FeedPage.skipped` rather than replacing the page with
+an error: one post written by a future version of the app, or by a console user,
+should not empty a donor's feed. The count is asserted by tests and is the
+number that tells a debugger whether the schema has drifted. No document's
+content reaches a debug message.
+
+### The controller: one read at a time
+
+`FeedController` is a `Notifier<FeedState>` with three operations and one flag.
+
+- `loadFirstPage()` replaces the list. It is what the screen calls on mount,
+  what **Try again** calls after a fatal failure, and what the pull gesture
+  calls. `refresh()` is the same request under the name the gesture uses, so
+  there is one code path and no way for a refresh to forget to reset the cursor.
+- `loadMore()` is the only operation that consumes the cursor, and it returns
+  immediately when `hasMore` is false or the cursor is null.
+- **`_fetching`** refuses a second read while one is in flight. A
+  pull-to-refresh landing on a page-in-flight would write two halves of different
+  windows into one list, and a second tap on **Load more** would pay for the same
+  page twice. The flag is checked in the controller rather than by disabling a
+  button because the refresh is a gesture, not a button.
+- **A refresh does not blank the list.** With posts on screen the status stays
+  `ready` while the read runs; a spinner over an empty list is a worse answer
+  than one more second of stale-but-true posts.
+- **A failure keeps what is true.** A failed first page is `FeedStatus.failure`
+  and fatal — the screen offers a retry. A failed `loadMore` or refresh keeps the
+  posts, the cursor and `hasMore`, and surfaces the `Failure` so the screen can
+  show a banner above a list that is still readable. The retry re-asks the same
+  cursor rather than skipping the page it failed to read.
+- **Duplicates are not appended.** A document rewritten with a new `createdAt`
+  can legitimately appear in two windows; a feed that shows the same post twice
+  looks broken even when the database agreed, so `_append` dedupes by id.
+
+### The screen
+
+| Concern | Decision |
+| --- | --- |
+| Measure | 560 dp narrow, 900 dp wide, switching at 720 — the same breakpoint `HomeScreen` uses, so a tablet does not change column count between the dashboard and the feed |
+| Centring | calculated side padding on a `SliverPadding`, not a `ConstrainedBox`, so a narrow window keeps the 24 dp gutter and a wide one centres rather than stretching |
+| Refresh | `RefreshIndicator` over a `CustomScrollView` with `AlwaysScrollableScrollPhysics`, so the gesture works on an empty or failing feed too |
+| Paging | an explicit **Load more** button, not scroll-triggered paging. Every automatic trigger is a read the donor did not ask for, and on the Spark plan a mis-measured viewport can spend a page per frame |
+| End of list | "You have reached the end of the feed" only after a second page has been drawn; a single short page is obviously the end and a label under it is noise |
+| Text | `ExpandablePostText` measures with a `TextPainter` (same style, same scaler, same width) and offers **Read more** only when six lines are actually exceeded — not for a short post, and not at an unbounded width where the measurement would be meaningless |
+| Images | up to four from `imageUrls`, one wide when alone and a two-column grid otherwise, each with `errorBuilder` and `loadingBuilder` so a missing object is a broken-image glyph rather than a failed layout. The draw is capped at 300 dp: at the 900 dp measure an uncapped cell was over 400 dp tall |
+| Empty and error states | `EmptyStateCard` centred in the remaining height — which needed `mainAxisSize: MainAxisSize.min` on its text column, because the default stretched the card to the whole viewport inside `SliverFillRemaining` |
+| Counters | `likeCount` and `commentCount` are read from the post document and displayed read-only. No subcollection is read, and no counter is tappable |
+| Copy | copies the post's text to the clipboard and says so. There is no share sheet and no invented URL: a post has no public address |
+| Errors | `feedFailureMessage` maps all nine `Failure` types to copy — a `PermissionFailure` says permission, not "no connection", because sending a donor to check their network when the rules said no is the wrong fix |
+| Time | relative to the minute, hour and day, then a calendar date after `feedCalendarAfterDays` (7). The `now` is injectable, so the boundaries are asserted rather than observed |
+
+The screen shows one of four exclusive states: a first-load spinner, a fatal
+error card with **Try again**, an empty card, or the list. `pumpAndSettle` is
+unusable in its tests for the same reason as everywhere else in this app — the
+soft glow animates forever — so the widget tests pump explicit frames.
+
+Five renders of these states are in `docs/visuals/stage8/`, produced by the
+`SOLOVVO_VISUAL_REVIEW=1` harness rather than by a browser. They are what caught
+the stretched empty card and the uncapped picture height; the assertions above
+could confirm the text and the picture count but not how tall anything was.
+
+### Read access: the audit, and the result
+
+`firestore.rules` grants `allow read: if request.auth != null` on
+`/posts/{postId}`. That rule has no field condition and no per-document shape
+requirement, so it covers a **list** query over the collection as well as a
+direct `get`, and the query above needed nothing added to satisfy it. The
+repository checks `FirebaseAuth.currentUser` first so a missing session is
+reported as `AuthFailure` rather than as the `permission-denied` the rules would
+eventually send. No rule was edited and none was worked around.
+
+What the rules still do not allow is a **write** that matches §14.1, and that is
+unchanged by this stage: a post with `imageUrls` still cannot be corrected under
+the current update rule, `commentCount` still cannot move, and `reports` still
+has no rule. Reading a document the rules permit is not an endorsement of the
+shape it is written in — which is why this stage draws counts and never touches
+them.
+
+### Navigation
+
+Stage 7's two-tab shell is intact: `ShellTab` still has `home` and `profile`, and
+the feed is a pushed route (`FeedScreen.route()`, a `FadeSlidePageRoute`) above
+the shell rather than a third tab. The dashboard's community **See all** is the
+route in. It keeps the rule the requests section already had — no "See all"
+over an empty list, because that is a link to nothing — so the button appears
+exactly when the preview has a post in it.
+
+## 14.3 Compose and publish (Stage 8.3)
+
+The feed can now be written to. One screen, one controller, two new ports and one
+new storage adapter; a post is text plus up to four photographs, and it is the
+only thing this stage creates. No like, no comment, no save, no report, no edit,
+no delete and no share. `firestore.rules` was **not modified** — the existing
+create rule (`authorUid == request.auth.uid`) already permits exactly the write
+this stage makes, and §14.1's reconciliation is still the rules stage's work.
+
+### Two ports, not one
+
+| Port | Layer | Methods | Implemented by |
+| --- | --- | --- | --- |
+| `PostRepository` | `domain/post_repository.dart` | `publish(PostDraft) → Result<Post>` | `FirestorePostRepository` |
+| `PostImageStorage` | `domain/post_image_storage.dart` | `isConfigured`, `upload(ValidatedPhoto)`, `remove(objectPath)` | `SupabasePostImageStorage` |
+| `PostWriter` | `data/post_writer.dart` | `authorUid`, `newPostId()`, `createPost(id, fields)` | `FirestorePostWriter` |
+
+The write port is deliberately **not** a method on `FeedRepository`. Folding it
+in would give both existing read implementations — `FakeFeedRepository` in the
+test support and the scripted fake inside `feed_controller_test.dart` — a method
+that can only throw, and a test double with a live landmine is worse than a
+second interface. `FeedRepository` therefore stays one method wide and read-only.
+
+`PostWriter` exists so `FirestorePostRepository` holds **no Firebase type at
+all**. The uid comes off the port (`String? get authorUid`) rather than off a
+`FirebaseAuth` constructor argument, which is what makes the publish logic
+unit-testable: `FirebaseAuth` cannot be faked, so a repository that took one
+could only be exercised through an app. The read side earned its testability the
+same way, with `FeedDocuments`.
+
+### The draft, and what it does not carry
+
+`PostDraft` is `author` (a `PostAuthor` snapshot of name and photo URL), trimmed
+text and the uploaded `StoredPostImage`s. It carries **no uid**: the repository
+reads the author from the session, because `firestore.rules` compares
+`authorUid` to `request.auth.uid` and a form that could choose the value would be
+a form that can only produce a denied write. `PostAuthor.unknown()` is what a
+donor with no profile document yet posts under — a name is not a precondition
+for asking for blood.
+
+The snapshot is the trade-off §14.1 already recorded: the document repeats the
+author's name and photo as they were at publish time, so the feed costs no extra
+reads and a renamed donor keeps the old name on old posts.
+
+`PostDraft.issue` re-runs `PostValidator` — the same rules the mapper applies on
+read — before any network call, so an unpublishable draft is refused locally and
+costs no quota. The rules stage will enforce the same limits server-side; this is
+the client half of a two-place check, and the bucket's own size and mime limits
+are the third.
+
+### The write
+
+```
+posts/{id}.set({ ...9 fields, createdAt/updatedAt: serverTimestamp })
+```
+
+- **`set` on a pre-allocated id, not `add`.** `newPostId()` is `collection.doc().id`,
+  so the repository can return a fully-formed `Post` — including its address —
+  without a second read. `add` is the same single write but hands the id back
+  only afterwards, and then either the returned entity or the drawn card would
+  need a placeholder id.
+- **The document is stamped by the server, the entity by the client.**
+  `PostDocument.toCreateMap` writes `FieldValue.serverTimestamp()` for
+  `createdAt` and `updatedAt` and drops `editedAt`; the returned `Post` carries
+  the client clock so the card that is prepended has a time to render. The two
+  disagree by the round trip, and the disagreement is bounded and harmless — the
+  next page read replaces the optimistic value with the stored one.
+- **A failed write returns the failure and drops the entity.** A post that is not
+  in the database must never appear in a feed as though it were.
+
+### Photographs: upload on pick
+
+The single most consequential decision in the stage is *when* the upload
+happens.
+
+- **Upload on pick**, not on publish. Four photographs in one request means one
+  opaque result for four files: a donor cannot tell which one is stuck, and the
+  publish button stays busy for as long as the slowest object. Uploading as each
+  photo is chosen gives every file its own outcome while the text is still
+  editable, and it makes the publish a single small document write.
+- **The path is `{uid}/post-{millis}-{n}.{ext}`.** The sequence number
+  distinguishes four photos picked inside one millisecond, so an upload can never
+  overwrite a previous one — which is also why every URL is immutable and may be
+  cached for a year. One folder level, because the bucket policy checks
+  `array_length(storage.foldername(name), 1) = 1` against the token's `sub`.
+- **Removal names the path, not the URL.** `Post.imagePaths` is stored beside
+  `Post.imageUrls` for exactly this: cleaning up never has to parse a URL and
+  guess. `SupabasePostImageStorage.ownPath` still refuses anything whose first
+  segment is not the caller's uid, so a corrupt document cannot become a delete
+  aimed at somebody else's photograph.
+- **Removing a photo from the form** empties the slot first and deletes the
+  object best-effort. A delete that fails is logged, not shown: the sentence
+  would describe a file that is no longer on screen.
+- **Abandoning the draft deletes its objects.** Confirming the discard prompt
+  calls `ComposeController.discard()`, which empties the state and then removes
+  every uploaded path. Without it each abandoned compose would leave up to four
+  objects nothing names — the free tier counts bytes, not intentions.
+- **No bucket configured means no photo control**, not a control that fails on
+  tap. The screen swaps the grid for one sentence saying upload is not set up,
+  and the text half of the form still publishes. That is the same honest state
+  the avatar sheet shows.
+
+### The controller
+
+`ComposeController` is a `Notifier<ComposeState>` living beside its providers in
+`compose_providers.dart` — one file rather than two, because a separate
+controller file would have to import the providers that import it.
+
+- **One operation at a time.** A single `_busy` flag guards the whole flow, not
+  one flag per method. The gaps are what matter: the picker is awaited before any
+  state changes, so two fast taps on the add tile would otherwise open two
+  pickers and race two uploads into the same four slots.
+- **A cancelled pick is silence.** `PhotoPicker` reports a cancel as a successful
+  `null` and the controller returns without touching the state — a donor who
+  changed their mind is not an error.
+- **A failed publish keeps the draft.** Text, images and the `Failure` all
+  survive, so the retry is one tap rather than a retyped post.
+- **A successful publish resets the form before returning.** The screen pops
+  immediately afterwards; a draft left behind would let a back-navigation
+  publish the same post twice.
+- **The published post is prepended to the feed**, via a new
+  `FeedController.prepend(post)`, rather than triggering a refresh the donor did
+  not ask for. It is a no-op when the feed has not loaded — that feed will pick
+  the post up in its own first page — and it dedupes by id, because the same
+  document can arrive twice if a read lands between the write and the prepend.
+
+### The screen
+
+| Concern | Decision |
+| --- | --- |
+| Entry | `FloatingActionButton.extended` on the feed. Not a `SolovvoButton` in the FAB slot: an `Align` under bounded constraints stretches to full width, so `expand: false` would not have been false. The list's bottom padding grew by `huge + xl` so the last card clears it |
+| Measure | 560 dp — the same column the feed and the profile editor use |
+| Fields | text (6 lines, `feedComposeLimit(2000)` as helper text) and a 2×2 image grid that always shows four cells, so the ceiling is visible rather than discovered |
+| Live validation | only `textTooLong` is shown as the donor types. An empty box is not an error yet — a disabled publish button already says so |
+| Publish | disabled while the draft has an issue **or** anything is in flight, including an upload: publishing past a photo still in the air would write a document that is missing it |
+| Leaving | `PopScope(canPop: !isDirty)` plus a discard dialog. An untouched form closes immediately; a dirty one asks. The confirmed discard pops imperatively, because a `canPop: false` guard would otherwise refuse the pop that the donor just agreed to |
+| Errors | `composeFailureMessage` maps the `Failure` types; a `ValidationFailure` is resolved against the photo issues first and the post issues second, because both validators can produce one |
+| Copy | one feed-local photo-source sheet and one feed-local `photoIssueMessage`, duplicating the profile's. Presentation is per feature: importing another feature's `presentation` is the one direction §1 forbids outright |
+
+The confirmation snackbar is shown through the app's `ScaffoldMessenger` before
+the pop, so it survives the route and lands on the feed the donor returns to.
+
+### What this stage does not do
+
+No like, comment, save, report, edit, delete or share. No draft persistence
+across app launches. No post-images upload in the feed's own card path. No
+change to `firestore.rules`, `firebase.json`, `firestore.indexes.json` or any
+Supabase setting, and nothing deployed. The SQL in `docs/storage/` is delivered
+and unapplied, so every claim above about storage behaviour is a test against a
+fake — the gap §11 item 12 records and `docs/storage/README.md` repeats.
 
