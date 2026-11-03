@@ -155,20 +155,23 @@ configured".
 
    Expected: `403` with `new row violates row-level security policy`. The same
    call to the donor's own folder with a token-less request must also fail.
-6. Post photographs: open the **Feed**, tap **Compose**, attach two photos, then
-   publish. Read the reachability note below before attempting this step.
-   In *Storage → post-images* two objects should appear under
+6. Post photographs: on the dashboard, open **From the community** (any of its
+   controls lead to the same page), tap **Share an update**, attach two photos,
+   then publish. In *Storage → post-images* two objects should appear under
    `{firebaseUid}/`, and the feed should show the new post at the top after the
    snapshot confirms it. Attach a third photo and abandon the draft: a
    confirmation appears, and after it the objects should be gone again.
 
-   **The Feed is not currently reachable through normal navigation.**
-   `feedPreviewProvider` returns an empty list and the dashboard hides its
-   *See all* action, so there is no in-app path from the shell to
-   `ComposePostScreen` (recorded as a defect and an outstanding task in
-   `docs/PROJECT_STATE.md`, Stage 8.3). This step is therefore not executable as
-   written on a stock build; it needs either the navigation gap closed or a
-   temporary route added for the review, and neither has been done.
+   (An earlier revision of this step said the Feed was unreachable from normal
+   navigation and that this check therefore needed a temporary route. That was
+   wrong on both counts — the dashboard's *From the community* section reads the
+   feed's own controller on mount and every control in it opens `FeedScreen`,
+   whose labelled **Share an update** button pushes `ComposePostScreen`. The gap
+   this note described was closed with that navigation, not worked around.)
+
+   What the dashboard still does not have is a destination for one post — there
+   is no per-post screen, and nearby requests are not wired — so neither is
+   exercisable here. Both are Stage 9 work, not storage work.
 
 ### 6. What each failure looks like in the app
 

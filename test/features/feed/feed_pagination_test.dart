@@ -585,33 +585,36 @@ void main() {
       expect(state.isUnreadableResult, isTrue);
     });
 
-    test("adds a later page's refusals to the ones already on screen", () async {
-      final harness = _real(<FeedDocument>[
-        ..._unreadable(3),
-        ..._readable(7, from: 4),
-        ..._unreadable(2, from: 11),
-        ..._readable(1, from: 13),
-      ]);
-      final ProviderContainer container = _container(harness.repository);
-      final FeedController controller = container.read(
-        feedControllerProvider.notifier,
-      );
+    test(
+      "adds a later page's refusals to the ones already on screen",
+      () async {
+        final harness = _real(<FeedDocument>[
+          ..._unreadable(3),
+          ..._readable(7, from: 4),
+          ..._unreadable(2, from: 11),
+          ..._readable(1, from: 13),
+        ]);
+        final ProviderContainer container = _container(harness.repository);
+        final FeedController controller = container.read(
+          feedControllerProvider.notifier,
+        );
 
-      await controller.loadFirstPage();
+        await controller.loadFirstPage();
 
-      // The first window mixed three refused documents with seven readable ones,
-      // so the list is short without being empty and the count belongs to it.
-      expect(container.read(feedControllerProvider).posts, hasLength(7));
-      expect(container.read(feedControllerProvider).skipped, 3);
+        // The first window mixed three refused documents with seven readable ones,
+        // so the list is short without being empty and the count belongs to it.
+        expect(container.read(feedControllerProvider).posts, hasLength(7));
+        expect(container.read(feedControllerProvider).skipped, 3);
 
-      await controller.loadMore();
+        await controller.loadMore();
 
-      expect(container.read(feedControllerProvider).posts, hasLength(8));
-      // Two more refused on the second page, on top of the three already counted
-      // — not replacing them, because those three are still missing from the
-      // same list the donor is looking at.
-      expect(container.read(feedControllerProvider).skipped, 5);
-    });
+        expect(container.read(feedControllerProvider).posts, hasLength(8));
+        // Two more refused on the second page, on top of the three already counted
+        // — not replacing them, because those three are still missing from the
+        // same list the donor is looking at.
+        expect(container.read(feedControllerProvider).skipped, 5);
+      },
+    );
 
     test('survives a later failure that keeps the list on screen', () async {
       final _ScriptedPages scripted = _ScriptedPages(<Object>[

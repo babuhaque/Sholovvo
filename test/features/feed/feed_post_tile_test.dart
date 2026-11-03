@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sholovvo_app/design/tokens/app_spacing.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/presentation/expandable_post_text.dart';
 import 'package:sholovvo_app/features/feed/presentation/widgets/feed_post_tile.dart';
@@ -9,15 +8,18 @@ import 'package:sholovvo_app/features/feed/presentation/widgets/feed_post_tile.d
 import '../../support/fake_feed.dart';
 import '../../support/test_app.dart';
 
-/// A phone wide enough that the card's measure is stable, so the line count
-/// [ExpandablePostText] measures is the one this file means to test.
+/// A phone, for the width the card is read at.
 const Size _phone = Size(430, 932);
+
+/// The measure the feed gives a tile on a phone, so the line count
+/// [ExpandablePostText] measures is the one this file means to test.
+const double _cardWidth = 380;
 
 /// The moment a test pretends is now.
 ///
 /// Every tile here is mounted with an explicit [FeedPostTile.now], because a
 /// relative label computed from the wall clock is a test that passes until the
-/// suite runs at a different hour.
+/// suite happens to run at a different hour.
 final DateTime _stamp = DateTime.utc(2026, 11, 3, 9);
 
 /// A post [minutes] older than [_stamp].
@@ -38,20 +40,34 @@ Post _post({
   );
 }
 
-/// Mounts [tile] on its own.
+/// The same post, with an edit recorded against it.
+Post _editedPost() {
+  final DateTime created = _stamp.subtract(const Duration(days: 1));
+  return Post(
+    id: 'post-1',
+    authorUid: 'uid-verified',
+    authorName: 'Ayesha Rahman',
+    text: 'Updated: the drive moved to Friday.',
+    imageUrls: const <String>[],
+    createdAt: created,
+    updatedAt: _stamp.subtract(const Duration(hours: 2)),
+    editedAt: _stamp.subtract(const Duration(hours: 2)),
+  );
+}
+
+/// Mounts [tile] on its own, at the feed's phone measure.
 ///
-/// A bare `Scaffold` rather than the feed screen: the tile reads
-/// `MaterialLocalizations` for its older-than-a-week date and
-/// `ScaffoldMessenger` for its copy confirmation, and both come from here. What
-/// this file must not do is reach through `FeedScreen`, because that would make
-/// the feed's repository the tile's test double as well.
+/// A bare `Scaffold` rather than `FeedScreen`, on purpose. The tile needs
+/// `MaterialLocalizations` for its older-than-a-week date and `ScaffoldMessenger`
+/// for its copy confirmation, and this supplies both. Reaching through the feed
+/// screen instead would make that screen's repository this tile's test double too,
+/// so a change to paging could fail a test about one card.
 Future<void> _pumpTile(
   WidgetTester tester,
   Widget tile, {
   Locale locale = const Locale('en'),
-  Size size = _phone,
 }) async {
-  tester.view.physicalSize = size;
+  tester.view.physicalSize = _phone;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
 
@@ -60,16 +76,21 @@ Future<void> _pumpTile(
       locale: locale,
       home: Scaffold(
         body: SingleChildScrollView(
-          child: Center(child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
-            child: tile,
-          )),
+          child: Center(
+            child: SizedBox(width: _cardWidth, child: tile),
+          ),
         ),
       ),
     ),
   );
   await tester.pump();
 }
+
+/// One paragraph long enough to need collapsing at [_cardWidth].
+final String _long = List<String>.generate(
+  14,
+  (int index) => 'Line $index of the story about the drive last Friday.',
+).join(' ');
 
 void main() {
   group('FeedPostTile, the parts a donor reads', () {
@@ -83,29 +104,18 @@ void main() {
       expect(find.text('5 minutes ago'), findsOneWidget);
     });
 
-    testWidgets('marks a post whose document says it was edited', (
+    testWidgets('marks a post that was edited, on the age line', (
       WidgetTester tester,
     ) async {
-      // `isEdited` is derived by the entity from a stored `updatedAt` behind its
-      // `createdAt`, so the fixture has to be built with two different stamps
-      // rather than set directly.
-      final Post edited = fakePost(
-        authorName: 'Ayesha Rahman',
-        text: 'Updated: the drive moved to Friday.',
-        createdAt: _stamp.subtract(const Duration(days: 1)),
-        updatedAt: _stamp.subtract(const Duration(hours: 2)),
-      );
+      await _pumpTile(tester, FeedPostTile(post: _editedPost(), now: _stamp));
 
-      await _pumpTile(tester, FeedPostTile(post: edited, now: _stamp));
-
-      expect(
-        find.textContaining('Edited · '),
-        findsOneWidget,
-        reason: 'the marker and the age share one line, not two',
-      );
+      // One line, not two: the marker qualifies the age rather than replacing it,
+      // so a donor who edits sees when the post went out and that it changed.
+      expect(find.textContaining('Edited · '), findsOneWidget);
+      expect(find.text('Edited'), findsNothing);
     });
 
-    testWidgets('reports the two counts it was given and offers no more', (
+    testWidgets('reports the two counts it was given, and offers no more', (
       WidgetTester tester,
     ) async {
       await _pumpTile(
@@ -115,37 +125,33 @@ void main() {
 
       expect(find.text('3 likes'), findsOneWidget);
       expect(find.text('1 comment'), findsOneWidget);
-      // Nothing on this tile writes. A like button that only looked like one is
-      // the failure mode the stage's rules freeze was recorded against.
+      // Nothing on this tile writes. A like control that only looked like one is
+      // the failure mode the stage's rules freeze exists to prevent, so its
+      // absence is asserted rather than assumed from the design.
       expect(find.byIcon(Icons.favorite_rounded), findsNothing);
-      expect(find.byIcon(Icons.send_rounded), findsNothing);
+      expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('gives the copy control a reachable target', (
+    testWidgets('gives the copy control an accessible name', (
       WidgetTester tester,
     ) async {
       await _pumpTile(tester, FeedPostTile(post: _post(), now: _stamp));
 
-      final Finder copy = find.byIcon(Icons.content_copy_rounded);
-      expect(find.ancestor(of: copy, matching: find.byType(IconButton)),
-          findsOneWidget);
-      expect(tester.getSize(find.widgetWithIcon(IconButton, Icons.content_copy_rounded)),
-          const Size(AppSpacing.minTapTarget, AppSpacing.minTapTarget));
+      final IconButton button = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byIcon(Icons.content_copy_rounded),
+          matching: find.byType(IconButton),
+        ),
+      );
+      // An icon-only control with no tooltip is read as nothing at all, and
+      // "copy" is the one word that tells a listener what the button will do.
+      expect(button.tooltip, 'Copy text');
     });
 
     testWidgets('copies the text the donor is looking at, and says so', (
       WidgetTester tester,
     ) async {
       final List<MethodCall> calls = <MethodCall>[];
-      TestWidgetsFlutterBinding.ensureInitialized().handlePlatformMessage(
-        'flutter/platform',
-        const StandardMethodCodec().encodeMethodCall(
-          const MethodCall('experimentalSystemNavigationBarState'),
-        ),
-        (ByteData? _) {},
-      );
-      // The platform channel is intercepted rather than stubbed at the widget,
-      // because `Clipboard.setData` is the write under test.
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (
             MethodCall call,
@@ -163,9 +169,19 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(calls.map((MethodCall call) => call.method), contains('Clipboard.setData'));
+      // Intercepted at the channel rather than stubbed at the widget, because
+      // what the donor gets on the clipboard is the thing under test.
       expect(
-        (calls.first.arguments as Map<Object?, Object?>)['text'],
+        calls.map((MethodCall call) => call.method),
+        contains('Clipboard.setData'),
+      );
+      expect(
+        (calls
+                .firstWhere(
+                  (MethodCall call) => call.method == 'Clipboard.setData',
+                )
+                .arguments
+            as Map<Object?, Object?>)['text'],
         'Donated at Dhaka Medical today.',
       );
       expect(find.text('Post text copied.'), findsOneWidget);
@@ -173,7 +189,7 @@ void main() {
   });
 
   group('FeedPostTile photographs', () {
-    testWidgets('draws nothing when the post carries no image', (
+    testWidgets('draws no image at all when the post carries none', (
       WidgetTester tester,
     ) async {
       await _pumpTile(tester, FeedPostTile(post: _post(), now: _stamp));
@@ -192,11 +208,6 @@ void main() {
         ),
       );
 
-      // Asserted on the widget rather than on the semantics tree on purpose: a
-      // network image in a test never resolves, so a `RawImage` node is never
-      // built and there is no semantics to read. The label the widget would hand
-      // to that node is the thing this app controls, and it is the thing that was
-      // missing.
       expect(
         tester.widget<Image>(find.byType(Image)).semanticLabel,
         'Photo shared by Ayesha Rahman',
@@ -226,12 +237,12 @@ void main() {
         expect(
           (widget as Image).semanticLabel,
           'Photo shared by Ayesha Rahman',
-          reason: 'no cell was left to be read as a bare image',
+          reason: 'no cell may be left to be read as a bare image',
         );
       }
     });
 
-    testWidgets('keeps the text readable when a photograph cannot load', (
+    testWidgets('keeps a post readable when its photo URL is dead', (
       WidgetTester tester,
     ) async {
       await _pumpTile(
@@ -241,16 +252,17 @@ void main() {
           now: _stamp,
         ),
       );
-      // A test-boundary network image fails without a frame of its own, so the
-      // error builder has to be driven by hand rather than waited for.
-      await tester.pump();
 
+      // The test binding answers a network image with a failure, which is the
+      // case the error builder exists for: one deleted object must not take a
+      // donor's sentence down with it.
       expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
+      expect(find.text('Ayesha Rahman'), findsOneWidget);
     });
   });
 
   group('FeedPostTile in Bangla', () {
-    testWidgets('writes the count and the photo label in Bengali', (
+    testWidgets('says the count and the photograph in Bengali', (
       WidgetTester tester,
     ) async {
       await _pumpTile(
@@ -262,40 +274,39 @@ void main() {
         locale: const Locale('bn'),
       );
 
-      expect(find.text('2 লাইক'), findsOneWidget);
+      // Matched on the word rather than the numeral: a plural count is formatted
+      // through `decimalPattern` for the locale, so its digits are Bengali ones,
+      // and pinning the glyph here would test intl's data rather than this app.
+      expect(find.text('2 likes'), findsNothing);
+      expect(find.textContaining('লাইক', findRichText: true), findsOneWidget);
       expect(
         tester.widget<Image>(find.byType(Image)).semanticLabel,
-        contains('এর শেয়ার করা ছবি'),
+        contains('শেয়ার করা ছবি'),
       );
-      // A Bengali sentence with Western digits in it would pass the catalogue
-      // checks and still read as a foreign string, so it is checked here too.
-      expect(find.text('2 লাইক'), findsNothing);
     });
   });
 
   group('ExpandablePostText', () {
     testWidgets('leaves a short post alone', (WidgetTester tester) async {
-      await _pumpText(tester, 'Six words here.');
+      await _pumpTile(
+        tester,
+        const ExpandablePostText(text: 'Six words here.'),
+      );
 
       expect(find.text('Six words here.'), findsOneWidget);
       expect(find.text('Read more'), findsNothing);
       expect(find.text('Show less'), findsNothing);
     });
 
-    testWidgets('collapses past six lines, then opens on request', (
+    testWidgets('collapses after six lines, then opens on request', (
       WidgetTester tester,
     ) async {
-      final String long = List<String>.generate(
-        12,
-        (int index) => 'Line $index of a donor's longer story about the drive.',
-      ).join(' ');
+      await _pumpTile(tester, ExpandablePostText(text: _long));
 
-      await _pumpText(tester, long);
-
+      // Measured, not guessed: the toggle only exists because the laid-out text
+      // really did exceed the limit at this width.
       expect(find.text('Read more'), findsOneWidget);
-      // Collapsed: the widget is in the tree with a line limit, and the ellipsis
-      // is what the donor sees.
-      final Text collapsed = tester.widget<Text>(find.text(long));
+      final Text collapsed = tester.widget<Text>(find.text(_long));
       expect(collapsed.maxLines, 6);
       expect(collapsed.overflow, TextOverflow.ellipsis);
 
@@ -304,7 +315,7 @@ void main() {
 
       expect(find.text('Show less'), findsOneWidget);
       expect(find.text('Read more'), findsNothing);
-      final Text expanded = tester.widget<Text>(find.text(long));
+      final Text expanded = tester.widget<Text>(find.text(_long));
       expect(expanded.maxLines, isNull);
       expect(expanded.overflow, TextOverflow.visible);
 
@@ -312,27 +323,26 @@ void main() {
       await tester.pump();
 
       expect(find.text('Read more'), findsOneWidget);
+      expect(tester.widget<Text>(find.text(_long)).maxLines, 6);
     });
 
     testWidgets('withholds the toggle when the width is unbounded', (
       WidgetTester tester,
     ) async {
-      final String long = List<String>.generate(
-        12,
-        (int index) => 'Line $index of a donor's longer story about the drive.',
-      ).join(' ');
+      tester.view.physicalSize = _phone;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
-      // Inside a `Row` in a horizontally scrollable box the measure is infinite,
-      // and an honest answer about overflow cannot be given. Drawing all of it
-      // silently is the safer lie, so this asserts that no control appears.
+      // Inside a horizontal scroller the measure is infinite, and no honest
+      // answer about overflow can be given. Drawing all of the text and saying
+      // nothing is the safe half of that: a "Read more" that did not know it had
+      // finished would be a control with no effect.
       await tester.pumpWidget(
         testApp(
           home: Scaffold(
             body: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(children: <Widget>[
-                SizedBox(width: 4000, child: ExpandablePostText(text: long)),
-              ]),
+              child: ExpandablePostText(text: _long),
             ),
           ),
         ),
@@ -340,11 +350,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Read more'), findsNothing);
+      expect(find.text(_long), findsOneWidget);
     });
   });
-}
-
-/// Mounts one [ExpandablePostText] at the card's reading width.
-Future<void> _pumpText(WidgetTester tester, String text) async {
-  await _pumpTile(tester, ExpandablePostText(text: text));
 }

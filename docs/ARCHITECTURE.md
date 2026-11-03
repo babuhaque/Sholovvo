@@ -466,7 +466,7 @@ Carried deliberately, not forgotten:
     off.** The detailed record is the Stage 8.3 entry in `docs/PROJECT_STATE.md`,
     and the short form is here so this list cannot be read as "8.3 shipped
     cleanly". The three things this entry carried as open are **closed**:
-    `ComposePostScreen` and `compose_image_grid` now have 73 widget tests over the
+    `ComposePostScreen` and `compose_image_grid` now have 74 widget tests over the
     same fake ports, plus a `compose` capture group in the opt-in visual-review
     harness (§14.3); the feed and the composer are **reachable**, because the
     dashboard's community section previews the feed's own controller and offers
@@ -478,12 +478,14 @@ Carried deliberately, not forgotten:
     the controller had finished awaiting the image picker, and now waits on a
     deterministic entry signal from the storage fake before asserting it. **No file
     under `lib/` changed for that one.** What is genuinely open is not the client's
-    own behaviour: the rules reconciliation (item 11), any live verification at all
-    (items 10 and 12), the `ComposeController.discard()` / `_busy` race that §14.3
-    records, and the bounded-walk costs §14.2 states rather than hides. The suite is
-    712 passed, 58 skipped, 0 failed and `flutter analyze` is clean, which satisfies
-    the gate at the top of `docs/PROJECT_STATE.md` for today's tree and says nothing
-    about approval.
+    own behaviour: the rules reconciliation (item 11) and any live verification at
+    all (items 10 and 12). Two more things this paragraph carried as open were closed
+    the same day by hardening step 5 (§14.4) — the `ComposeController.discard()` /
+    `_busy` race, and a walk that ended on an empty list with no explanation of it —
+    leaving only the five reads such a walk costs, which is a price rather than a
+    defect. The suite is 733 passed, 58 skipped, 0 failed and `flutter analyze` is
+    clean, which satisfies the gate at the top of `docs/PROJECT_STATE.md` for today's
+    tree and says nothing about approval.
 
 ## 12. Profile data model and privacy (Stage 5)
 
@@ -1135,7 +1137,10 @@ happens.
 - **Abandoning the draft deletes its objects.** Confirming the discard prompt
   calls `ComposeController.discard()`, which empties the state and then removes
   every uploaded path. Without it each abandoned compose would leave up to four
-  objects nothing names — the free tier counts bytes, not intentions.
+  objects nothing names — the free tier counts bytes, not intentions. Since §14.4
+  it takes the same `_busy` guard `addImage` and `publish` take, and answers `false`
+  when it refuses, so a draft can no longer be thrown away underneath an upload that
+  is still going up.
 - **No bucket configured means no photo control**, not a control that fails on
   tap. The screen swaps the grid for one sentence saying upload is not set up,
   and the text half of the form still publishes. That is the same honest state
@@ -1174,7 +1179,7 @@ controller file would have to import the providers that import it.
 | Fields | text (6 lines, `feedComposeLimit(2000)` as helper text) and a 2×2 image grid that always shows four cells, so the ceiling is visible rather than discovered |
 | Live validation | only `textTooLong` is shown as the donor types. An empty box is not an error yet — a disabled publish button already says so |
 | Publish | disabled while the draft has an issue **or** anything is in flight, including an upload: publishing past a photo still in the air would write a document that is missing it |
-| Leaving | `PopScope(canPop: !isDirty)` plus a discard dialog. An untouched form closes immediately; a dirty one asks. The confirmed discard pops imperatively, because a `canPop: false` guard would otherwise refuse the pop that the donor just agreed to |
+| Leaving | `PopScope(canPop: !isDirty)` plus a discard dialog. An untouched form closes immediately; a dirty one asks. The confirmed discard pops imperatively, because a `canPop: false` guard would otherwise refuse the pop that the donor just agreed to, and it pops only on a `discard()` that really discarded — one the guard refuses leaves the form open (§14.4) |
 | Errors | `composeFailureMessage` maps the `Failure` types; a `ValidationFailure` is resolved against the photo issues first and the post issues second, because both validators can produce one |
 | Copy | one feed-local photo-source sheet and one feed-local `photoIssueMessage`, duplicating the profile's. Presentation is per feature: importing another feature's `presentation` is the one direction §1 forbids outright |
 
@@ -1193,15 +1198,16 @@ fake — the gap §11 item 12 records and `docs/storage/README.md` repeats.
 ### The composer under test (hardening step 3, 2026-11-03)
 
 The stage shipped with the controller, the repository and the storage adapter
-covered and the form itself unobserved. That gap is closed: **73 widget tests**
+covered and the form itself unobserved. That gap is closed: **74 widget tests**
 across the two presentation files, built on the same fakes the logic tests use — a
 repository over `FakePostWriter`, `FakePostImageStorage`, and a photo picker that
 can be held open — with no network, no plugin and no arbitrary delay in any of
-them.
+them. Seventy-three of them came from this step; the seventy-fourth is §14.4's
+hold-open discard.
 
 | File | Tests | What it pins |
 | --- | --- | --- |
-| `test/features/feed/compose_post_screen_test.dart` | 40 | the empty form, the text rules as messages, the photo path end to end, publishing, leaving, the no-bucket build, both languages, the narrowest phone, and what a screen reader hears |
+| `test/features/feed/compose_post_screen_test.dart` | 41 | the empty form, the text rules as messages, the photo path end to end, publishing, leaving, the no-bucket build, both languages, the narrowest phone, and what a screen reader hears — including a discard refused mid-upload keeping the form open (§14.4) |
 | `test/features/feed/compose_image_grid_test.dart` | 33 | four cells whatever the draft holds, the add tile and its source sheet, removal naming the right photo, the in-place spinner, the grid frozen by a publish, and the same set of semantics assertions |
 
 The behaviours worth naming, because they are the ones this document claims:
@@ -1215,6 +1221,9 @@ The behaviours worth naming, because they are the ones this document claims:
   an untouched form closes without asking, a draft asks first, *keep editing* keeps
   it, confirming deletes the uploaded object, and the system back button is guarded
   the same way as the arrow. A draft holding only a photo is worth confirming too.
+  A discard confirmed while a photograph is still going up is refused and the form
+  stays open (§14.4), keeping both the draft and the object that upload is about to
+  name — the upload's own "Uploading your photo…" is what tells the donor to wait.
 - **The 2 000-character limit is a message, not a wall**; spaces are not a post;
   the text is trimmed on write without being trimmed in the field.
 - **The unconfigured build says so and still publishes the text**, and a publish
@@ -1250,18 +1259,35 @@ detailed record, with the commands and the numbers, is the Stage 8.3 entry in
 | Claim above | Implemented | Tested | Approved | Deployed | Live-verified |
 | --- | --- | --- | --- | --- | --- |
 | `publish` writes one `posts` document | Yes | Yes — 15 repository tests over `FakePostWriter` | No | No | No |
-| Draft validated before the network | Yes | Yes — within the 32 controller tests, and shown on the form by the widget tests | No | No | No |
+| Draft validated before the network | Yes | Yes — within the 34 controller tests, and shown on the form by the widget tests | No | No | No |
 | Photographs upload on pick | Yes | Yes — 15 storage tests against a fake, plus the screen path from add tile to filled slot | No | No | **No — no byte has ever been transferred** |
-| Abandoned drafts delete their objects | Yes | Yes — best-effort path pinned by tests, now including the confirm-and-close flow on the screen | No | No | No |
+| Abandoned drafts delete their objects | Yes | Yes — best-effort path pinned by tests, now including the confirm-and-close flow on the screen, and a discard refused mid-upload pinned by two tests on the controller and one on the screen (§14.4) | No | No | No |
 | `ownPath()` blocks foreign deletes | Yes | Yes — guard tested directly | No | No | No (server-side enforcement is the unapplied policy) |
 | `isUploading` means the storage upload, not the pick | Yes | Yes — pinned by two gating tests, one holding the upload open (`storage.uploadStarted`) and one holding the pick open (`picker.entered`); no delays involved, and the grid's in-place spinner is asserted separately | No | No | No |
-| The compose form behaves as described | Yes | **Yes — 73 widget tests** over `ComposePostScreen` and `compose_image_grid`, on the same fakes | No | No | No |
-| The form is usable by a screen reader | Yes | Yes for the contract: names, button state, and a press action a reader can activate (`SolovvoButton` now supplies `onTap`). No real TalkBack or VoiceOver pass has been made | No | No | No |
+| The compose form behaves as described | Yes | **Yes — 74 widget tests** over `ComposePostScreen` and `compose_image_grid`, on the same fakes | No | No | No |
+| The form is usable by a screen reader | Yes | Yes for the contract: names, button state, and a press action a reader can activate (`SolovvoButton` now supplies `onTap`). Post photographs and the composer's slots now carry `semanticLabel`s (§14.4). No real TalkBack or VoiceOver pass has been made | No | No | No |
 | The form renders as designed | Yes | **Partly** — eleven `compose` captures exist in the harness and pass under `SOLOVVO_VISUAL_REVIEW=1`, but they are written to gitignored `build/review/` and are not in `docs/visuals/stage8/` | No | No | No |
-| The feed and composer can be reached from the dashboard | Yes | Yes — 17 pagination tests + the dashboard preview and navigation tests, and one shell-level push/pop test | No | No | No |
-| The whole stage meets the project gate | — | **Yes for today's tree** — 712 passed, 58 skipped, 0 failed and `flutter analyze` clean, measured on the tree at `a1e102f`; a standing gate to re-run each step, not an approval | **No** | No | No |
+| The feed and composer can be reached from the dashboard | Yes | Yes — 21 pagination tests + the dashboard preview and navigation tests, and one shell-level push/pop test | No | No | No |
+| A post tile says what it shows | Yes | **Yes — 13 direct `FeedPostTile` / `ExpandablePostText` tests** (§14.4), the first coverage that mounts a tile rather than a whole feed | No | No | No |
+| A read that maps nothing but has more behind it says so | Yes | Yes — the refusal count reaches both screens, pinned by four tests (§14.4) | No | No | No |
+| The whole stage meets the project gate | — | **Yes for today's tree** — 733 passed, 58 skipped, 0 failed and `flutter analyze` clean, measured on the working tree on 2026-11-03 with Step 5's changes in it; a standing gate to re-run each step, not an approval | **No** | No | No |
 
-The gaps that belong with the design, now that the two above have moved:
+The design gaps this stage recorded, and where each one now stands:
+
+- **`ComposeController.discard()` is not under the `_busy` guard.** `addImage` and
+  `publish` both take the guard; `discard` checked `state.isPublishing` only. Confirm
+  the discard prompt while a photo is still going up and the snapshot it deletes has
+  already been taken, so the upload that completes afterwards names an object no
+  state holds — an orphan in the bucket, and a form reset under an in-flight
+  operation. **Closed by §14.4**: `discard()` now takes the guard, returns
+  `Future<bool>`, and the screen only pops on a `true`.
+- **An empty page was survivable but not explainable** (§14.2): a walk that reached
+  its cap spent five reads and gave the donor a list with nothing in it and a
+  **Load more** under it, while `FeedPage.skipped` — the number that says *why* —
+  reached nobody. **Closed by §14.4** for the two screens that could carry it, and it
+  still reaches no log a remote operator can query, which is not a client job.
+
+What is left in this stage's own design is one item, and it is not a client defect:
 
 - **Server-side enforcement does not exist yet.** The client guarantees this app's
   writes; the create rule checks `authorUid` and nothing else (§11 item 11, §14.1),
@@ -1269,18 +1295,6 @@ The gaps that belong with the design, now that the two above have moved:
   rules behind them and no rules tests around them. This is the blocking item for
   any deployment, and the feed's own reachability makes it more urgent rather than
   less: what the composer writes is now something a donor can actually do.
-- **`ComposeController.discard()` is not under the `_busy` guard.** `addImage` and
-  `publish` both take the guard; `discard` checks `state.isPublishing` only. Confirm
-  the discard prompt while a photo is still going up and the snapshot it deletes has
-  already been taken, so the upload that completes afterwards names an object no
-  state holds — an orphan in the bucket, and a form reset under an in-flight
-  operation. Recorded, deliberately not fixed while the compose upload-state contract
-  is being left alone; a fix belongs with the same controller and needs its own
-  step.
-- **An empty page is now survivable but still not explainable** (§14.2): a walk that
-  reaches its cap spends five reads and gives the donor a list with nothing in it and
-  a **Load more** under it, while `FeedPage.skipped` — the number that says *why* —
-  reaches nobody.
 
 **The reconciliation that added this subsection fixed nothing**, and it is written
 so that the design record above cannot be read as a verification record. Since it
@@ -1304,4 +1318,110 @@ Everything else in the table above still reads as it did, and the rows that say
 **No** under *Approved*, *Deployed* and *Live-verified* are the ones to weight: the
 suite being green is a gate, not a sign-off, and no Firestore Rules or Supabase
 upload has been verified by any of this work.
+
+## 14.4 Presentation hardening (Stage 8.4)
+
+Step 5 changed no data path, no port and no rule. It took facts the app already
+knew and made them sayable, on the two places they were being silently withheld and
+on the one control class that had never been mounted on its own.
+
+### The discard is a request, not an instruction
+
+`ComposeController.discard()` was the one mutator that did not take the controller's
+`_busy` guard, so confirming the discard prompt under an in-flight upload reset the
+form and deleted a snapshot of the draft taken before that upload landed. The fix is
+a signature change rather than a new guard: `discard()` returns `Future<bool>` and
+`ComposePostScreen._confirmDiscard` pops only on `true`. A `void` refusal would have
+been the worse design, because the screen would then have had to re-derive the
+controller's busy flags to decide whether to close — two owners of one fact. The
+caller is the only place that knows a pop was intended, and the return value is the
+only thing that says whether it may happen.
+
+A refusal is deliberately not announced. The grid already paints *"Uploading your
+photo…"* in the slot the donor is looking at, and a snackbar saying "you cannot
+discard now" over that would name a rule rather than the reason. The hold-open
+behaviour is pinned on both halves: two controller tests (upload in flight, publish
+in flight) and one widget test that asserts the screen is still on `ComposePostScreen`
+after the confirmation.
+
+### A refusal count is part of the read, not a detail of it
+
+`FeedPage.skipped` already existed — the mapper counts the documents it refuses — but
+nothing above it read the number. It is now carried on `FeedState` the same way
+`hasMore` is: accumulated across the bounded empty-page walk by `FeedController._read`
+(`skipped: (keepsExisting ? state.skipped : 0) + refused`), kept untouched by the
+failure branch that preserves an existing list, and exposed as
+`FeedState.isUnreadableResult` — empty, loaded, `hasMore`, and not in the middle of a
+read. Two getters rather than one, because "nobody has posted" and "this app could not
+read what it posted" are opposite claims about opposite subjects, and a screen that
+collapses them tells a donor something false about other people.
+
+Where it is shown, and where it is not:
+
+- **Dashboard** (`_FeedSection`, state 3 of five): an unreadable preview no longer
+  renders *"No posts yet"*. It says the feed could not be fully read, gives the
+  count, and offers **Open the community** rather than *Try again* —
+  `loadFirstPage()` re-asks the same window and earns the same answer, and §9 forbids
+  a button that cannot work. The way past an unreadable document is paging forward,
+  which is what opening the feed lets a donor do.
+- **Feed screen**: the count appears as one inline line above the footer, and the
+  footer's working **Load more** stays the primary affordance. A full-height
+  unreadable card was built here first and reverted: `feed_pagination_test.dart`
+  asserts `EmptyStateCard` is absent on exactly this screen, and that assertion is
+  correct — an empty list with a live *Load more* under it is a better state than a
+  card that hides it. A test that was not wrong was not changed to accommodate the
+  new widget; the widget gave way.
+
+`feedUnreadableTitle` and `feedUnreadableBody` are therefore dashboard-only strings.
+The feed screen uses `feedSkippedNotice` alone. That is not an oversight to tidy up:
+the two screens have different answers available to them.
+
+### Direct tile coverage, and what a photograph must say
+
+`FeedPostTile` and `ExpandablePostText` had no test that mounted them; they were only
+ever exercised through `FeedScreen`, which drags the paging repository into every
+assertion about one card. Thirteen tests now mount a tile at the feed's own phone
+measure, covering the author line, the edited marker, the two counts, the copy
+control (intercepted at the `SystemChannels.platform` messenger, because what reaches
+the clipboard is the thing under test), the no-write guarantee, and the expander's
+collapse/threshold behaviour including the unbounded-width case where it must not
+offer a toggle it cannot measure. Every tile is mounted with an explicit `now:`, so
+no relative date depends on the wall clock.
+
+Accessibility work was bounded to real information loss rather than a sweep. Three
+`Image.network` callsites rendered a `semanticLabel`-less image node, which a reader
+announces as nothing but an image:
+
+| Callsite | Label source |
+| --- | --- |
+| `feed_post_tile.dart` post photographs | `feedPostPhotoLabel(authorName)` — *"Photo shared by Ayesha Rahman"*, threaded through `_PostImages` → `_cell` → `_PostImage` |
+| `compose_image_grid.dart` filled slots | reuses the existing `feedComposePhotosLabel` |
+| `initials_avatar.dart` with a photo | `semanticLabel: name.trim()`, by symmetry with the same widget's own announced-initials fallback |
+
+The like/comment row was left alone on purpose. Its `Text` already announces
+"3 likes" and "1 comment", and wrapping it in further semantics would risk a double
+reading for no gained information — the deliberate non-fix, disclosed rather than
+forgotten.
+
+### Documentation correction
+
+`docs/storage/README.md` step 5 item 6 told a reviewer the Feed was unreachable from
+normal navigation and that the post-photograph check therefore needed a temporary
+route. Both halves were false by the time it was written: the dashboard reads the
+feed's own controller on mount and every control in its community section opens
+`FeedScreen`, whose labelled **Share an update** button pushes `ComposePostScreen`.
+The step now names the real path (**From the community** → **Share an update**),
+records that the gap was closed by navigation rather than worked around, and keeps
+the one true limitation — there is still no per-post destination and nearby requests
+are not wired, which is Stage 9 work, not storage work.
+
+### What Step 5 does not claim
+
+No Rules, index, bucket, SQL or Supabase file changed, and none was applied. Nothing
+here was verified against a live backend: every new assertion runs against the same
+fakes the rest of the suite uses. No real screen reader pass has been made, so the
+three labels are correct by construction and by widget test, not by ear. The visual
+review harness gained no captures in this step. The suite is **733 passed, 58
+skipped, 0 failed** with `flutter analyze` clean, measured on the working tree
+containing these changes.
 
