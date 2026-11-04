@@ -6,28 +6,42 @@ Blood donation and social networking platform for Android and iOS.
 
 ## Status
 
-Stage 8.3 **implemented — hardening in progress**, five hardening steps done. **Stage 8
+Stage 8.3 **implemented — hardening in progress**, five hardening steps done, and
+**Stage 9.1 — open blood requests, read path — implemented against fakes**, and
+**Stage 9.2 — the Firestore rules audit, the suite's first emulator run and the feed
+reconciliation — implemented and emulator-verified, not deployed**. **Stage 8
 is the social feed**, and the feed now both reads and writes: a paged `FeedScreen` over
 one Firestore
 query on `posts`, and a composer that publishes a text-plus-photographs post
 through `FirestorePostRepository` and uploads its images to a `post-images`
 Supabase bucket. Nothing else can be done to a post — no like, comment, save,
-report, edit, delete or share — and no rule, index, bucket or backend setting was
-changed or deployed.
+report, edit, delete or share. No index, bucket or backend setting was changed,
+and nothing was deployed; Stage 9.2 moved `firestore.rules` itself — under the
+owner's directive of 4 November 2026 — tightening the feed collections to the
+schema the app already writes, and executing the whole rules suite in the
+emulator for the first time (96/96). Stage 9.1 reads `blood_requests` where
+`status` is `open`, one
+window of 25 soonest-needed-first, into the dashboard's requests section and into an
+**Open requests** screen behind **See all**; it writes nothing and does not do donor
+search, maps or distance.
 
 Four things are true at once and belong in any resume-from-these-notes brief, so
 they are stated here rather than only in `docs/PROJECT_STATE.md`:
 
 - **The stage is implemented and the suite is green, and neither of those means
-  signed off.** `flutter analyze` reports no issues and `flutter test` reports 733
-  passed, 58 skipped, **0 failed**, measured on the tree that carries the Step 3,
-  Step 4 and Step 5 hardening. The one red test the recovery audit found was a
-  test-synchronisation defect in the composer's own suite, fixed test-side on
-  2026-11-03 with no change to any production code: the test now waits until the
-  storage upload has actually started before asserting the uploading state. By this
-  project's gate a stage is only *done* when both commands pass, so the gate is met
-  for today's tree — while the rules still check nothing about a post, and no
-  approval record exists for Stage 7, 8.2 or 8.3.
+  signed off.** `flutter analyze` reports no issues and `flutter test` reports 851
+  passed, 63 skipped, **0 failed**, measured on today's tree — the one that carries
+  the Step 3, Step 4 and Step 5 feed hardening *and* Stage 9.1. The 63 skips are the
+  opt-in visual-review captures, which were actually run with
+  `SOLOVVO_VISUAL_REVIEW=1` (63 passed) rather than left as skips. The one red test
+  the recovery audit found in the feed was a test-synchronisation defect in the
+  composer's own suite, fixed test-side on 2026-11-03 with no change to any production
+  code: the test now waits until the storage upload has actually started before
+  asserting the uploading state. By this project's gate a stage is only *done* when
+  both commands pass, so the gate is met for today's tree — while the feed rules are
+  verified only in the emulator (Stage 9.2, not deployed, so production still
+  enforces the pre-reconciliation file), Stage 9.1 has never read a live collection,
+  and no approval record exists for Stage 7, 8.2, 8.3, 9.1 or 9.2.
 - **The feed is reachable, and the two blockers that made it unreachable are
   closed.** `FeedScreen` opens from the dashboard whether or not the community has
   posts: the community section previews the feed's own controller, **See all**
@@ -146,18 +160,23 @@ The same states captured from the built web app in a real browser live in
 [`docs/visuals/stage4-browser/`](docs/visuals/stage4-browser) and
 [`docs/visuals/stage5-browser/`](docs/visuals/stage5-browser) — that is the pass
 that catches things a widget render cannot, such as a sheet background that does
-not follow a theme switch. Stages 6, 7 and 8 have widget renders only
+not follow a theme switch. Stages 6, 7, 8 and 9.1 have widget renders only
 ([`docs/visuals/stage6/`](docs/visuals/stage6),
 [`docs/visuals/stage7/`](docs/visuals/stage7),
-[`docs/visuals/stage8/`](docs/visuals/stage8)): Stage 6 has no live upload to
+[`docs/visuals/stage8/`](docs/visuals/stage8),
+[`docs/visuals/stage9/`](docs/visuals/stage9)): Stage 6 has no live upload to
 photograph, and the temporary browser entrypoint used in Stage 3 was not recreated
 for any of them. The Stage 8 set covers the feed populated in light English and
-dark Bangla, at the wide measure with pictures, empty, and after a failed read.
+dark Bangla, at the wide measure with pictures, empty, and after a failed read. The
+Stage 9.1 set covers the requests window populated in light English and dark Bangla,
+the window full, empty, and after a failed read, plus the dashboard with open
+requests in it — all six taken by running the harness, not hand-drawn.
 **The composer has captures but no committed render:**
-`test/review/visual_review_test.dart` has `feed` and `compose` groups, and the
-eleven `compose` captures pass under `SOLOVVO_VISUAL_REVIEW=1` — but they land in
-gitignored `build/review/`, so `docs/visuals/stage8/` has no picture of the form.
-That is part of the Stage 8.3 verification gap recorded in `docs/PROJECT_STATE.md`.
+`test/review/visual_review_test.dart` has `feed`, `compose` and `requests` groups,
+and the eleven `compose` captures pass under `SOLOVVO_VISUAL_REVIEW=1` — but they were
+not promoted out of gitignored `build/review/`, so `docs/visuals/stage8/` has no
+picture of the form. That is part of the Stage 8.3 verification gap recorded in
+`docs/PROJECT_STATE.md`.
 
 ## Home dashboard
 
@@ -167,11 +186,23 @@ provider seams, `presentation` widgets. The donor strip in
 donation history (Stage 5), and the community preview
 (`feedPreviewProvider`) is now a projection of the feed's own
 `FeedController` — the newest three posts of the one page the feed has read,
-not a second query on `posts`. Nearby requests are still **empty on purpose**:
-the collection behind them is read in Stage 9. Each seam
+not a second query on `posts`. Since Stage 9.1 the requests section is the same
+kind of projection: `nearbyRequestsProvider` is the head of
+`requestsControllerProvider`'s window, so the dashboard's three rows and the
+**Open requests** screen's twenty-five are the same list from the same read, and the
+two cannot disagree about what is most urgent. Each seam
 is replaced by the stage that owns its data; the layout renders both the empty and
 the populated path already, so nothing in `presentation` has to change when data
 arrives. Nothing on this screen is a placeholder number.
+
+The section is called **Open requests**, not "near you": nothing in this build knows
+where the donor is standing, and the document's `latitude`/`longitude` are not in its
+read model. The read model also drops `patientName`, `phoneNumber` and `notes`, even
+though the frozen rules let any signed-in user read them — a donor deciding whether to
+help needs the group, the units, the place and the date, not a directory of people in a
+medical emergency. A row is deliberately not tappable, because there is nowhere for a
+row to go until Stage 10; a widget test asserts that absence, so a control that does
+nothing cannot be added quietly.
 
 ## Navigation and settings
 
@@ -383,6 +414,19 @@ covers no feed collection at all. Reconciliation against §14.1 — a later, sep
 approved stage — gates any deployment of the write path. See
 `docs/ARCHITECTURE.md` §14.1, §14.2 and §14.3.
 
+**Dated update (4 November 2026).** Those two paragraphs describe the pre-Stage-9.2
+state, and the gap they call the project's main outstanding security gap is closed
+in the working tree: Stage 9.2 reconciled `firestore.rules` against §14.1 — create
+shape mirroring `PostDocument.requiredFields`, the text and image bounds, comments
+with shape and parent existence, likes moved to `posts/{id}/likes/{uid}` with the
+flat `post_likes` collection denied, a create-only `reports` block, and **both**
+counter `±1` branches closed rather than re-opened. The reconciliation is executed,
+not promised: `firestore-rules-tests/firestore-feed.test.js` (25 tests) plus four
+Stage 9.1 read-path tests run the whole suite to 96/96 under the emulator. Two
+gaps are recorded rather than hidden: list element types are unchecked (this
+emulator's rules engine fails list comprehensions), and production still enforces
+the old file until the owner deploys. See `docs/PROJECT_STATE.md`, Stage 9.2.
+
 ## Security rules
 
 `firestore.rules` is deployed separately and is **not** part of the app bundle:
@@ -391,8 +435,21 @@ approved stage — gates any deployment of the write path. See
 firebase deploy --only firestore:rules
 ```
 
-Rules tests live in `firestore-rules-tests/` (`npm test`, requires the Firestore
-emulator).
+Rules tests live in `firestore-rules-tests/` and require the Firestore emulator:
+`firestore.test.js` (donation history, requests, response claims, notifications,
+the P0 remediations, and the Stage 9.1 open-requests read path) and
+`firestore-feed.test.js` (posts, comments, likes, reports — Stage 9.2). The
+recorded full run, from the repository root:
+
+```bash
+npx firebase-tools emulators:exec --only firestore --project demo-solovvo-tests "npm test --prefix firestore-rules-tests"
+```
+
+`npm test` is `node --test --test-concurrency=1`; the flag serialises the two
+files so their per-test `clearFirestore` cannot wipe each other's seeds. The
+last full run was **96/96** on 4 November 2026, offline, against a demo project.
+The rules are **not deployed**: production enforces the pre-reconciliation file
+until the owner runs the deploy above after reviewing this tree.
 
 Never commit Firebase Admin service account keys or Supabase service role keys.
 `.gitignore` blocks the common filename patterns; privileged operations must be

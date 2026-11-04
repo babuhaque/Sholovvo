@@ -12,7 +12,6 @@ import 'package:sholovvo_app/design/widgets/soft_glow_background.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
 import 'package:sholovvo_app/features/requests/application/requests_state.dart';
-import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
 import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
 import 'package:sholovvo_app/features/requests/presentation/requests_messages.dart';
 import 'package:sholovvo_app/features/requests/presentation/widgets/request_tile.dart';

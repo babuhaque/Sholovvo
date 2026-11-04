@@ -23,10 +23,16 @@ import 'package:sholovvo_app/features/home/presentation/widgets/home_header.dart
 import 'package:sholovvo_app/features/home/presentation/widgets/home_section.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
+import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
+import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
+import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
+import 'package:sholovvo_app/features/requests/presentation/requests_screen.dart';
+import 'package:sholovvo_app/features/requests/presentation/widgets/request_tile.dart';
 
 import '../../support/fake_auth_repository.dart';
 import '../../support/fake_feed.dart';
 import '../../support/fake_profile_repository.dart';
+import '../../support/fake_requests.dart';
 import '../../support/test_app.dart';
 
 /// A phone, for the tests that only read what is above the fold.
@@ -57,14 +63,18 @@ const Size _tablet = Size(900, 1200);
 /// because the dashboard asks the feed for its preview the moment it mounts, and
 /// leaving the provider unoverridden would build `FirebaseFirestore.instance` in
 /// every test in this file. Passing one in is how a test inspects the reads.
+///
+/// [requestRepository] is the same arrangement for the open-requests window the
+/// dashboard reads since Stage 9, and the pushed [RequestsScreen] shares it.
 Future<FakeAuthRepository> _pumpHome(
   WidgetTester tester, {
   AuthUser user = verifiedUser,
   DonorSnapshot? donor,
   UserProfile? profile,
-  List<NearbyRequestSummary>? requests,
+  List<BloodRequest>? requests,
   List<FeedPostPreview>? feed,
   FeedRepository? feedRepository,
+  FakeRequestRepository? requestRepository,
   ThemeMode themeMode = ThemeMode.light,
   Locale locale = const Locale('en'),
   Size size = _tallPhone,
@@ -92,6 +102,11 @@ Future<FakeAuthRepository> _pumpHome(
         if (feed != null) feedPreviewProvider.overrideWithValue(feed),
         feedRepositoryProvider.overrideWithValue(
           feedRepository ?? FakeFeedRepository(),
+        ),
+        // Always stubbed, for the reason the feed stub is: the dashboard now asks
+        // for the open-requests window as soon as it mounts.
+        requestRepositoryProvider.overrideWithValue(
+          requestRepository ?? FakeRequestRepository(),
         ),
       ],
       child: testApp(
@@ -138,19 +153,36 @@ Color? _cardColor(WidgetTester tester, Finder card) {
 }
 
 /// One open request, as the dashboard would list it.
-NearbyRequestSummary _request({
+///
+/// Built through the shared fake rather than the entity directly, so this file and
+/// the requests' own tests cannot drift apart on what a seeded request says. The
+/// hospital address is left empty on purpose: the row would otherwise show two
+/// lines and the assertions below would be about the address rather than the name.
+///
+/// [neededBy] and [neededByText] are passed through as given, with no default: a
+/// test that leaves both out is asking for a request with no date at all, which is
+/// one of the three forms the row has to render.
+BloodRequest _request({
   String bloodGroup = 'B+',
-  String area = 'Dhanmondi',
+  String hospital = 'Dhanmondi',
   int units = 2,
+  DateTime? neededBy,
+  String neededByText = '',
 }) {
-  return NearbyRequestSummary(
+  return fakeRequest(
     id: 'req-1',
     bloodGroup: bloodGroup,
-    area: area,
-    neededBy: DateTime(2026, 11, 9),
+    hospitalName: hospital,
+    hospitalAddress: '',
     units: units,
+    neededBy: neededBy,
+    neededByText: neededByText,
   );
 }
+
+/// The date the seeded requests are needed by, for the tests that assert the row
+/// formats one.
+final DateTime _seedNeededBy = DateTime(2026, 11, 9);
 
 /// One community post, as the dashboard would preview it.
 FeedPostPreview _post() {
@@ -249,12 +281,12 @@ void main() {
         'over nothing', (WidgetTester tester) async {
       await _pumpHome(tester);
 
-      expect(find.text('Requests near you'), findsOneWidget);
+      expect(find.text('Open requests'), findsOneWidget);
       expect(find.text('From the community'), findsOneWidget);
       expect(find.byType(HomeEmptyCard), findsNWidgets(2));
-      expect(find.text('No open requests nearby'), findsOneWidget);
+      expect(find.text('No open requests'), findsOneWidget);
       expect(find.text('No posts yet'), findsOneWidget);
-      expect(find.byType(NearbyRequestCard), findsNothing);
+      expect(find.byType(RequestTile), findsNothing);
       expect(find.byType(FeedPostCard), findsNothing);
       // A link to an empty list would be a link to nothing.
       expect(find.text('See all'), findsNothing);
@@ -310,16 +342,19 @@ void main() {
       expect(find.text('0 donations'), findsNothing);
     });
 
-    testWidgets('lists a nearby request with only the facts it carries', (
+    testWidgets('lists an open request with only the facts it carries', (
       WidgetTester tester,
     ) async {
-      await _pumpHome(tester, requests: <NearbyRequestSummary>[_request()]);
+      await _pumpHome(
+        tester,
+        requests: <BloodRequest>[_request(neededBy: _seedNeededBy)],
+      );
 
       final String neededBy = MaterialLocalizations.of(
         tester.element(find.byType(HomeScreen)),
-      ).formatShortMonthDay(DateTime(2026, 11, 9));
+      ).formatShortMonthDay(_seedNeededBy);
 
-      expect(find.byType(NearbyRequestCard), findsOneWidget);
+      expect(find.byType(RequestTile), findsOneWidget);
       expect(find.text('B+'), findsOneWidget);
       expect(find.text('Dhanmondi'), findsOneWidget);
       expect(find.textContaining('2 units needed'), findsOneWidget);
@@ -329,16 +364,57 @@ void main() {
       expect(find.text('No posts yet'), findsOneWidget);
     });
 
-    testWidgets('offers "See all" once there is something to see', (
+    testWidgets('a request with no readable date says so rather than saying '
+        'nothing', (WidgetTester tester) async {
+      await _pumpHome(
+        tester,
+        requests: <BloodRequest>[
+          _request(neededBy: null, neededByText: 'আগামীকাল'),
+        ],
+      );
+
+      // Unparseable text is shown verbatim: the person who typed it chose those
+      // words, and a row that quietly dropped them would read as a request that
+      // does not need one soon.
+      expect(find.textContaining('Needed by আগামীকাল'), findsOneWidget);
+      expect(find.text('No date given'), findsNothing);
+
+      await _pumpHome(
+        tester,
+        requests: <BloodRequest>[_request(neededBy: null)],
+      );
+      expect(find.textContaining('No date given'), findsOneWidget);
+    });
+
+    testWidgets('the row carries no patient name and no phone number', (
       WidgetTester tester,
     ) async {
-      await _pumpHome(tester, requests: <NearbyRequestSummary>[_request()]);
+      // The document the read returns holds both, and the frozen rules let any
+      // signed-in user read them. The row showing them is the defect this pins
+      // shut: a list of people in a medical emergency is not a directory.
+      final FakeRequestRepository repository = FakeRequestRepository(
+        requests: <BloodRequest>[_request()],
+      );
+      await _pumpHome(tester, requestRepository: repository);
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Patient'), findsNothing);
+      expect(find.text('+8801700000000'), findsNothing);
+    });
+
+    testWidgets('offers "See all" once there is something to see, and it opens '
+        'the requests', (WidgetTester tester) async {
+      await _pumpHome(tester, requests: <BloodRequest>[_request()]);
 
       final Finder seeAll = find.text('See all');
       expect(seeAll, findsOneWidget);
 
+      expect(find.byType(RequestsScreen), findsNothing);
       await _tapVisible(tester, seeAll);
-      expect(find.text('Coming soon.'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(RequestsScreen), findsOneWidget);
     });
 
     testWidgets('previews a community post with an initials avatar', (
@@ -351,7 +427,7 @@ void main() {
       expect(find.text('AR'), findsOneWidget);
       expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
       expect(find.text('No posts yet'), findsNothing);
-      expect(find.text('No open requests nearby'), findsOneWidget);
+      expect(find.text('No open requests'), findsOneWidget);
     });
 
     testWidgets('the community "See all" opens the feed', (
@@ -399,7 +475,7 @@ void main() {
           isAvailable: true,
           donationCount: 1,
         ),
-        requests: <NearbyRequestSummary>[_request(units: 1)],
+        requests: <BloodRequest>[_request(units: 1)],
       );
 
       // "1 units needed" and "1 donations" would be the giveaway that the
@@ -584,6 +660,174 @@ void main() {
     });
   });
 
+  group('HomeScreen open-requests preview', () {
+    // The same arrangement as the community group above, and for the same reason:
+    // these tests are about the wiring — that the dashboard asks the requests'
+    // own controller for its window, and then says honestly which of the five
+    // outcomes it got.
+    testWidgets('spins while the requests read is in flight', (
+      WidgetTester tester,
+    ) async {
+      final FakeRequestRepository requestRepository = FakeRequestRepository(
+        requests: <BloodRequest>[_request()],
+      )..gate = Completer<void>();
+
+      await _pumpHome(tester, requestRepository: requestRepository);
+
+      // The section owns its spinner, so the donor's status card stays readable.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('No open requests'), findsNothing);
+      expect(find.text('See all'), findsNothing);
+
+      requestRepository.gate!.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(RequestTile), findsOneWidget);
+    });
+
+    testWidgets('previews the window, and only as many rows as a preview is', (
+      WidgetTester tester,
+    ) async {
+      final FakeRequestRepository requestRepository = FakeRequestRepository(
+        requests: <BloodRequest>[
+          for (int index = 1; index <= 5; index++)
+            _request(hospital: 'Hospital $index'),
+        ],
+      );
+      await _pumpHome(tester, requestRepository: requestRepository);
+
+      // The fake hands back what the repository would: soonest needed first. The
+      // dashboard shows its own three and "See all" reaches the rest.
+      expect(find.byType(RequestTile), findsNWidgets(nearbyRequestLimit));
+      expect(find.text('Hospital 1'), findsOneWidget);
+      expect(find.text('Hospital 3'), findsOneWidget);
+      expect(find.text('Hospital 4'), findsNothing);
+      expect(find.text('See all'), findsOneWidget);
+    });
+
+    testWidgets('says so when the read failed, and recovers on retry', (
+      WidgetTester tester,
+    ) async {
+      final FakeRequestRepository requestRepository = FakeRequestRepository(
+        requests: <BloodRequest>[_request()],
+      )..failure = const NetworkFailure(debugMessage: 'offline');
+
+      await _pumpHome(tester, requestRepository: requestRepository);
+
+      expect(find.text('The requests could not be loaded'), findsOneWidget);
+      expect(
+        find.text('No connection. Check your network and try again.'),
+        findsOneWidget,
+      );
+      // A failure is never dressed up as a quiet collection.
+      expect(find.text('No open requests'), findsNothing);
+
+      requestRepository.failure = null;
+      await _tapVisible(
+        tester,
+        find.widgetWithText(SolovvoButton, 'Try again'),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('The requests could not be loaded'), findsNothing);
+      expect(find.byType(RequestTile), findsOneWidget);
+    });
+
+    testWidgets('an unreadable window is never called an empty one', (
+      WidgetTester tester,
+    ) async {
+      // The state the false report hides behind: the read succeeded, the mapper
+      // refused everything it looked at, and the list is empty. "No open requests"
+      // would be a sentence about the community that this read has no right to.
+      await _pumpHome(
+        tester,
+        requestRepository: FakeRequestRepository()..skipped = 2,
+      );
+
+      expect(find.text('No open requests'), findsNothing);
+      expect(
+        find.text('The requests could not be fully read'),
+        findsOneWidget,
+      );
+      expect(find.text('2 requests could not be shown'), findsOneWidget);
+      // And no button: the window has no cursor to move, so a retry would re-ask
+      // it and draw the same card.
+      expect(find.widgetWithText(SolovvoButton, 'Try again'), findsNothing);
+    });
+
+    testWidgets('a full window says more are behind it', (
+      WidgetTester tester,
+    ) async {
+      await _pumpHome(
+        tester,
+        requestRepository: FakeRequestRepository(
+          requests: <BloodRequest>[_request()],
+          truncated: true,
+        ),
+      );
+
+      expect(
+        find.text(
+          'Only the first ${RequestRepository.window} open requests are shown '
+          'here. More are still behind them.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a failed refresh reports itself above the rows rather than '
+        'hiding behind it', (WidgetTester tester) async {
+      final FakeRequestRepository requestRepository = FakeRequestRepository(
+        requests: <BloodRequest>[_request()],
+      );
+      await _pumpHome(tester, requestRepository: requestRepository);
+
+      final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(HomeScreen)),
+      );
+      requestRepository.failure = const NetworkFailure(debugMessage: 'offline');
+      await container.read(requestsControllerProvider.notifier).refresh();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(RequestTile), findsOneWidget);
+      expect(find.byType(ErrorBanner), findsOneWidget);
+      expect(find.text('No open requests'), findsNothing);
+    });
+
+    testWidgets('opening the requests screen and coming back does not re-read '
+        'the window', (WidgetTester tester) async {
+      final FakeRequestRepository requestRepository = FakeRequestRepository(
+        requests: <BloodRequest>[_request()],
+      );
+      await _pumpHome(tester, requestRepository: requestRepository);
+      expect(requestRepository.calls, 1);
+
+      await _tapVisible(tester, find.text('See all'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(RequestsScreen), findsOneWidget);
+      // The screen starts from a fresh read every time it opens, which is the
+      // right behaviour for a list whose contents change when somebody claims a
+      // request — so this is the second read, and it is the screen's.
+      expect(requestRepository.calls, 2);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.byType(RequestsScreen), findsNothing);
+      expect(find.byType(RequestTile), findsOneWidget);
+      // No third: the dashboard does not re-ask for a window the shared
+      // controller already holds.
+      expect(requestRepository.calls, 2);
+    });
+  });
+
   group('HomeScreen into the feed and back', () {
     testWidgets('a preview card opens the feed, and back returns to the '
         'dashboard', (WidgetTester tester) async {
@@ -651,9 +895,7 @@ void main() {
     testWidgets('stacks the sections on a phone', (WidgetTester tester) async {
       await _pumpHome(tester, size: _phone);
 
-      final double requests = tester
-          .getTopLeft(find.text('Requests near you'))
-          .dy;
+      final double requests = tester.getTopLeft(find.text('Open requests')).dy;
       final double feed = tester.getTopLeft(find.text('From the community')).dy;
       expect(feed, greaterThan(requests));
     });
@@ -663,9 +905,7 @@ void main() {
     ) async {
       await _pumpHome(tester, size: _tablet);
 
-      final double requests = tester
-          .getTopLeft(find.text('Requests near you'))
-          .dy;
+      final double requests = tester.getTopLeft(find.text('Open requests')).dy;
       final double feed = tester.getTopLeft(find.text('From the community')).dy;
       expect(feed, closeTo(requests, 1));
     });
@@ -727,7 +967,7 @@ void main() {
       await _pumpHome(tester, size: _narrowPhone);
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Requests near you'), findsOneWidget);
+      expect(find.text('Open requests'), findsOneWidget);
       expect(find.byType(HomeEmptyCard), findsNWidgets(2));
     });
 
@@ -743,12 +983,12 @@ void main() {
           isAvailable: true,
           donationCount: 12,
         ),
-        requests: <NearbyRequestSummary>[_request()],
+        requests: <BloodRequest>[_request()],
         feed: <FeedPostPreview>[_post()],
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.byType(NearbyRequestCard), findsOneWidget);
+      expect(find.byType(RequestTile), findsOneWidget);
       expect(find.byType(FeedPostCard), findsOneWidget);
     });
   });
@@ -811,8 +1051,8 @@ void main() {
       );
       expect(find.text('ডোনার স্ট্যাটাস'), findsOneWidget);
       expect(find.text('এখনো দেওয়া হয়নি'), findsNWidgets(3));
-      expect(find.text('আপনার কাছের অনুরোধ'), findsOneWidget);
-      expect(find.text('কাছাকাছি কোনো অনুরোধ নেই'), findsOneWidget);
+      expect(find.text('খোলা অনুরোধ'), findsOneWidget);
+      expect(find.text('কোনো খোলা অনুরোধ নেই'), findsOneWidget);
       expect(find.text('কমিউনিটি থেকে'), findsOneWidget);
       expect(find.text('এখনো কোনো পোস্ট নেই'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -829,7 +1069,7 @@ void main() {
           isAvailable: true,
           donationCount: 3,
         ),
-        requests: <NearbyRequestSummary>[_request(units: 2)],
+        requests: <BloodRequest>[_request(units: 2)],
       );
 
       // The date and the counts have to agree about which digits this is.

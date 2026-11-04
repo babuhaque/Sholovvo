@@ -81,10 +81,11 @@ what is actually implemented.
 | `auth` | `domain`, `data`, `presentation`, `application` | `AuthUser`, `AuthRepository` interface, validators, `FirebaseAuthRepository`, error mapping, sign-in / register / reset / verification screens |
 | `splash` | `presentation` | 2 s brand reveal, no navigation of its own |
 | `welcome` | `presentation` | unauthenticated landing screen |
-| `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, nearby requests and community preview; every data surface reads a provider seam, and the seam is empty until the stage that owns the collection lands — except the community preview, which is a projection of the feed's own controller (§14.2) |
+| `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, the open-requests preview and the community preview. Two of the three data surfaces are projections of another feature's controller — the feed preview of `feedControllerProvider` (§14.2) and the requests preview of `requestsControllerProvider` (§15) — so the dashboard and the destination screens cannot disagree. The two headline actions (**Request blood**, **Find donors**) are still `comingSoon`, because the write path and the donor search belong to later stages |
 | `profile` | `domain`, `data`, `application`, `presentation` | the signed-in donor's own profile: `UserProfile`, `DonationRecord`, validators, `FirestoreProfileRepository` over two documents, the profile screen and its edit form |
 | `feed` | `domain`, `data`, `application`, `presentation` | **Stages 8.1, 8.2 and 8.3 — 8.3 implemented, hardening in progress, not signed off.** `Post`, `Comment`, `Report` entities with their validators and enums, and the pure `PostDocument` mapper (8.1); the read path — `FeedRepository`/`FirestoreFeedRepository` over a `FeedDocuments` seam, `FeedController`, `FeedScreen`, `FeedPostTile` (8.2); and the write path — `PostRepository`/`PostWriter` ports, `FirestorePostRepository`, `FirestorePostWriter`, `PostImageStorage`/`SupabasePostImageStorage`, `ComposeController`, `ComposePostScreen` and `compose_image_grid` (8.3). See §14, and `docs/PROJECT_STATE.md` for what is **not** yet verified about 8.3 |
 | `settings` | `presentation` | account summary, the appearance sheet, build information, sign-out |
+| `requests` | `domain`, `data`, `application`, `presentation` | **Stage 9.1 — implemented against fakes, not against a live project.** The read side of `blood_requests` and nothing else: `BloodRequest` (a read model that carries no patient name and no phone number), `compareByUrgency`/`orderRequests`, the `BloodRequestDocument` mapper, `RequestRepository`/`RequestDocuments` ports over `FirestoreRequestDocuments`, `FirestoreRequestRepository`, `RequestsController`/`RequestsState`, `RequestsScreen` and the one `RequestTile` both surfaces share. See §15 |
 
 ## 3. State management
 
@@ -107,17 +108,21 @@ Rules:
   `StateNotifier` is not used.
 - `ref.watch` only in `build`; `ref.read` only inside callbacks.
 - **A screen whose data belongs to a later stage reads a seam, not a placeholder
-  value.** `home` renders a donor snapshot, nearby requests and a feed preview
-  from three providers in `features/home/application/home_providers.dart`. The
-  donor snapshot is a real projection over the signed-in donor's profile and
+  value.** `home` renders a donor snapshot, the open-requests preview and a feed
+  preview from three providers in `features/home/application/home_providers.dart`.
+  The donor snapshot is a real projection over the signed-in donor's profile and
   donation history (Stage 5); the feed preview is a projection of
   `feedControllerProvider`, so the dashboard and the feed screen have one answer
-  to "what is the newest post" rather than two (§14.2); nearby requests still
-  return an empty list, because nothing owns `blood_requests` until Stage 9. The
-  screen therefore has one "no data" path and one "has data" path
-  from day one, and the stage that owns each collection replaces one provider
-  instead of rebuilding the layout. A hard-coded sample row would have been
-  indistinguishable from real data on a screenshot.
+  to "what is the newest post" rather than two (§14.2); and since Stage 9.1 the
+  requests preview is `nearbyRequestsProvider`, the head of
+  `requestsControllerProvider`'s window, so the dashboard's three rows and the
+  **Open requests** screen's twenty-five are the same list from the same read (§15).
+  The rule the seam was built for still holds for what is not wired: the two
+  headline actions answer with the honest *coming soon* notice rather than
+  opening a half-built screen. The screen therefore had one "no data" path and
+  one "has data" path from day one, and the stage that owns each collection
+  replaces one provider instead of rebuilding the layout. A hard-coded sample row
+  would have been indistinguishable from real data on a screenshot.
 
 ## 4. Result and Failure
 
@@ -486,6 +491,30 @@ Carried deliberately, not forgotten:
     defect. The suite is 733 passed, 58 skipped, 0 failed and `flutter analyze` is
     clean, which satisfies the gate at the top of `docs/PROJECT_STATE.md` for today's
     tree and says nothing about approval.
+14. **A feed that has read its last page can print "No posts yet" over documents
+    it refused.** Found while building the requests read path in Stage 9.1, which
+    needed the same pair of states and closed the hole by construction (§15).
+    `FeedState` carries `skipped`, and `isUnreadableResult` is what saves a donor
+    from a false empty when the refusal happened on a page with more pages behind
+    it — that getter keys on `hasMore`. But `isEmptyResult` is
+    `posts.isEmpty && loaded && !hasMore && status != loading`, with **no
+    `skipped == 0` term**, so a collection that ends on an all-refused last page (or
+    one the controller's five-page walk exhausted) is reported as a community with
+    nothing to read while the count that contradicts the sentence sits in the same
+    state object. `RequestsState.isEmptyResult` therefore requires `skipped == 0`
+    and `!truncated` as well as `loaded`. The feed getter was **not** fixed in this
+    stage: closing it changes which card `feed_pagination_test.dart` asserts on for
+    a seeded all-unreadable final page, and that is a test-expectation migration the
+    next feed step should make deliberately, with its own reason recorded, rather
+    than as a side effect of a different feature.
+15. **Stage 9.1 has read no live collection.** Every assertion in
+    `test/features/requests` runs against literal maps and the same fake ports the
+    rest of the suite uses. The field spellings the mapper trusts come from
+    `firestore.rules` and from `firestore-rules-tests/firestore.test.js`, and the
+    shapes it refuses were written from those two files rather than observed. What
+    the deployed project's `blood_requests` documents actually look like — including
+    whether `requiredDateTime` is ever a real `Timestamp` — remains unverified, and
+    the mapper's refuse-and-count behaviour is the mitigation, not a proof.
 
 ## 12. Profile data model and privacy (Stage 5)
 
@@ -736,6 +765,21 @@ them. `reports` has no rule. No Feed backend implementation has been authorised.
 The rules, the entities and the mapper disagree with each other. Nothing in the
 table below has been applied to `firestore.rules` or to any Dart file; it is a
 decision record for the stage that reconciles them.
+
+**Dated note — applied 4 November 2026.** The reconciling stage arrived as
+Stage 9.2 (see `docs/PROJECT_STATE.md`). The table was applied to
+`firestore.rules` in full — post create shape, comments shape, the like
+subcollection, the create-only `reports` block, the `donationRecordId` drop and
+the `imageUrl` deletion — and it is now executed by
+`firestore-rules-tests/firestore-feed.test.js` under the Firestore emulator
+(96/96, rules not yet deployed). Three deviations are recorded there and not
+buried: both counter `±1` branches were **closed** rather than re-opened paired
+(a counter rule cannot prove a paired comment write when comment ids are not
+deterministic, and a half-paired rule lies about the pairing it does not
+enforce); list element types are unchecked because this emulator's rules engine
+fails list comprehensions over data-derived lists; and a post edit must now
+restamp `updatedAt`. No Dart file changed — the shipped create path passes the
+new rules unchanged, which was the point of mirroring `requiredFields`.
 
 | Concern | `firestore.rules` today | Stage 8.1 types | Proposed |
 | --- | --- | --- | --- |
@@ -1436,4 +1480,192 @@ three labels are correct by construction and by widget test, not by ear. The vis
 review harness gained no captures in this step. The suite is **733 passed, 58
 skipped, 0 failed** with `flutter analyze` clean, measured on the working tree
 containing these changes.
+
+*(Note for a reader of this record, 2026-11-03: the second half of that
+limitation is closed. Stage 9.1 wired the open-requests section — see §15 — and
+the visual review harness gained a `requests` group with it. What is still true
+is the first half: there is no destination for one post, and no per-request
+screen either; answering a request is Stage 10's transaction.)*
+
+## 15. Open blood requests, read path (Stage 9.1)
+
+Stage 9 was scoped in the roadmap as "normal blood search & maps". What landed is
+the first slice of it and the only slice that needed no new backend: **reading the
+open requests and showing them honestly**. Search by group, distance, maps and
+answering a request are all still ahead, and *What Stage 9.1 does not do* below
+says which of them this build cannot do at all.
+
+### Why no Rules change was needed, and why none was made
+
+`firestore.rules` grants `allow read: if request.auth != null` on
+`/blood_requests/{requestId}` with no field condition, and the project's own rules
+suite (`firestore-rules-tests/firestore.test.js`) already covers a signed-in read
+of that collection. So the read path needed nothing deployed to be permitted.
+`firestore.rules` was not touched, in this stage or any other: it is frozen pending
+the owner's security approval.
+
+### The query, and the one failure mode it exists to avoid
+
+`FirestoreRequestDocuments.fetch` is one collection, one equality filter and one
+limit:
+
+```dart
+_requests
+    .where(statusField, isEqualTo: BloodRequestDocument.openStatus)
+    .limit(limit)
+    .get();
+```
+
+`statusField` is `'status'` and `openStatus` is `'open'`, both named constants so the
+query and the explanation here cannot drift apart. Before the call, `fetch` checks
+`_auth.currentUser` and throws an `AuthFailure` itself, so a signed-out read is
+reported as an auth problem rather than as the `permission-denied` the rules would
+eventually send, and a non-positive `limit` is answered locally without a round trip.
+
+No date bound, no `orderBy`, no `startAfterDocument`, and **no composite index** —
+an equality filter with the default document-id ordering is served by the automatic
+single-field index, so nothing has to be deployed before this works.
+
+The absences are the decision, and the reason is a type rule rather than a taste.
+`requiredDateTime` in this collection is **free text**: the create rule requires the
+key and constrains nothing about its value, and the project's own rules-test seed
+writes `'2026-11-10 10:00 AM'`. Firestore orders by *type* before value, so a
+`Timestamp` bound or a date `orderBy` against those documents does not match them
+badly — it matches **none** of them, and the query succeeds. A screen built on that
+query would print "no open requests" over a collection full of people waiting for
+blood. That is the one failure mode this feature must not have, so the window is
+read unordered and `orderRequests` sorts it on the decoded list, where the sort can
+be tested against literal maps and cannot silently return zero rows.
+
+### A window, not a page
+
+`RequestRepository.window` is 25 documents and there is no "Load more" anywhere.
+A cursor needs an order to resume from, and this read deliberately has no trusted
+order to resume from, so asking for a second page would be asking for "whatever
+comes next in document-id order" — a position nobody chose. The honest controls are
+pull-to-refresh (re-read the window) and `OpenRequests.truncated` (say that the
+window filled up).
+
+`truncated` is measured, not inferred: the repository asks for `window + 1`
+documents and keeps 25. That over-fetch-by-one is the feed's discipline, and it is
+what makes the notice exact — a collection of exactly 25 open requests does not get
+a message about requests that are not there.
+
+### Malformed documents are refused and counted
+
+`BloodRequestDocument.fromMap` refuses a document whose `status` is not `open`,
+whose `bloodGroup` is not one of the eight spellings the rules accept, whose
+`bloodBags` is not a positive whole number, or that names no hospital. A refused
+document is dropped and counted in `OpenRequests.skipped`; it never costs the donor
+the readable requests around it, and it is never repaired by guessing.
+
+The count then drives two different sentences, because they are different claims:
+
+| State | Screen says |
+| --- | --- |
+| Requests on screen, `skipped > 0` | the list, plus "*n* requests could not be shown" |
+| No requests, `skipped > 0` or `truncated` | "The requests could not be fully read" — **with no retry button**, because a window has no cursor and a retry re-asks and earns the same documents |
+| No requests, `!truncated`, `skipped == 0`, loaded | "No open requests right now" |
+
+`isEmptyResult` requires all four terms and `isUnreadableResult` is its mirror; the
+pair is what stops a collection the app could not parse from being reported as a
+community with nobody in need. The feed grew the same pair in Stage 8.4 and learned
+it the hard way.
+
+### The date has two fields because the data has two shapes
+
+`BloodRequest` carries `neededBy` (a real instant, for sorting) and `neededByText`
+(what the document actually wrote, verbatim, for showing). Neither invents a value
+for the other. `parseRequiredText` accepts a `Timestamp`, a `DateTime`, the ISO
+family and the `YYYY-MM-DD HH:mm AM/PM` shape the seed writes; it refuses an
+ambiguous date (`10/11/2026` is October's 11th or November's 10th depending on who
+typed it, and a list ordered on that coin flip can put the most urgent request
+second), refuses a date out of calendar range rather than rolling it over, and keeps
+anything else as text. A row with no readable date shows the words the requester
+typed, and a row with no date at all says "No date given" — three forms, because
+silence about urgency reads as absence of urgency.
+
+Two defects in that mapper were found by tests, not by review, and both are worth
+recording because each would have shipped a wrong date to a donor:
+
+1. `_meridiem` captures only the first letter of `AM`/`PM`, while `_applyMeridiem`
+   switched on `'AM'`/`'PM'` — so every meridiem form fell through and returned
+   `null`. The switch now reads `'A'`/`'P'`, and the capture group is documented as
+   the reason.
+2. `DateTime.parse` does not range-check. `2026-13-40` does not throw: Dart
+   normalises it to 2027-02-08, so the mapper invented a date four months out and
+   its own comment claimed the opposite. `_parse` now validates the year, month and
+   **day as written** against a `DateTime.utc` probe before parsing (`_isRealDate`),
+   which also means a value with an offset that only crosses midnight when
+   normalised (`2026-11-10T02:00:00+06:00`) is still accepted for the day the person
+   wrote.
+
+### Privacy, decided in the read model
+
+The frozen rules let any signed-in user read `patientName` and `phoneNumber` from a
+request document. `BloodRequest` does not carry them, `toString` on both the entity
+and `OpenRequests` names numbers and no place, and the row shows group, hospital,
+address, units and date. A donor deciding whether to help needs those four facts;
+a list of names and phone numbers of people in a medical emergency is a directory,
+and the rule cannot make that choice because the rule is frozen — so the read model
+makes it. `notes` is left out for the same kind of reason: this stage has not
+decided what it may contain or who may see it.
+
+### One tile, one controller, two surfaces
+
+`RequestTile` renders `BloodRequest` on the dashboard preview and on
+`RequestsScreen`; there is no second row widget and no second view model, because
+that is where two screens start to disagree about what the same request carries.
+`nearbyRequestsProvider` is the head (`take(3)`) of `requestsControllerProvider`'s
+window, so the dashboard's three rows are literally the first three rows of the
+screen **See all** opens. The dashboard reads on mount from a post-frame callback
+and re-reads only if the window has never resolved, so returning from the requests
+screen does not pay for a second read of 25 documents.
+
+`RequestsController` keeps one read in flight at a time via a flag rather than by
+disabling buttons — pull-to-refresh is a gesture, not a control — and a failed
+refresh keeps the list it had, because those requests were true a moment ago. The
+banner above the list is the whole message.
+
+### What Stage 9.1 does not do
+
+- **Nothing is written.** No claim, no accept, no response. The rules already
+  enforce that transaction (`request_responses`, `response_claims`, the donor branch
+  of the request update rule); the screen says so in a footer note instead of
+  drawing a button that cannot work.
+- **No filter by blood group, no sorting control, no search.**
+- **No distance and no maps.** The app does not ask where the donor is, so the
+  section is titled *Open requests* and not "near you": naming a place in a list
+  that cannot compute *near* is a claim about the world this build has not checked.
+  `latitude` and `longitude` arrive in the document and are not carried into the
+  entity at all.
+- **No per-request destination.** The rows carry no tap, no chevron and no ripple,
+  and a test asserts that (`RequestTile offers nothing to tap`), so the day somebody
+  adds an `onTap` to a card that goes nowhere, the suite fails.
+
+### Verification status
+
+109 tests in `test/features/requests` cover the mapper, the ordering, the window
+assembly, the controller's states and the two surfaces; the dashboard's requests
+preview is covered in `test/features/home`, and the visual review harness gained a
+`requests` group of five captures. `docs/visuals/stage9` holds six promoted renders
+— those five plus the dashboard with open requests in it. The whole suite is
+**851 passed, 63 skipped, 0 failed** with `flutter analyze` clean, measured on the
+working tree containing these changes.
+
+What that does **not** prove: no assertion in this stage has read a live
+`blood_requests` collection. The field spellings come from `firestore.rules` and
+from the rules-test seed, the mapper refuses rather than assumes anything that
+arrives disagreeing, and the 63 skips are the visual-review captures, which run
+only with `SOLOVVO_VISUAL_REVIEW=1` and the bundled fonts present. Fake-verified is
+not live-verified.
+
+**One fact a reader of this section needs before resuming.** The commit at HEAD and
+on `origin/main` when Stage 9.1 was recorded (`eb1b5e4`, the owner's) captured the
+mapper *before* its two bug fixes — the meridiem switch still matching on `'AM'`/`'PM'`
+against a pattern that captures one letter, and no calendar check on an out-of-range
+date. Both fixes, all 109 tests that catch them and the dashboard's requests section
+were uncommitted working-tree state at that moment. `docs/PROJECT_STATE.md`'s Stage
+9.1 *Git state* holds the full account; the short version is that **the pushed tree
+orders every AM/PM request as undated**, and only this tree does not.
 

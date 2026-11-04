@@ -15,6 +15,11 @@ const {
   updateDoc,
   deleteDoc,
   runTransaction,
+  collection,
+  query,
+  where,
+  limit,
+  getDocs,
 } = require('firebase/firestore');
 
 let testEnv;
@@ -1523,6 +1528,77 @@ describe('P0 finding 4 - unrestricted blood_requests owner update', () => {
           donorUid: P0.owner,
         }),
       ),
+    );
+  });
+});
+
+describe('Stage 9.1 blood_requests open-requests read path', () => {
+  // FirestoreRequestDocuments.fetch issues exactly this query: one equality
+  // filter on status, an over-fetch-by-one limit, no orderBy (requiredDateTime
+  // is free TEXT here, so ordering under Firestore type rules happens in the
+  // mapper). These tests prove the rules do not obstruct that read, and that
+  // an anonymous caller cannot perform it.
+  const openWindowQuery = (db) =>
+    query(
+      collection(db, 'blood_requests'),
+      where('status', '==', 'open'),
+      limit(26),
+    );
+
+  it('1. a signed-in client can run the open-requests window query and receives the text-typed request', async () => {
+    await seedBase();
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      // A second, closed request whose requiredDateTime is a TIMESTAMP: the
+      // collection genuinely holds both types, which is why there is no
+      // composite index and no orderBy.
+      await adminCtx.firestore().collection('blood_requests').doc('req_beta_2').set({
+        userId: IDS.recipient,
+        patientName: 'Patient Two',
+        phoneNumber: '+8801700000002',
+        bloodGroup: 'B+',
+        bloodBags: 2,
+        hospitalName: 'Chattogram Medical College',
+        hospitalAddress: 'Chattogram',
+        requiredDateTime: new Date('2026-11-12T08:00:00Z'),
+        status: 'fulfilled',
+        createdAt: new Date(),
+      });
+    });
+
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    const snapshot = await assertSucceeds(getDocs(openWindowQuery(db)));
+
+    assert.strictEqual(snapshot.size, 1);
+    const docSnap = snapshot.docs[0];
+    assert.strictEqual(docSnap.id, IDS.request);
+    // The mapper parses this string; proving it arrives as TEXT is the point.
+    assert.strictEqual(docSnap.data().requiredDateTime, '2026-11-10 10:00 AM');
+  });
+
+  it('2. an unauthenticated client cannot run the open-requests window query', async () => {
+    await seedBase();
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDocs(openWindowQuery(db)));
+  });
+
+  it('3. any signed-in user can read a single request document; anonymous cannot', async () => {
+    await seedBase();
+    const db = testEnv.authenticatedContext(IDS.otherDonor).firestore();
+    await assertSucceeds(getDoc(doc(db, 'blood_requests', IDS.request)));
+
+    const unauthDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(unauthDb, 'blood_requests', IDS.request)));
+  });
+
+  it('4. a signed-in client cannot reach a stranger\'s private notifications instead of the public request window', async () => {
+    // Guards the read model's privacy claim: the window query is on
+    // blood_requests, and nothing in Stage 9.1 reads a stranger's
+    // notifications — the rules already deny that (only the recipient can
+    // list), and this pins the fact.
+    await seedBase();
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(
+      getDocs(query(collection(db, 'notifications'), where('recipientUid', '==', IDS.recipient))),
     );
   });
 });

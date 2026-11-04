@@ -17,7 +17,7 @@ not what was attempted. A stage is only marked done when `flutter analyze` and
 | 6 | Profile photo upload (Supabase Storage) | **Complete — approved** |
 | 7 | Navigation & settings | **Complete — awaiting approval** |
 | 8 | Social feed | **In progress — 8.1 and 8.1.1 complete (awaiting approval), 8.2 complete (awaiting approval), 8.3 IMPLEMENTED — HARDENING IN PROGRESS (steps 1–5 done; defects 10, 13, 14 and 15 closed; not approved, not deployed, not live-verified)** |
-| 9 | Normal blood search & maps | Not started |
+| 9 | Normal blood search & maps | **Not started as a whole. 9.1 — open blood requests, read path — is IMPLEMENTED against fakes (awaiting approval; not deployed, not live-verified); 9.2 — Firestore rules audit, first emulator run and the feed reconciliation — is IMPLEMENTED AND EMULATOR-VERIFIED (96/96; awaiting approval; not deployed); donor search, maps and any request write are still not started** |
 | 10 | Emergency blood request | Not started |
 | 11 | Donor matching & notifications | Not started |
 | 12 | Messaging & live location | Not started |
@@ -48,6 +48,18 @@ what is not yet verified — including, at the reconciliation, one failing test 
 hardening is outstanding. Nothing about the 8.3 implementation was rebuilt,
 replaced or reverted by this reconciliation, and the Step 2 fix changed no Dart
 source.
+
+**Stage 9.1 — open blood requests, read path — is implemented, and is the first
+work on top of Stage 8 that the 8.3 reconciliation did not gate.** That needs
+reading carefully, because the paragraph above it says Stage 9 "should not start
+on top of an unapproved, unenforced write path". 9.1 writes nothing: it reads
+`blood_requests` through a rule that already exists and already allows any signed
+in user to read (`allow read: if request.auth != null`), it changed no rule, no
+index, no bucket and no SQL file, and it does not touch the feed's unreconciled
+write path at all. The blocking dependency for *deployment* — the feed rules
+reconciliation — is untouched and still stands. What 9.1 delivered is the dashboard
+requests section and an **Open requests** screen over a real query, verified
+against fakes only, in the entry at the end of this file.
 
 ---
 
@@ -757,8 +769,11 @@ The suite covers, beyond the Stage 2 tests:
   `const []` no longer does. `feedPreviewProvider` became a synchronous projection
   of the feed's `FeedController` in Stage 8.3 hardening Step 4 (2026-11-03), and the
   community section grew its own spinner, error card and empty card — one section,
-  not a page-level overlay. `nearbyRequestsProvider` is exactly as written above,
-  and `blood_requests` is still Stage 9's.*
+  not a page-level overlay. `nearbyRequestsProvider` became the same kind of
+  projection in Stage 9.1 — the `take(3)` head of `requestsControllerProvider`'s
+  window, still a synchronous `Provider<List<BloodRequest>>` so a layout test can
+  still override it with a plain list — and `blood_requests` is read now, by that
+  entry at the end of this file.*
 - **`DonorStatusCard`.** Blood group, last donation and availability in one card,
   with `null` rendering "Not set yet" instead of a `0` or an invented group. A
   wrong blood group on a donor dashboard is a medical-severity mistake, so no
@@ -780,6 +795,13 @@ The suite covers, beyond the Stage 2 tests:
 - **`NearbyRequestCard`** shows only what the summary carries — group, area, units,
   date. No distance, recipient name or live status, because none of those exist
   until the request is actually read (Stage 9).
+
+  *Dated correction, Stage 9.1: the request is read now. `NearbyRequestCard` and its
+  `NearbyRequestSummary` view model were deleted and the dashboard renders the
+  feature's own `RequestTile` instead, so there is one row design for one entity. The
+  section is titled **Open requests** rather than "near you", because no distance is
+  computed, and the tile still shows no recipient name — that part of the Stage 4
+  reasoning was correct and was made permanent in the read model.*
 - **`FeedPostCard`** with an initials avatar, author, date and a two-line excerpt.
 - **Responsive.** One `LayoutBuilder` decides everything: below 720 dp the
   sections stack inside a 560 dp column; at 720 dp and above they pair inside
@@ -2629,6 +2651,12 @@ items 10–15 were recorded, not fixed.
     followable until the buckets and policies in that directory have been applied, which
     remains nobody's verified fact. There is still no per-post destination and nearby
     requests are still unwired, which is Stage 9 work rather than storage work.
+
+    *Dated correction, Stage 9.1: the last clause is now false. `blood_requests` is
+    read, the dashboard section and the **Open requests** screen are wired, and the
+    storage file was corrected to say so. What remains true is the half this step
+    could not close: there is still no per-post destination, still no destination for
+    one request either, and nothing here has been verified against a live backend.*
 16. **FOUND AND FIXED IN STEP 5'S DOCUMENTATION PASS — the root `README.md` contradicted
     `docs/PROJECT_STATE.md` about the composer's visual review.** Its *Getting started*
     visual-review paragraph said "**The composer has no render at all** —
@@ -2864,4 +2892,583 @@ rules reconciliation with §14.1 plus the first feed-collection rules tests — 
 remaining task that gates deployment, and one that needs the owner's security approval
 before `firestore.rules` moves. Stage 9 (normal blood search and maps) should not start
 on top of an unapproved, unenforced write path that a donor can now actually reach.
+
+**What happened after that was written.** Stage 9.1 has since been built — the entry
+at the end of this file — and it is not a breach of the sentence above. 9.1 is a
+read: it writes nothing, it needed no rule to move, and it does not touch the feed's
+unenforced write path. The two items that gate *deployment* — the rules
+reconciliation (defect 5) and the first live pass against a real backend (defects 6
+and 7) — are untouched and still stand, for Stage 8 and Stage 9.1 alike. What that
+sentence was guarding against, a donor being led to believe a request can be raised
+or answered from this build, is still not possible: 9.1 shows a list and says so in
+one line under it.
+
+---
+
+## Stage 9.1 — Open blood requests, read path
+
+**Status: IMPLEMENTED against fakes. Not approved, not deployed, not live-verified.**
+The whole of this stage has never read a real Firestore project. Every claim below
+about what the app *shows* is backed by a widget test over a fake; every claim about
+what the collection *contains* is backed by `firestore.rules` and by the seed
+documents in `firestore-rules-tests/firestore.test.js`, which is the only place in
+this repository where a `blood_requests` document has ever been written — and only
+into an emulator that this stage did not run.
+
+The stage's own architecture record is `docs/ARCHITECTURE.md` §15. This entry
+records the scope decisions, the files, the measurements and what is outstanding.
+
+### Why a read path could be built now
+
+`firestore.rules` already answers the only permission question this stage asks:
+
+```
+match /blood_requests/{id}
+  allow read: if request.auth != null;
+```
+
+That rule is **frozen and was not edited** — no rule, no field, no index, no
+`firebase.json`, no SQL and no bucket was touched by this stage, and nothing was
+deployed or `firebase deploy`-ed. The read needs no approval it does not already
+have, which is the difference between this stage and the feed's write path. The
+consequence of that same rule is worth stating plainly: any signed-in user can
+already read `patientName` and `phoneNumber` out of a `blood_requests` document.
+This app chooses not to put them into its read model, and §15 records why the
+choice had to be made in the mapper rather than in the rules.
+
+### Scope, and what it deliberately is not
+
+Stage 9.1 is the first slice of Stage 9 and only the first. Named explicitly,
+because the stage's title promises more than it delivers:
+
+| In 9.1 | Not in 9.1 |
+| --- | --- |
+| Read `blood_requests` where `status == 'open'` | any write of any kind |
+| One window of 25, sorted soonest-needed-first | paging, cursors, a **Load more** |
+| The dashboard's requests section, with real rows | donor search (Stage 9's other half) |
+| `RequestsScreen` behind **See all** | maps, distance, location permission |
+| Loading / empty / error / retry / refusal states | a per-request destination or detail |
+| Group, units, place, date as typed | accepting, claiming, contacting — Stage 10's transaction |
+
+The two headline actions on the dashboard (**Request blood**, **Find donors**) still
+answer with the *coming soon* notice, and that is correct rather than unfinished:
+the first needs Stage 10's write rule and the second needs a donor search that does
+not exist yet.
+
+### The query, and the Firestore ordering fact that shaped everything
+
+The read is one call, with no `orderBy` and no cursor (field names are constants in
+`FirestoreRequestDocuments`, and the collection is `blood_requests`):
+
+```dart
+collection('blood_requests')
+    .where('status', isEqualTo: 'open')
+    .limit(RequestRepository.window + 1)
+    .get();
+```
+
+Before it, `fetch` checks `_auth.currentUser` and answers a signed-out call with an
+`AuthFailure` rather than with the `permission-denied` the rules would send, and a
+non-positive `limit` never reaches the network at all.
+
+**Why there is no `orderBy` on the date.** `requiredDateTime` is free **TEXT** in
+this collection — the create rule requires the *key* and constrains no type for it,
+and the rules-test seed writes `'2026-11-10 10:00 AM'`. Firestore orders by *type*
+before it orders by value: bind a `Timestamp` and every text document sorts after
+it, `orderBy` a field that is sometimes a string and sometimes a timestamp and the
+read either returns nothing useful or throws a composite-index error. Either
+mistake does not look like a bug — it looks like "there are no open requests", on
+screen, over a full collection. So the urgency sort happens client-side, in
+`compareByUrgency`, where a mixed-type field can be reasoned about and tested.
+
+**Why there is no cursor.** An unordered window cannot be paged forward: a cursor
+needs a stable sort key, and the sort key here is computed after the read. The
+over-fetch of one document is what makes `OpenRequests.truncated` *measured* rather
+than inferred — a collection of exactly 25 open requests does not get a notice about
+requests that are not there.
+
+**Index cost: none.** A single equality filter with the default `__name__` order is
+served by the automatic single-field index on `status`, so no composite index is
+required and `firestore.indexes.json` does not exist in this project and was not
+created.
+
+### The five states, and the one precedence rule that decides between them
+
+`RequestsState` exposes four resolved predicates plus an in-flight case, and both
+surfaces — the dashboard section and `RequestsScreen` — read the same ones:
+
+| State | Predicate | What the donor sees |
+| --- | --- | --- |
+| First read in flight | `isInitialLoading` | a spinner, and nothing is claimed |
+| Nothing open | `isEmptyResult` | *No open requests* + "when someone needs blood, their request appears here first" |
+| Read failed | `isFatalError` | *The requests could not be loaded* + a working **Try again** |
+| Read partly unreadable | `isUnreadableResult` | *could not be fully read*, **no button** — the window is not empty and retrying re-asks the same documents |
+| Ready, with caveats | `truncated` / `skipped` | the rows, plus "only the first 25 are shown" and/or "*n* requests could not be shown" |
+
+`isEmptyResult` is `requests.isEmpty && loaded && !truncated && skipped == 0 &&
+status != loading`, and `isUnreadableResult` is its mirror. **The refusal count is
+part of the definition of empty**, which is the whole point: an empty list that came
+from documents the mapper could not read is not "no open requests", and saying so is
+the difference between an honest screen and one that tells a donor nobody needs blood
+today. Both surfaces test `isFatalError` *before* `isEmptyResult`, so a failed refresh
+of an empty window says "could not be loaded" and never "no open requests". There is
+a test for exactly that case on both surfaces.
+
+Retry appears only where a retry could change something: on a fatal error, and as
+pull-to-refresh on the screen. The unreadable state deliberately has no button.
+
+### Decisions taken before any code was written
+
+1. **Read model, not document dump.** `BloodRequest` carries id, group, hospital,
+   address, units and two date fields. No `patientName`, no `phoneNumber`, no
+   `notes`, no `latitude`/`longitude` — those keys are never read into the entity at
+   all, so no log line, `toString()`, test failure or widget can print them. Both
+   `BloodRequest.toString()` and `OpenRequests.toString()` name numbers and no place.
+2. **Two fields for one date.** `neededBy` (a real instant, when the text could be
+   read as one) and `neededByText` (the stored text verbatim). Neither invents a value
+   for the other; a row with no readable date shows what the person typed, and one
+   with no text at all shows *No date given*. An undated request sorts **after** every
+   dated one, because "we do not know when" is not the same claim as "on Friday".
+3. **Refuse, and count.** A document whose blood group is not one of the eight the
+   rules accept, or whose units are not an `int >= 1`, is dropped and counted in
+   `skipped`. One malformed document cannot empty the list.
+4. **One tile, one controller, two surfaces.** `nearbyRequestsProvider` is
+   `requestsControllerProvider`'s window `.take(3)`. The dashboard's three rows and
+   the screen's twenty-five are the same list from the same read, so the two cannot
+   disagree about what is urgent — the same pattern Stage 8.4 used for the feed
+   preview (§14.2).
+5. **No dead controls.** Nothing in a row is tappable, because there is nowhere for a
+   row to go until Stage 10. `RequestTile` has no `onTap`, no `InkWell`, no
+   `GestureDetector`, no chevron — and a widget test asserts their absence, so adding
+   one without a destination fails the suite rather than shipping a lie.
+6. **Never a false empty.** See the precedence rule above; it is tested on both
+   surfaces and on both the `skipped` and the `truncated` path.
+
+### What is in the tree
+
+**Created — `lib/features/requests` (13 files, four layers)**
+
+| File | Job |
+| --- | --- |
+| `domain/entities/blood_request.dart` | the read model; the privacy decision is made here, and documented in the class doc |
+| `domain/open_requests.dart` | `OpenRequests` — the window: `requests`, `truncated`, `skipped`; immutable, and the test that it cannot be mutated after hand-out is in the repository suite |
+| `domain/request_ordering.dart` | `compareByUrgency` and `orderRequests` — dated before undated, soonest first, past dates left first, read order preserved inside a tie, input list never mutated |
+| `domain/request_repository.dart` | the read port, one method, and `window = 25` with the reason it is a window and not a page |
+| `data/models/blood_request_document.dart` | the pure mapper: `fromMap(id:, data:)`, `parseRequiredText`, the 12-hour clock, the calendar check, and the refuse-and-count rules |
+| `data/request_documents.dart` | the narrow seam — `RequestDocument` (id plus the wire's own field map, unreconstructed) and `RequestDocuments.fetch({required int limit})`, so no Firestore type crosses into the repository |
+| `data/firestore_request_documents.dart` | the only file in the feature that touches `FirebaseFirestore`: the one `where`/`limit`/`get`, a non-positive limit answered without a round trip, and `FirebaseException`/`Exception` classified by `mapFirestoreCodeToFailure`/`mapExceptionToFailure` |
+| `data/firestore_request_repository.dart` | `FirestoreRequestRepository`: seam call at `window + 1`, failure passed through untouched, map with refuse-and-count, `truncated` measured from the over-fetch, `orderRequests` applied above the repository |
+| `application/requests_state.dart` | `RequestsStatus`, `RequestsState`, the four predicates, `copyWith`, and a `toString` that names counts and no place |
+| `application/requests_providers.dart` | `requestRepositoryProvider` (built lazily, so a tree that never asks for requests never touches `FirebaseFirestore.instance`) and `requestsControllerProvider` over `RequestsController` (`load`/`refresh` under one in-flight guard) — two public providers, and the repository is the one seam every test of this feature overrides |
+| `presentation/requests_messages.dart` | the one place that turns a state into a sentence, shared by both surfaces so the dashboard and the screen cannot word the same failure differently |
+| `presentation/requests_screen.dart` | the **See all** destination: window of 25, footer note instead of a **Load more**, pull-to-refresh, retry on fatal error, 900 dp measure |
+| `presentation/widgets/request_tile.dart` | the row both surfaces share: badge, units · needed-by, hospital, area — and nothing tappable |
+
+**Created — tests (109 tests)**
+
+| File | Tests | Covers |
+| --- | --- | --- |
+| `test/features/requests/blood_request_document_test.dart` | 27 | the mapper, both date shapes, the 12-hour clock, the eight groups, every refusal |
+| `test/features/requests/request_ordering_test.dart` | 13 | comparator direction, ties, undated last, past dates first, idempotence, no input mutation, a full reversed window |
+| `test/features/requests/firestore_request_repository_test.dart` | 15 | the limit asks for `window + 1`, ordering applied above the repository, `truncated` exact at 25 and 26, refusals counted only inside the window, failure pass-through, no privacy leak in `toString` |
+| `test/features/requests/requests_controller_test.dart` | 20 | every state transition, one read at a time under concurrent calls, a failed refresh keeping the list, caveats surviving a failure, retry always possible |
+| `test/features/requests/request_tile_test.dart` | 10 | the four facts, the combined units · date node, address suppression, the no-dead-control assertion, a 320 px long name, Bangla, dark |
+| `test/features/requests/requests_screen_test.dart` | 24 | order on screen, footer note, honest empty, error-before-empty, retry, unreadable with no button, both notices, pull-to-refresh and a refused second pull, wide measure, three Bangla cases |
+| `test/support/fake_requests.dart` | — | `FakeRequestRepository` + `FakeRequestDocuments` in the house harness style: `gate` (`Completer<void>?`), `calls`, `lastLimit`, `failure` |
+
+**Modified — `lib`**
+
+| File | Change |
+| --- | --- |
+| `features/home/application/home_providers.dart` | `nearbyRequestsProvider` stops being an empty-list stub and becomes the `take(3)` projection of the controller; `nearbyRequestLimit` names the three |
+| `features/home/presentation/home_screen.dart` | the requests section is a real five-state surface: rows, notices, honest empty, fatal error with **Try again**, unreadable without a button, **See all** pushing `RequestsScreen`; the two headline actions are unchanged |
+| `features/home/presentation/widgets/home_cards.dart` | `NearbyRequestCard` is gone; the dashboard renders the shared `RequestTile` instead, so there is one row design for one entity |
+| `features/home/domain/home_dashboard.dart` | the `NearbyRequestCard` view model and its fake-friendly constructor are deleted — the projection now returns real `BloodRequest`s |
+| `l10n/app_en.arb`, `l10n/app_bn.arb`, `l10n/generated/*` | 14 keys added, 3 renamed (below) |
+
+**Modified — tests that had to be migrated (not weakened)**
+
+| File | Why it changed |
+| --- | --- |
+| `test/features/home/home_screen_test.dart` | asserted the *stub*: "Requests near you" and "No open requests nearby" are now "Open requests" and "No open requests", and the section has states to test, so the file grew to cover them |
+| `test/features/home/home_profile_test.dart`, `test/app/app_shell_test.dart`, `test/support/auth_harness.dart` | the dashboard now reads the window on mount, so every harness that mounts it must override `requestRepositoryProvider` with `FakeRequestRepository()` — the same treatment the feed got in Stage 8.4, and for the same stated reason: a fresh fake holds nothing, which is what a collection nobody wrote to holds |
+| `test/review/visual_review_test.dart` | a `requests` capture group — populated light English, populated dark Bangla, window-full light English, empty light English, read-failed dark Bangla — and the same repository override for the dashboard shots |
+
+**Deleted** — nothing outside the two view-model/card names above; `git status`
+shows no deletion.
+
+### Localisation
+
+14 keys added to **both** catalogues, in the same commit, and `test/l10n/arb_parity_test.dart`
+guards that they stay paired:
+
+- `requestsTitle`, `requestsEmptyTitle`, `requestsEmptyBody`, `requestsErrorTitle`,
+  `requestsRetry`, `requestsUnreadableTitle`, `requestsUnreadableBody`,
+  `requestsSkippedNotice`, `requestsTruncatedNotice`, `requestsNoActionNote`;
+- `homeRequestsTitle`, `homeRequestsEmptyTitle`, `homeRequestsEmptyBody`,
+  `homeNeededByUnknown`.
+
+**Three keys were renamed, not added.** `homeNearbyTitle`, `homeNearbyEmptyTitle`
+and `homeNearbyEmptyBody` ("Requests near you" / "No open requests nearby") became
+`homeRequests*` with the "near you" wording **removed on purpose**. Nothing in 9.1
+knows where the donor is: `latitude`/`longitude` are in the document and are not read
+into the entity, and no distance is computed. "Near you" over a list that cannot
+compute near is a claim about the world the app has not checked, so the section is
+called **Open requests** and the tile's place line is the typed address or hospital.
+
+`requestsSkippedNotice` is a plural routed through `decimalPattern`, so a Bangla
+count is written in Bengali digits; `lib/l10n/untranslated.json` is `{}` and
+`app_bn.arb` contains no ASCII digit, both of which the parity test enforces.
+
+### Database changes
+
+**None.** `firestore.rules` is frozen and was not edited, moved, deployed or
+weakened; `firebase.json`, `firestore-rules-tests/`, `docs/storage/*.sql`
+and the Supabase project were not touched. No composite index is needed by this read
+and none was created.
+
+### Packages added
+
+**None.** No dependency, no `pubspec.yaml` line, no `pubspec.lock` change.
+
+### Bugs found during verification, and fixed
+
+Both are in the mapper, both were found by tests written for this stage, and **both
+exist in the commit that is currently on `origin/main`** — see Git state below.
+
+1. **Every AM/PM date was silently refused.** `_meridiem` captures the marker's
+   *first letter* (`([AaPp])\.?[Mm]\.?`), so that `P.M.` and `pm` share one pattern,
+   but `_applyMeridiem` switched on the whole word — `'AM' => …, 'PM' => …`. The
+   switch never matched, fell to `_ => null`, and every request whose
+   `requiredDateTime` was written the way this collection actually writes it
+   (`'2026-11-10 10:00 AM'`) arrived as *undated* and sorted to the bottom of an
+   urgency-sorted list. Fixed by switching on the captured letter (`'A'`/`'P'`), with
+   the parameter renamed and the contract documented.
+2. **An impossible date was rolled over, not refused.** `DateTime.parse` does not
+   range-check: `2026-13-40` becomes a real instant in February of the next year. The
+   mapper accepted it, so a typo'd request would be ordered on a day nobody wrote —
+   in a list whose entire purpose is ordering by how soon blood is needed. Fixed by
+   `_dateParts` + `_isRealDate`, which compare the parsed fields against the ones as
+   written and refuse the roll-over. The check runs on the **text**, not on the
+   returned value, because a `+06:00` value that crosses midnight in UTC would
+   otherwise be rejected for a day it never claimed to be.
+
+Neither was a test-side fix: the tests were right and the production code was wrong,
+so the suite drove the change rather than the change driving the suite.
+
+### Verification
+
+Every number below was measured on this tree in this pass, not copied forward.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Static analysis | `flutter analyze` | **No issues found!** — twice in this pass, and the second run was after every documentation edit |
+| Whole suite | `flutter test` | **851 passed, 63 skipped, 0 failed** — also run twice, before and after the documentation, with the same counts |
+| Trailing whitespace | `git diff --check` | **no output** |
+| Requests feature | `flutter test test/features/requests` | **109 passed, 0 failed** |
+| Migrated surfaces | `flutter test test/features/home test/app test/l10n` | **93 passed, 0 failed** |
+| Visual review harness | `$env:SOLOVVO_VISUAL_REVIEW=1; flutter test test/review/visual_review_test.dart` | **63 passed, 0 failed** — the 63 skips in the row above are this file's opt-in captures, and they were *run*, not merely counted as skips; five new `requests-*` captures are among them, including `requests, read failed, dark bn` |
+| Committed renders | `docs/visuals/stage9/01..06` | six PNGs promoted from `build/review/`: `01-requests-light-en`, `02-requests-dark-bn`, `03-requests-truncated-light-en`, `04-requests-empty-light-en`, `05-requests-error-dark-bn`, `06-home-open-requests-light-en` (126–249 KB) |
+| Format | `dart format --output=none --set-exit-if-changed` (inspection only, **nothing written**) | the repository is **not** format-clean under Dart 3.13's tall-style formatter — 16 of the 36 files sampled were already-dirty files this stage never touched, so no repo-wide format was run and long lines in the new files were hand-wrapped instead |
+| Rules tests | `npm test` in `firestore-rules-tests/` | **Not run.** Needs the Firestore emulator; `firestore.rules` was not touched by this stage, and the suite's `blood_requests` seeds are the *source* of this stage's date-shape assumption, not its verification |
+| Screen reader | — | **Not run.** No TalkBack or VoiceOver pass has been made on any stage. `RequestTile` composes from labelled widgets (`BloodGroupBadge`, plain `Text`), which is asserted by widget test — that proves the node carries a string, not that it reads well aloud |
+| Live Firebase | — | **Not run.** No emulator session, no device build, no browser pass, no network read, no query cost incurred. The `blood_requests` collection has never been read by this app |
+
+### Remaining issues
+
+1. **Nothing is live-verified.** The single-equality-filter query, the default
+   `__name__` order, the read cost of a 26-document window and the actual spelling
+   mix in the real collection are all inferred from the rules and the rules-test
+   seeds. The first live pass has to confirm that a real `blood_requests` read
+   returns rows at all — the failure mode this design avoids (a type-ordered
+   collection that looks empty) is exactly the one only a live read can rule out.
+2. **`requiredDateTime` stays untyped data.** 9.1 tolerates both shapes; nobody has
+   made the collection write one. Until a create path exists (Stage 10), the mapper's
+   refusal count is the only defence, and it is client-side.
+3. **The window has no refresh timer.** A donor who leaves the screen open sees a
+   stale list until they pull. Deliberate — a background poll on the Spark plan's
+   daily read quota is a decision for the owner, not an implementation detail.
+4. **No distance, no filter, no search.** Stage 9's other half. `latitude` and
+   `longitude` are in the document and are not in the read model.
+5. **A row cannot be acted on.** Accepting or claiming is Stage 10's transaction,
+   behind rules that already describe it (`request_responses`, `response_claims`) and
+   a write path this app has not built. The footer line under the list says so in
+   both languages rather than leaving the donor to discover it.
+6. **`FeedState.isEmptyResult` still lacks the `skipped == 0` term** that
+   `RequestsState.isEmptyResult` has — recorded as `docs/ARCHITECTURE.md` §11 item 14,
+   not fixed here, because fixing it changes `test/features/feed/feed_pagination_test.dart`
+   expectations and the feed's own suite is the thing Stage 8.3 is hardening. The two
+   features now disagree about when to say "nothing here", and this file says so.
+7. **Not approved.** No approval record exists for Stage 7, 8.2, 8.3 or 9.1.
+
+### Git state
+
+HEAD is **`eb1b5e4`** ("Describe your changes", 2026-11-04 06:22 +0600) and
+`origin/main` is **`eb1b5e4`** — level, 0 ahead, 0 behind. That commit is the
+**owner's**, and it took Stage 9.1 mid-flight: the thirteen `lib/features/requests`
+files as they stood then, `home_providers.dart`'s projection, the `home_dashboard.dart`
+view-model deletion, the 14 localisation keys and their generated output, and the
+`README.md` / `ARCHITECTURE.md` / `PROJECT_STATE.md` edits of that moment — 24 files,
++1 977/−239.
+
+**It also took the mapper before both bug fixes.** `git show eb1b5e4` still has
+`switch (marker)` over `'AM'`/`'PM'` against a regex that captures one letter, and no
+calendar check. So the two defects under "Bugs found during verification" above are
+**live on `origin/main`**, and the code that fixes them, plus all 109 tests that catch
+them (`test/features/requests/` and `test/support/fake_requests.dart` are untracked),
+plus `home_screen.dart`, `home_cards.dart`, `blood_request_document.dart`,
+`requests_screen.dart`, `visual_review_test.dart` and the three migrated harness files,
+are **uncommitted working-tree state** as this entry was written. Nothing about that is
+this pass's doing and nothing about it will be this pass's repair: **this pass staged,
+committed and pushed nothing, and ran no Git command that writes** (§11 — the owner
+commits). Remote state has not been re-verified against the network.
+
+### Next stage
+
+9.1 is one read and it is finished; the honest next steps are, in order:
+
+1. **The owner's security approval and the rules reconciliation** — still the only
+   thing that gates *deployment*, for the feed's write path (defect 5) and for
+   anything in Stage 10 that writes `blood_requests`.
+2. **The first live pass** — a real `blood_requests` read against the project, which
+   is the only check that can confirm the shape this whole design inferred from the
+   rules and the rules-test seeds. It costs 26 documents and needs the owner to run
+   it or to authorise running it.
+3. **Stage 9's second half** — donor search, which is where maps and distance become
+   real and where the "near you" wording this stage removed can honestly come back.
+4. **Stage 10 — the emergency request** — the write path, the `request_responses`
+   transaction, and the per-request destination that would let a `RequestTile` grow an
+   `onTap` without failing its own test.
+
+**What happened after that list was written.** Item 1 was executed on
+4 November 2026 as **Stage 9.2** — the owner's directive of that date authorised the
+rules work verbatim ("Audit existing Firestore Rules. Modify firestore.rules. Add
+security-rule tests. Run Firestore Emulator tests."), the reconciliation was applied
+to `firestore.rules`, and the whole suite is now emulator-verified at 96/96. Items 2,
+3 and 4 stand as written. See the Stage 9.2 entry below.
+
+---
+
+## Stage 9.2 — Firestore rules audit, first emulator run, feed reconciliation
+
+**Status: IMPLEMENTED AND EMULATOR-VERIFIED. Not approved, not deployed.** Every
+number below was measured in this pass under `firebase-tools emulators:exec` against
+the offline emulator, project `demo-solovvo-tests`. Nothing was deployed, and no
+request to the live `sholovvo-blood-donation` project was made except two read-only
+CLI listings (§10 posture below).
+
+### Why this stage ran now
+
+The Stage 9.1 "Next stage" list opened with "the owner's security approval and the
+rules reconciliation — still the only thing that gates deployment". The owner's
+master directive of 4 November 2026 granted that approval in one line — *"Audit
+existing Firestore Rules. Modify firestore.rules. Add security-rule tests. Run
+Firestore Emulator tests."* — with the boundary clauses attached: "Do not weaken
+security to make a feature work" and "Do not treat client validation as the only
+security boundary". This entry is that reconciliation.
+
+**No line of `lib/` changed, and none needed to.** The point of reconciliation was
+to make the rules match the schema the app already writes; the shipped create path
+passes the new rules in the emulator unchanged (feed test 1). That is the difference
+between a rules stage that follows a decision record and one that invents a new
+contract nobody implemented.
+
+### What was found before anything changed
+
+1. **The rules suite had never been executed in this project's recorded history.**
+   Every stage entry through 9.1 carries "Rules tests: Not run". The stated blocker
+   was the environment; it was checked, not assumed: node v24.22.0, OpenJDK 21.0.12.1
+   and `firebase-tools` via `npx` are all present, and the Firestore emulator runs
+   offline under `--project demo-solovvo-tests`.
+2. **Baseline: 67 tests, 67 pass, 0 fail** (8 suites, 27.1 s) against the untouched
+   rules. Everything previously claimed as rule-enforced — donation history, response
+   claims, notifications, the four P0 remediations — became *proven* for the first
+   time here, rather than assumed from the file.
+3. **A write-path inventory of the whole tree**: the app performs exactly one
+   Firestore write, `FirestorePostWriter.createPost` →
+   `posts.doc(id).set(PostDocument.toCreateMap(post))` — the nine
+   `requiredFields` plus optional `authorPhotoUrl`, server timestamps, both counters
+   zero, validated before the network. **No client code writes comments, likes or
+   reports, and no client code updates a post.** Every rule permission beyond that
+   shape is surface for *other* clients, not for this one — which is exactly what
+   §14.1 said the rules must be tightened against.
+4. **The feed collections had zero rules tests** (`grep` of
+   `firestore.test.js`: 38 `blood_requests` references, no `'posts'`), and
+   `firestore.rules` disagreed with the shipped Dart schema on five points, all of
+   them in §14.1's table.
+
+### Discovery pass, run before any rule was touched
+
+The house workflow the file itself documents: write behaviour-discovery tests
+naming what the rules *currently permit*, run them, then harden, then flip the
+assertions. `firestore-rules-tests/firestore-feed.test.js` was created (25 tests,
+5 suites — posts create, posts update, comments, likes, reports), and four
+Stage 9.1 read-path tests were appended to `firestore.test.js`. The baseline run —
+new tests, **untouched rules** — was **95 tests, 95 pass, 0 fail** (14 suites,
+22.0 s): every P0 finding reproduced.
+
+| Finding (all live pre-stage) | Reproduced by |
+| --- | --- |
+| post create checks `authorUid` and nothing else — missing keys, 5 000-char text, ten images, paths > urls, pre-filled counters and a client-stamped `createdAt` all accepted | feed tests 4–9 |
+| the `donationRecordId` branch admits a key the canonical schema does not carry | feed test 10 |
+| **any signed-in stranger can forge `likeCount ±1`** with no paired like write — the integrity hole | feed test 14 |
+| author edits are broken by the stale singular `imageUrl` allow-list | feed test 13 |
+| comment create has no shape, no size bound, no parent-existence check | feed tests 17–19 |
+| `post_likes/{likeId}` is unbound: any id, any or absent `postId`, duplicates undetectable | feed tests 21–22 |
+| `reports` has **no rule at all** while `Report` is a shipped entity | feed test 24 |
+
+The four `blood_requests` tests are the first emulator proof that Stage 9.1's
+actual query works: a signed-in `where('status','==','open').limit(26)` succeeds
+and returns the text-typed `requiredDateTime` document alongside a timestamp-typed
+sibling (the mixed-type collection, served without a composite index); an
+anonymous caller is refused the same query and the same document get; a stranger
+cannot reach another user's `notifications`.
+
+### The reconciliation, applied
+
+`firestore.rules` grew 348 → 459 lines; the posts/comments/post_likes block was
+replaced and a `reports` block added. `git diff --stat` counts 150 changed lines in
+the file. In full:
+
+| Collection | After |
+| --- | --- |
+| `posts` create | `hasAll` the nine `PostDocument.requiredFields`, `hasOnly` those plus `authorPhotoUrl`; `authorUid == uid`; text 1–2 000; `imageUrls`/`imagePaths` lists ≤ 4 with **paths ≤ urls**; both counters `== 0`; `createdAt == request.time && updatedAt == request.time`; the `donationRecordId` branch is **gone** |
+| `posts` update | author only; affected keys ⊆ `['text','imageUrls','imagePaths','editedAt','updatedAt']`; `authorUid`, `authorName`, both counters and `createdAt` immutable; `updatedAt == request.time` (an edit must restamp); `editedAt == request.time` when set; **the stranger `±1` branch is gone** |
+| `posts/{id}/comments/{cid}` create | shape enforced: `hasAll(['authorUid','authorName','text','createdAt'])`, `hasOnly` + the three optional reply fields; text 1–500; `createdAt == request.time`; parent post must exist |
+| comments update | `if false` — append-only; edit is delete-and-rewrite, so a thread cannot change under a reply |
+| `posts/{id}/likes/{likeId}` | new: `likeId == request.auth.uid` by construction, payload `hasOnly(['likedAt'])`, `likedAt == request.time`; update `if false`; delete by the liker only |
+| `post_likes` | `allow read, write: if false` — retired with the move; stranded documents stop being client-reachable (the app never read them) |
+| `reports` | new, create-only: `reporterUid == uid`, `hasAll` six / `hasOnly` seven (optional `note`), `target in ['post','comment']`, `reason in` the five `ReportReason` wire names, note ≤ 300, `createdAt == request.time`; **every read denied** — moderation reads from the console, and no user context needs the collection |
+| `blood_requests`, everything else | **unchanged.** The claiming, notification and history rules were re-verified, not rewritten |
+
+Three deliberate deviations from §14.1, recorded rather than quiet:
+
+1. **No `±1` branch for either counter** — §14.1 proposed re-opening `likeCount`
+   paired with the like write and adding the same shape for `commentCount`. Both
+   are closed instead. A rules condition cannot require that a *second write*
+   happened in the same batch except by checking the other document's existence —
+   and for comments that check is impossible, because comment ids are not
+   deterministic (the path carries no id the counter rule could name). A half-
+   paired rule is worse than a closed one: it says the pairing is enforced when
+   only the step is. When the like/comment write paths land, each counter branch
+   comes back in the same change as its `existsAfter`/`getAfter` pairing, with
+   its own test.
+2. **List element types are not checked** — an emulator defect, in the next
+   section; §14.1's own "none of them now" deferral applies.
+3. **An edit must restamp `updatedAt`** — stricter than §14.1's allow-list, which
+   named `updatedAt` but did not require it. Without the requirement an edited
+   post keeps its publish stamp and the feed order silently lies about it.
+
+### An emulator defect, pinned not hidden
+
+The first reconciled run failed three tests with
+`Function not found error: Name: [all]`. The element-type comprehensions
+(`imageUrls.all(u, u is string)`) were attempted three ways — a parameterised
+function, the file's proven parameterless-function idiom, and the parenthesised
+lambda form — and failed in all three, inconsistently *within one run*: a
+one-element list evaluated cleanly at one call site while the empty list errored
+at another. Removing both `.all()` clauses made the whole suite green; the exact
+engine trigger is the emulator's, not this project's, and chasing it is not worth
+blocking the stage on. The residual gap is written into the rules file as a
+comment and here: **a non-string element inside `imageUrls`/`imagePaths` is
+admittable by the rules today.** The blast radius is a garbage document, not a
+forged one — `PostDocument.fromMap` refuses any non-string element at read time,
+so a poisoned list renders as a rejected post, never as someone else's picture.
+The checks go back with the first rules-engine that proves them in this suite.
+
+### Verification
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Rules suite, baseline (untouched rules) | `npx firebase-tools emulators:exec --only firestore --project demo-solovvo-tests "node --test --test-concurrency=1 firestore-rules-tests/firestore.test.js firestore-rules-tests/firestore-feed.test.js"` | **95 tests, 95 pass, 0 fail** — discovery assertions, all findings reproduced |
+| Rules suite, first reconciled run | same | 96 tests, **93 pass, 3 fail** — the `[all]` defect, recorded above |
+| Rules suite, final | same | **96 tests, 14 suites, 96 pass, 0 fail** (27.8 s), "Script exited successfully (code 0)" |
+| Static analysis | `flutter analyze` | **No issues found!** (13.0 s) |
+| Whole Dart suite | `flutter test` | **851 passed, 63 skipped, 0 failed** — identical to the Stage 9.1 gate; no Dart file changed in this stage, and the count proves it |
+| Trailing whitespace | `git diff --check` | **no output** |
+
+`firestore-rules-tests/package.json` now runs `node --test --test-concurrency=1`
+instead of a single hard-coded file. The flag is load-bearing, not cosmetic: two
+test files, one emulator, and `clearFirestore` in each file's `afterEach` — run in
+parallel (the `node --test` default) one file wipes the other's seeds.
+
+### Deployment posture
+
+* **Feasible, deliberately not executed.** `firebase-tools login:list` reports
+  **arifovibd24@gmail.com**, and `apps:list --project sholovvo-blood-donation`
+  returns the three real apps (android/ios/web, project number 419478547476) — the
+  token is live and the project is reachable from this machine.
+* **Why not deployed anyway.** §10's pre-change ritual demands an impact check on
+  what already exists, and two questions cannot be answered offline: whether the
+  live `posts` collection holds documents that fail the new update rule's shape
+  check (a legacy document without `imageUrls` would become uneditable), and
+  whether any installed client build performs the now-closed `likeCount ±1` write.
+  Nothing is broken by waiting: today's production rules already accept exactly
+  what the app writes. This stage changed what *other* clients can do — which is
+  the owner's call to ship, on the owner's timing, after reading this file.
+* **Recovery artefacts.** `git show HEAD:firestore.rules` is the exact
+  pre-reconciliation file (tracked, committed at `eb1b5e4`); the deploy command is
+  `firebase deploy --only firestore:rules`, in either direction.
+
+### Indexes
+
+**None needed, none created.** The app's only query is one equality filter with a
+limit, which Firestore serves from the automatic single-field index; read-path
+test 1 exercised exactly that in the emulator. There is still no
+`firestore.indexes.json` and this stage had no reason to add one.
+
+### Files
+
+| File | Change |
+| --- | --- |
+| `firestore-rules-tests/firestore-feed.test.js` | **created** — 25 tests, 5 suites, the discovery-then-closed record of every feed collection |
+| `firestore-rules-tests/firestore.test.js` | five `firebase/firestore` imports added (`collection`, `query`, `where`, `limit`, `getDocs`); one new suite, four Stage 9.1 read-path tests (+76 lines) |
+| `firestore-rules-tests/package.json` | test script → `node --test --test-concurrency=1`; description now names the three phases the file covers |
+| `firestore.rules` | the reconciliation above; 348 → 459 lines |
+| `docs/ARCHITECTURE.md`, `docs/PROJECT_STATE.md`, `README.md` | §14.1 dated as applied; this entry; the README's rules paragraphs |
+
+**Not touched:** `lib/` (nothing), `firebase.json`, `.firebaserc`, the
+`blood_requests` rules, `docs/storage/*.sql`, the Supabase project.
+
+### Remaining issues
+
+1. **Not deployed.** Until `firebase deploy --only firestore:rules` runs, the live
+   project enforces the *pre-reconciliation* rules; everything in this entry is
+   emulator-scoped.
+2. **Element types in the image lists are unchecked** (the emulator `[all]`
+   defect), with the read-side refusal analysed above.
+3. **Neither counter has an update path.** Liking and commenting are therefore
+   *client-impossible* as well as unbuilt; the pairing rule comes back with the
+   transaction stage that needs it, not before.
+4. **The `blood_requests` create rule's `hasOnly` excludes `assignedDonorId`,**
+   while the rules-test seed writes `assignedDonorId: null` through the admin
+   bypass. Harmless today — no client creates requests — but a Stage 10 client
+   create must omit the key entirely, and the seed would hide a rule regression
+   that broke it. Recorded, unchanged.
+5. **The rules bound raw text length; the Dart validator measures the trimmed
+   length.** A post with padding around exactly 2 000 trimmed characters passes
+   the client and fails the rules. The rules being stricter is the safe
+   direction — refused writes, never forged ones — so it is documented, not
+   patched.
+6. **The Stage 9.1 read-path proofs are emulator-only.** A live `blood_requests`
+   read still has not run.
+7. **Not approved.** No approval record exists for Stage 7, 8.2, 8.3, 9.1 or 9.2.
+
+### Git state
+
+The working tree now additionally carries the modified `firestore.rules`,
+`firestore.test.js` and `package.json`, and the untracked
+`firestore-feed.test.js`, on top of the Stage 9.1 state (`eb1b5e4`, HEAD =
+`origin/main`, 0/0). Nothing was staged, committed, pushed or deployed by this
+pass; no Git or Firebase command that writes was run.
+
+### Next stage
+
+1. **Owner review, then the deploy decision** for `firestore.rules` — the one
+   command above, with the recovery artefact in the same section.
+2. **The first live pass** — unchanged from Stage 9.1's list, item 2.
+3. **Stage 9's second half** — donor search, unchanged.
+4. **Stage 10 — the emergency request** — and with it the paired counter rules,
+   the `assignedDonorId` create-shape fix, and the like/comment write paths this
+   stage closed the door on deliberately.
 

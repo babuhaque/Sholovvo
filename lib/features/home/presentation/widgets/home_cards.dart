@@ -4,7 +4,6 @@ import 'package:sholovvo_app/design/tokens/app_spacing.dart';
 import 'package:sholovvo_app/design/widgets/initials_avatar.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_card.dart';
 import 'package:sholovvo_app/features/home/domain/home_dashboard.dart';
-import 'package:sholovvo_app/l10n/l10n.dart';
 
 /// One community post, as the dashboard previews it.
 ///

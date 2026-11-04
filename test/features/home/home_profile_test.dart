@@ -10,10 +10,12 @@ import 'package:sholovvo_app/features/home/presentation/widgets/home_header.dart
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
+import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
 
 import '../../support/fake_auth_repository.dart';
 import '../../support/fake_feed.dart';
 import '../../support/fake_profile_repository.dart';
+import '../../support/fake_requests.dart';
 import '../../support/test_app.dart';
 
 const Size _phone = Size(430, 932);
@@ -52,6 +54,10 @@ Future<FakeProfileRepository> _pumpHome(
         // An empty fake is the state this file is not about, and it is the one
         // that keeps the read away from Firestore.
         feedRepositoryProvider.overrideWithValue(FakeFeedRepository()),
+        // And the open-requests window, for the same reason: this file is not
+        // about either read, and an empty fake is the one that keeps them out of
+        // Firestore.
+        requestRepositoryProvider.overrideWithValue(FakeRequestRepository()),
       ],
       child: testApp(
         home: HomeScreen(

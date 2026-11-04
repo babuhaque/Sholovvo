@@ -20,15 +20,24 @@ import 'package:sholovvo_app/features/home/presentation/widgets/home_quick_actio
 import 'package:sholovvo_app/features/home/presentation/widgets/home_section.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
+import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
+import 'package:sholovvo_app/features/requests/application/requests_state.dart';
+import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
+import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
+import 'package:sholovvo_app/features/requests/presentation/requests_messages.dart';
+import 'package:sholovvo_app/features/requests/presentation/requests_screen.dart';
+import 'package:sholovvo_app/features/requests/presentation/widgets/request_tile.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
 /// Where a verified, signed-in donor lands: their status, the two things they
-/// came to do, and the two streams that will fill in as the app grows.
+/// came to do, and the two streams that fill the dashboard in.
 ///
-/// The donor strip and the header read the profile the donor edits in Stage 5,
-/// and the community preview reads the feed Stage 8 built. The nearby requests
-/// stay empty until their own stage. Every section says what it does not have in
-/// its own words rather than showing a zero, a spinner or a sample row.
+/// The donor strip and the header read the profile the donor edits in Stage 5, the
+/// community preview reads the feed Stage 8 built, and the open requests come from
+/// the `blood_requests` read Stage 9 added. Both live sections show their own
+/// loading, error and unreadable states rather than an empty list, and every
+/// section says what it does not have in its own words rather than showing a zero,
+/// a spinner or a sample row.
 ///
 /// Since Stage 7 this is one tab of the app shell rather than the whole
 /// signed-in surface, so it no longer owns a `Scaffold`, a sign-out button or
@@ -61,11 +70,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // The community preview is the dashboard's only live read, and it is asked
-    // for the way the feed screen asks: after the first frame, so no provider is
-    // mutated while the tree is being built, and through the feed's own
-    // controller rather than a second query. A donor who lands here and never
-    // taps anything still sees what the community is saying.
+    // The two live sections read through their own controllers, the way the feed
+    // and requests screens do: after the first frame, so no provider is mutated
+    // while the tree is being built, and never through a second query. A donor who
+    // lands here and never taps anything still sees what the community is saying
+    // and what the collection is asking for.
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
       if (!mounted) {
         return;
@@ -81,6 +90,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       unawaited(ref.read(feedControllerProvider.notifier).loadFirstPage());
     });
+    _scheduleRequestsRead();
+  }
+
+  void _scheduleRequestsRead() {
+    // The same deferral and the same skip-when-already-loaded rule as the feed
+    // above, for the same reason: this window is a paid read, and the dashboard
+    // rebuilds every time a pushed screen opens or closes over it. The requests
+    // screen's own pull-to-refresh is how the window is deliberately re-read.
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) {
+        return;
+      }
+      if (ref.read(requestsControllerProvider).loaded) {
+        return;
+      }
+      unawaited(ref.read(requestsControllerProvider.notifier).load());
+    });
   }
 
   /// The one way into the feed, from every control in the community section that
@@ -90,6 +116,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// shows the whole list newest first, and the tapped post is in it.
   void _openFeed() {
     unawaited(Navigator.of(context).push(FeedScreen.route()));
+  }
+
+  /// The one way into the requests list, from the section's "See all".
+  ///
+  /// Not a per-request destination: the screen that would hold one is Stage 10's,
+  /// and until it exists the row that looks tappable would be a control that does
+  /// nothing. The whole window opens instead, soonest needed first.
+  void _openRequests() {
+    unawaited(Navigator.of(context).push(RequestsScreen.route()));
   }
 
   /// The honest response for an action whose screen does not exist yet.
@@ -117,14 +152,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : profileName.split(RegExp(r'\s+')).first;
 
     final DonorSnapshot? donor = ref.watch(donorSnapshotProvider);
-    final List<NearbyRequestSummary> requests = ref.watch(
-      nearbyRequestsProvider,
-    );
+    final List<BloodRequest> requests = ref.watch(nearbyRequestsProvider);
     final List<FeedPostPreview> feed = ref.watch(feedPreviewProvider);
 
     final Widget requestsSection = _RequestsSection(
       requests: requests,
-      onComingSoon: _comingSoon,
+      window: ref.watch(requestsControllerProvider),
+      onOpenRequests: _openRequests,
+      onRetry: () =>
+          unawaited(ref.read(requestsControllerProvider.notifier).load()),
     );
     final Widget feedSection = _FeedSection(
       posts: feed,
@@ -220,12 +256,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// Nearby requests: rows when there are any, one honest empty card when not.
+/// Open requests: the three most urgent rows when there are any, and one honest
+/// card for each reason there are not.
+///
+/// The five states mirror [_FeedSection] and are decided in the same order, for the
+/// same reasons — what is on screen beats what the read is doing behind it, a
+/// refused read is a different sentence from an empty collection, and a read in
+/// flight spins inside the section rather than over the page.
+///
+/// The one difference is the unreadable card: it carries no button. The feed's
+/// version offers "Open the community" because that page owns the cursor that gets
+/// past the unreadable documents; the requests window has no cursor to page forward
+/// with (`OpenRequests` explains why), so a second attempt would re-ask the same
+/// window and earn the same documents. The requests screen's pull-to-refresh is the
+/// honest way to ask again, and the dashboard does not pretend to be it.
 class _RequestsSection extends StatelessWidget {
-  const _RequestsSection({required this.requests, required this.onComingSoon});
+  const _RequestsSection({
+    required this.requests,
+    required this.window,
+    required this.onOpenRequests,
+    required this.onRetry,
+  });
 
-  final List<NearbyRequestSummary> requests;
-  final VoidCallback onComingSoon;
+  /// The three rows the dashboard previews, projected from [window].
+  final List<BloodRequest> requests;
+
+  /// The requests' own state, watched so a read on the requests screen repaints
+  /// this section too. The preview list is a projection of it.
+  final RequestsState window;
+
+  /// Opens the full window, from a row and from "See all".
+  final VoidCallback onOpenRequests;
+
+  /// Asks for the window again after a refused read.
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -235,30 +299,123 @@ class _RequestsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         HomeSectionHeader(
-          title: l10n.homeNearbyTitle,
-          // No "See all" over an empty list: it would be a link to nothing.
+          title: l10n.homeRequestsTitle,
+          // No "See all" over a list with nothing in it: it would be a link to an
+          // empty page. The card below says why there is nothing to see.
           action: requests.isEmpty
               ? null
               : TextButton(
-                  onPressed: onComingSoon,
+                  onPressed: onOpenRequests,
                   child: Text(l10n.homeSeeAll),
                 ),
         ),
         const SizedBox(height: AppSpacing.sm),
-        if (requests.isEmpty)
-          HomeEmptyCard(
-            icon: Icons.water_drop_outlined,
-            title: l10n.homeNearbyEmptyTitle,
-            body: l10n.homeNearbyEmptyBody,
-          )
-        else
-          for (final NearbyRequestSummary request in requests)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-              child: NearbyRequestCard(request: request, onTap: onComingSoon),
-            ),
+        ..._body(context, l10n),
       ],
     );
+  }
+
+  List<Widget> _body(BuildContext context, AppLocalizations l10n) {
+    final TextTheme text = Theme.of(context).textTheme;
+
+    if (requests.isNotEmpty) {
+      return <Widget>[
+        // A refresh that failed leaves the previewed requests up and says so here,
+        // rather than replacing something readable with an error card.
+        if (window.failure != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: ErrorBanner(
+              message: requestsFailureMessage(l10n, window.failure!),
+            ),
+          ),
+        for (final BloodRequest request in requests)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: RequestTile(request: request),
+          ),
+        // The preview is three of a window that may be full, and the donor cannot
+        // tell from three rows that more stayed behind them. The two notices are the
+        // screen's, said here in the same words and in the same order, because the
+        // section is all the donor sees on the dashboard: documents the app could
+        // not read, and documents it never looked at.
+        if (window.skipped > 0 || window.truncated)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xxs),
+            child: Column(
+              children: <Widget>[
+                if (window.skipped > 0)
+                  Text(
+                    l10n.requestsSkippedNotice(window.skipped),
+                    textAlign: TextAlign.center,
+                    style: text.labelSmall,
+                  ),
+                if (window.truncated)
+                  Text(
+                    l10n.requestsTruncatedNotice(RequestRepository.window),
+                    textAlign: TextAlign.center,
+                    style: text.labelSmall,
+                  ),
+              ],
+            ),
+          ),
+      ];
+    }
+
+    if (window.isFatalError) {
+      return <Widget>[
+        HomeEmptyCard(
+          icon: Icons.cloud_off_rounded,
+          title: l10n.requestsErrorTitle,
+          body: requestsFailureMessage(l10n, window.failure!),
+          action: SolovvoButton(
+            label: l10n.requestsRetry,
+            onPressed: onRetry,
+            variant: SolovvoButtonVariant.secondary,
+            size: SolovvoButtonSize.medium,
+            icon: Icons.refresh_rounded,
+            expand: false,
+          ),
+        ),
+      ];
+    }
+
+    if (window.isUnreadableResult) {
+      return <Widget>[
+        HomeEmptyCard(
+          icon: Icons.cloud_off_rounded,
+          title: l10n.requestsUnreadableTitle,
+          body: window.skipped > 0
+              ? l10n.requestsSkippedNotice(window.skipped)
+              : l10n.requestsUnreadableBody,
+        ),
+      ];
+    }
+
+    if (window.isInitialLoading) {
+      // The same 22 dp mark the feed section and the feed's footer spin at, so the
+      // dashboard's two live sections agree about what "still reading" looks like.
+      return const <Widget>[
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+          child: Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return <Widget>[
+      HomeEmptyCard(
+        icon: Icons.water_drop_outlined,
+        title: l10n.homeRequestsEmptyTitle,
+        body: l10n.homeRequestsEmptyBody,
+      ),
+    ];
   }
 }
 

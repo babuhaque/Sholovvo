@@ -34,6 +34,9 @@ import 'package:sholovvo_app/features/profile/presentation/profile_edit_screen.d
 import 'package:sholovvo_app/features/profile/presentation/profile_screen.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_identity_card.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_photo_sheet.dart';
+import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
+import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
+import 'package:sholovvo_app/features/requests/presentation/requests_screen.dart';
 import 'package:sholovvo_app/features/settings/presentation/settings_screen.dart';
 import 'package:sholovvo_app/features/welcome/presentation/welcome_screen.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
@@ -43,6 +46,7 @@ import '../support/fake_compose.dart';
 import '../support/fake_feed.dart';
 import '../support/fake_photo_services.dart';
 import '../support/fake_profile_repository.dart';
+import '../support/fake_requests.dart';
 
 /// Renders the shipped screens to PNG so the light/dark × English/Bengali
 /// matrix can actually be *looked at*.
@@ -145,9 +149,10 @@ Future<PreferencesStore> _pump(
   DonorSnapshot? donor,
   UserProfile? profile,
   DonationHistory? history,
-  List<NearbyRequestSummary>? requests,
+  List<BloodRequest>? requests,
   List<FeedPostPreview>? feed,
   FeedRepository? feedRepository,
+  FakeRequestRepository? requestRepository,
   bool? photoConfigured,
   bool? postConfigured,
 }) async {
@@ -214,6 +219,12 @@ Future<PreferencesStore> _pump(
           // render is meant to show, and no review shot can reach Firestore.
           feedRepositoryProvider.overrideWithValue(
             feedRepository ?? FakeFeedRepository(),
+          ),
+          // Stubbed for the same reason as the feed: since Stage 9 the dashboard
+          // reads `blood_requests` the moment it mounts, so a review shot that
+          // left this unoverridden would build `FirebaseFirestore.instance`.
+          requestRepositoryProvider.overrideWithValue(
+            requestRepository ?? FakeRequestRepository(),
           ),
         ],
         child: MaterialApp(
@@ -819,6 +830,113 @@ void main() {
       await _capture(tester, 'compose-full-wide-light-en');
     }, skip: !_enabled);
   });
+
+  // Stage 9.1: the open-requests list. Seeded through `FakeRequestRepository`,
+  // the same seam the widget tests use, so no capture reads a live collection.
+  // The truncated case is the one worth looking at: it is the state that has no
+  // button on it, and the review has to check that the sentence saying so is
+  // readable rather than clipped.
+  group('requests', () {
+    testWidgets('requests, populated, light en', (WidgetTester tester) async {
+      await _pumpRequests(
+        tester,
+        themeMode: ThemeMode.light,
+        locale: const Locale('en'),
+        requests: _requests(bengali: false),
+      );
+      await _capture(tester, 'requests-light-en');
+    }, skip: !_enabled);
+
+    testWidgets('requests, populated, dark bn', (WidgetTester tester) async {
+      await _pumpRequests(
+        tester,
+        themeMode: ThemeMode.dark,
+        locale: const Locale('bn'),
+        requests: _requests(bengali: true),
+      );
+      await _capture(tester, 'requests-dark-bn');
+    }, skip: !_enabled);
+
+    testWidgets('requests, window full, light en', (WidgetTester tester) async {
+      await _pumpRequests(
+        tester,
+        themeMode: ThemeMode.light,
+        locale: const Locale('en'),
+        requests: _requests(bengali: false),
+        truncated: true,
+      );
+      await _capture(tester, 'requests-truncated-light-en');
+    }, skip: !_enabled);
+
+    testWidgets('requests, empty, light en', (WidgetTester tester) async {
+      await _pumpRequests(
+        tester,
+        themeMode: ThemeMode.light,
+        locale: const Locale('en'),
+      );
+      await _capture(tester, 'requests-empty-light-en');
+    }, skip: !_enabled);
+
+    testWidgets('requests, read failed, dark bn', (WidgetTester tester) async {
+      await _pumpRequests(
+        tester,
+        themeMode: ThemeMode.dark,
+        locale: const Locale('bn'),
+        failure: const NetworkFailure(debugMessage: 'offline'),
+      );
+      await _capture(tester, 'requests-error-dark-bn');
+    }, skip: !_enabled);
+  });
+}
+
+/// Mounts the requests list over a seeded repository, pushed above an empty
+/// route, for the reason the feed shot has: the back arrow is part of the screen.
+Future<void> _pumpRequests(
+  WidgetTester tester, {
+  required ThemeMode themeMode,
+  required Locale locale,
+  List<BloodRequest> requests = const <BloodRequest>[],
+  bool truncated = false,
+  Failure? failure,
+  Size size = const Size(430, 1400),
+}) async {
+  await _pump(
+    tester,
+    home: const _PushedRequests(),
+    themeMode: themeMode,
+    locale: locale,
+    requestRepository: FakeRequestRepository(
+      requests: requests,
+      truncated: truncated,
+    )..failure = failure,
+    size: size,
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
+  await tester.pump();
+}
+
+/// Pushes [RequestsScreen] onto an otherwise empty first route once mounted.
+class _PushedRequests extends StatefulWidget {
+  const _PushedRequests();
+
+  @override
+  State<_PushedRequests> createState() => _PushedRequestsState();
+}
+
+class _PushedRequestsState extends State<_PushedRequests> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) return;
+      Navigator.of(context).push(RequestsScreen.route());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 /// Mounts the feed over a seeded repository, pushed above an empty dashboard.
@@ -1067,21 +1185,23 @@ DonorSnapshot _donor() {
 /// Two open requests, in the language the capture is made in: a donor reads
 /// their own community's posts in their own language, so the seed data follows
 /// the locale.
-List<NearbyRequestSummary> _requests({required bool bengali}) {
-  return <NearbyRequestSummary>[
-    NearbyRequestSummary(
+List<BloodRequest> _requests({required bool bengali}) {
+  return <BloodRequest>[
+    fakeRequest(
       id: 'req-1',
       bloodGroup: 'B+',
-      area: bengali ? 'ধানমন্ডি' : 'Dhanmondi',
-      neededBy: DateTime(2026, 11, 9),
+      hospitalName: bengali ? 'ধানমন্ডি' : 'Dhanmondi',
+      hospitalAddress: '',
       units: 2,
+      neededBy: DateTime(2026, 11, 9),
     ),
-    NearbyRequestSummary(
+    fakeRequest(
       id: 'req-2',
       bloodGroup: 'O-',
-      area: bengali ? 'মিরপুর' : 'Mirpur',
-      neededBy: DateTime(2026, 11, 4),
+      hospitalName: bengali ? 'মিরপুর' : 'Mirpur',
+      hospitalAddress: '',
       units: 1,
+      neededBy: DateTime(2026, 11, 4),
     ),
   ];
 }

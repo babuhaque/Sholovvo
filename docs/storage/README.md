@@ -170,8 +170,13 @@ configured".
    this note described was closed with that navigation, not worked around.)
 
    What the dashboard still does not have is a destination for one post — there
-   is no per-post screen, and nearby requests are not wired — so neither is
-   exercisable here. Both are Stage 9 work, not storage work.
+   is no per-post screen, so it is not exercisable here. Neither is a request row:
+   since Stage 9.1 the dashboard's **Open requests** section and the screen behind
+   **See all** read the real `blood_requests` window, but a row goes nowhere until
+   Stage 10, and no row is tappable in the meantime. **A date correction to this
+   note:** when it was written, nearby requests were not wired at all; they are now,
+   read-only, and nothing about them touches Supabase Storage — the requests read is
+   Firestore-only and cannot be used to check any policy in this file.
 
 ### 6. What each failure looks like in the app
 

@@ -189,10 +189,9 @@ abstract final class BloodRequestDocument {
   /// verbatim. **Ambiguous is refused, not guessed:** `10/11/2026` is October 11
   /// or November 10 depending on who typed it, and a list ordered on that coin
   /// flip would put the most urgent request second. An out-of-range component is
-  /// refused for the same reason — Dart's `DateTime` constructor would *normalise*
-  /// month 13 into next January, which is inventing a date. `DateTime.parse` checks
-  /// those ranges and throws instead, so it is doing the work here rather than a
-  /// hand-written field-by-field regex.
+  /// refused for the same reason — Dart's parser *normalises* month 13 into next
+  /// January rather than rejecting it, which is inventing a date, so [_parse]
+  /// compares the parsed fields against the ones that were written.
   static DateTime? parseRequiredText(String raw) {
     final String text = raw.trim();
     if (text.isEmpty) {
@@ -226,7 +225,18 @@ abstract final class BloodRequestDocument {
   /// The space-between-date-and-time variant this collection writes is normalised
   /// to the `T` ISO wants, so the mapper does not depend on Dart's parser
   /// continuing to accept a separator it was never specified to allow.
+  ///
+  /// **A component out of range is refused, not rolled over.** Dart does not reject
+  /// `2026-13-40`; it normalises it into February of the next year. Accepting that
+  /// would order a blood request on a day nobody wrote, so the written date is
+  /// checked against the calendar first. It is checked on the *text* rather than on
+  /// what the parser returned, because a `+06:00` value that crosses midnight in
+  /// UTC would otherwise be refused for a day it never claimed to be.
   static DateTime? _parse(String value, {required bool toUtc}) {
+    final RegExpMatch? parts = _dateParts.firstMatch(value);
+    if (parts != null && !_isRealDate(parts)) {
+      return null;
+    }
     try {
       final DateTime parsed = DateTime.parse(
         value.replaceFirstMapped(
@@ -240,21 +250,40 @@ abstract final class BloodRequestDocument {
     }
   }
 
+  /// Whether the year, month and day a match captured name a day that exists.
+  ///
+  /// Dart's constructor rolls an impossible date over instead of rejecting it, so
+  /// the roll-over is detected by asking the value it produced whether it is still
+  /// the day that was written — which is also what rejects `2026-02-30` and
+  /// `2026-11-31` without a table of month lengths.
+  static bool _isRealDate(RegExpMatch parts) {
+    final int year = int.parse(parts.group(1)!);
+    final int month = int.parse(parts.group(2)!);
+    final int day = int.parse(parts.group(3)!);
+
+    final DateTime probe = DateTime.utc(year, month, day);
+    return probe.year == year && probe.month == month && probe.day == day;
+  }
+
   /// Turns a 12-hour clock into the hour Dart needs.
+  ///
+  /// [letter] is the first character of the marker, upper-cased: `A` for AM, `P`
+  /// for PM. Matching on the letter rather than the whole tail is what lets the
+  /// pattern accept `PM`, `Pm`, `P.M.` and `pm` with one regular expression.
   ///
   /// A `12`-hour clock is only 12-hour *with a marker on it*: hours `0` and
   /// `13`–`23` beside an AM/PM tail are a contradiction, and a contradiction is not
   /// a date — it is refused rather than quietly read as the 24-hour value. `12 AM`
   /// is midnight and `12 PM` is noon, which is the one part of this that everybody
   /// gets wrong at least once, so it is stated here and pinned in a test.
-  static DateTime? _applyMeridiem(DateTime parsed, String marker) {
+  static DateTime? _applyMeridiem(DateTime parsed, String letter) {
     final int hour = parsed.hour;
     if (hour < 1 || hour > 12) {
       return null;
     }
-    final int? shifted = switch (marker) {
-      'AM' => hour == 12 ? 0 : hour,
-      'PM' => hour == 12 ? 12 : hour + 12,
+    final int? shifted = switch (letter) {
+      'A' => hour == 12 ? 0 : hour,
+      'P' => hour == 12 ? 12 : hour + 12,
       _ => null,
     };
     if (shifted == null) {
@@ -289,10 +318,15 @@ abstract final class BloodRequestDocument {
   }
 
   /// Matches a trailing `AM`/`PM`/`am`/`p.m.`, with the space before it.
+  ///
+  /// Group 1 is the marker's first letter, which is all [_applyMeridiem] needs.
   static final RegExp _meridiem = RegExp(r'\s([AaPp])\.?[Mm]\.?\s*$');
 
   /// A space standing where ISO 8601 puts its `T`.
   static final RegExp _separator = RegExp(r'^(\d{4}-\d{1,2}-\d{1,2}) ');
+
+  /// The year, month and day as written, for the calendar check in [_parse].
+  static final RegExp _dateParts = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})');
 
   /// Whether a clock time is present at all.
   static final RegExp _time = RegExp(r'\d{1,2}:\d{2}');

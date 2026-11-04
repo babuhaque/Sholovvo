@@ -9,10 +9,12 @@ import 'package:sholovvo_app/design/tokens/app_motion.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
+import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
 
 import 'fake_auth_repository.dart';
 import 'fake_feed.dart';
 import 'fake_profile_repository.dart';
+import 'fake_requests.dart';
 import 'test_app.dart';
 
 /// The app shell with a fake identity backend behind it.
@@ -51,6 +53,11 @@ Widget authHarness({
       // build whose community has not been written to actually shows — and it
       // keeps every gate test out of `FirebaseFirestore.instance`.
       feedRepositoryProvider.overrideWithValue(FakeFeedRepository()),
+      // And the open-requests window the dashboard reads since Stage 9, for the
+      // same reason: a fresh fake has no open request, which is what a collection
+      // nobody has written to actually holds, and it keeps every gate test out of
+      // `FirebaseFirestore.instance`.
+      requestRepositoryProvider.overrideWithValue(FakeRequestRepository()),
       if (preferences != null)
         preferencesStoreProvider.overrideWithValue(preferences),
       // Settings reads the build flavour. Every other screen tolerates the

@@ -11,11 +11,13 @@ import 'package:sholovvo_app/features/feed/presentation/feed_screen.dart';
 import 'package:sholovvo_app/features/home/presentation/widgets/home_header.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
+import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
 import 'package:sholovvo_app/features/settings/presentation/settings_screen.dart';
 
 import '../support/fake_auth_repository.dart';
 import '../support/fake_feed.dart';
 import '../support/fake_profile_repository.dart';
+import '../support/fake_requests.dart';
 import '../support/test_app.dart';
 
 const Size _phone = Size(430, 932);
@@ -54,6 +56,9 @@ Future<void> _pumpShell(
         // dashboard previews: a shell test that forgot it would fail on a
         // Firestore call rather than on the tab it was checking.
         feedRepositoryProvider.overrideWithValue(FakeFeedRepository()),
+        // The same argument for the open-requests window the dashboard reads
+        // since Stage 9: without it a shell test reaches for Firestore.
+        requestRepositoryProvider.overrideWithValue(FakeRequestRepository()),
         // Reached only by the test that walks into Settings from the gear. It
         // throws by default, on purpose, so leaving it out would make the
         // failure look like a navigation bug.
