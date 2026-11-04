@@ -17,7 +17,7 @@ not what was attempted. A stage is only marked done when `flutter analyze` and
 | 6 | Profile photo upload (Supabase Storage) | **Complete — approved** |
 | 7 | Navigation & settings | **Complete — awaiting approval** |
 | 8 | Social feed | **In progress — 8.1 and 8.1.1 complete (awaiting approval), 8.2 complete (awaiting approval), 8.3 IMPLEMENTED — HARDENING IN PROGRESS (steps 1–5 done; defects 10, 13, 14 and 15 closed; not approved, not deployed, not live-verified)** |
-| 9 | Normal blood search & maps | **Not started as a whole. 9.1 — open blood requests, read path — is IMPLEMENTED against fakes (awaiting approval; not deployed, not live-verified); 9.2 — Firestore rules audit, first emulator run and the feed reconciliation — is IMPLEMENTED AND EMULATOR-VERIFIED (96/96; awaiting approval; not deployed); donor search, maps and any request write are still not started** |
+| 9 | Normal blood search & maps | **Not started as a whole. 9.1 — open blood requests, read path — is IMPLEMENTED against fakes (awaiting approval; not deployed, not live-verified); 9.2 — Firestore rules audit, first emulator run and the feed reconciliation — is IMPLEMENTED AND EMULATOR-VERIFIED (96/96; awaiting approval; not deployed); 9.3 — the first production compatibility audit (live, read-only), the deploy-safe rule refinements and the donor-directory rules — is IMPLEMENTED AND EMULATOR-VERIFIED (106/106; awaiting approval; not deployed); donor search UI, maps and any request write are still not started** |
 | 10 | Emergency blood request | Not started |
 | 11 | Donor matching & notifications | Not started |
 | 12 | Messaging & live location | Not started |
@@ -3472,3 +3472,330 @@ pass; no Git or Firebase command that writes was run.
    the `assignedDonorId` create-shape fix, and the like/comment write paths this
    stage closed the door on deliberately.
 
+---
+
+## Stage 9.3 — Production compatibility audit (live, read-only), deploy-safe refinements, donor-directory rules
+
+**Status: IMPLEMENTED AND EMULATOR-VERIFIED. Not approved, not deployed. Rules
+enforcement of writes remains emulator-only; the *data* audit, for the first
+time, is live.**
+
+### Why this stage ran now
+
+The owner's directive of 4 November 2026 ("CONTINUE AUTONOMOUS DEVELOPMENT —
+POST STAGE 9.2 BACKEND PRIORITY") put a read-only **production compatibility
+audit** first (§2), then the remaining security findings (§3), then the next
+backend stage (§4), and made deployment conditional on the audit's outcome (§5).
+Stage 9.2 had closed with "the §10 impact check cannot be answered offline" —
+this stage answers as much of it as the live project allows.
+
+### What the live audit found (the first real production reads in this project's history)
+
+Read-only, through the authenticated CLI user credential over the Admin REST API
+(rules bypassed for *reads only*; nothing was written). Full evidence: the
+shape tables in `firestore-rules-tests/production-audit/REPORT.md`; the probe is
+reproducible (`probe.mjs collections | schema | subcollection | subs`).
+
+Eight top-level collections live: 20 posts, 42 post_likes, 11 blood_requests,
+8 request_responses, 8 notifications, 5 donors, 5 legacy `requests`, 3 users.
+Three things changed the deployment picture:
+
+1. **19 of 20 production posts carry the legacy shape** — `authorEmail` plus a
+   singular `imageUrl`, and none of `imageUrls`/`imagePaths`/`commentCount`/
+   `updatedAt`. Reads are unaffected by the reconciliation (unchanged
+   `auth != null`), so the feed still loads. But any still-installed pre-Stage-8
+   build would have its post *create* rejected, and one post already carries a
+   legacy `comments` subcollection whose rows have a `postId` field the new
+   comment `hasOnly` does not allow.
+2. **`post_likes` is not empty: 42 live documents** `{postId, userId,
+   createdAt}`, and the deployed rules let signed-in users read them today.
+   Stage 9.2's `allow read, write: if false` would have orphaned real data and
+   broken any installed client still counting likes.
+3. **`donors` has five live rows and NO rule at all** — deny-all, meaning
+   donor discovery could never have read the collection from a client. The
+   legacy `requests` collection (5 rows, an older emergency model) is in the
+   same deny-all, unowned state; recorded, untouched.
+
+### The rule changes this stage made, and why each is safe
+
+| Change | Rationale | Security posture vs deployed |
+| --- | --- | --- |
+| `post_likes`: `read: auth != null; write: false` (was `read, write: false` in 9.2's file) | 42 live rows; production already serves reads. Closing the read is a breaking change, not a hardening one. | Writes fully closed (stricter than deployed); reads unchanged; stranded rows survive until a migration copies them to `posts/{id}/likes/{uid}`, then the read flips closed. |
+| New `donors` block: signed-in `read`; owner-keyed shape-checked `create` (`latlng` location, enum blood group, server clock); update limited to the six directory fields; `delete: false` | The backend prerequisite for Stage 9's donor search, which was impossible against a deny-all collection. | Read is a deliberate **widening** from deny-all — name and phone become visible to every signed-in user — flagged for owner approval in §Remaining, not assumed. Write is tighter than the equivalent `users` rule (full shape checks). |
+| `blood_requests`: **no rule change** — the create shape already matches the production documents exactly | Verified, not modified. | Unchanged. |
+
+### The §3 findings, resolved with the audit's evidence
+
+- **`assignedDonorId` / create-shape hazard (9.2 remaining issue 4) — closed
+  with executed client-context tests.** The hazard was that only the
+  admin-bypass seed ever touched the create shape, so a regression that let a
+  *client* pre-assign a donor would pass silently. Four new tests in
+  `Stage 9.3 blood_requests client create shape` prove in a real authenticated
+  context: the exact 14-key production shape is accepted; adding
+  `assignedDonorId` (null *or* a uid) is refused by `hasOnly`; a request born
+  `accepted`/`fulfilled` is refused; wrong-author, unauthenticated and
+  device-clocked creates are refused.
+- **Raw-vs-trimmed length (9.2 remaining issue 5) — the premise was wrong, and
+  the record is corrected.** Tracing every `PostValidator.validate` call site:
+  publish trims once (`state.text.trim()` at `compose_providers` L267, already
+  pinned by an existing controller test), so the stored value the rules measure
+  *is* the trimmed value the validator measures. No divergence exists in the
+  shipped path; a first attempt to "fix" this by tightening the validator to the
+  raw length was caught by its own new test failing against that pinned
+  behaviour and reverted. What landed instead: doc comments on both validators
+  stating where the agreement lives, and the padding test extended to assert
+  both sides (raw over, trimmed at limit, accepted).
+- **Duplicate responses / forged counters / atomic claiming** — verified
+  against the deployed model rather than re-earned: `response_claims` is the
+  transactional anchor, `posts/{id}/likes/{uid}` makes a duplicate like an
+  update (refused), and both counters stay closed until the batched-write stage
+  that can pair them. No change; recorded as still true.
+
+### An emulator defect pinned on the way
+
+`is geoPoint` does not compile: the rules type identifier for a geopoint is
+`latlng`. The first Stage 9.3 suite run died with a whole-file compile error
+(L400/L417, every test cancelled). The failure is worth keeping in the record
+because a compile error in `firestore.rules` is silent until *something* loads
+the file — the emulator run is that something, and it is one more reason the
+suite must gate any deploy.
+
+### Verification
+
+| Gate | Result |
+| --- | --- |
+| Rules suite after the audit | **106 tests, 106 pass, 0 fail** (96 baseline + 10 new) |
+| `latlng` compile defect run (before the fix) | whole file cancelled — the defect above |
+| `flutter analyze` | No issues found (61.5 s) |
+| `flutter test` | **851 passed, 63 skipped, 0 failed** — unchanged baseline |
+| `git diff --check` | clean |
+
+### §6 live verification — what was and was not verified, separately from the emulator
+
+- **Live, executed:** the Admin API reads above (every collection, every shape);
+  CLI credential validity (`apps:list`, 3 apps); Supabase reachability —
+  `GET /storage/v1/object/list/post-images` on `qiipuczhgacwrysyndij` returned
+  **HTTP 400, auth-gated**: the endpoint and the bucket path resolve.
+- **Live, blocked by a named limitation:** the deployed ruleset source cannot be
+  fetched — the Firebase Rules API is not enabled for this project, and the
+  Admin `datasets/(default)/links` call answers with an HTML enable page, not
+  JSON. Rule enforcement of *writes* in production, authenticated Supabase
+  storage reads/writes, and a Firebase-ID-token Supabase round-trip were not
+  performed: they would need test credentials or writes to real collections,
+  which the read-only convention and §2 forbid. **The rules remain
+  emulator-verified only.**
+
+### §5 deployment — reviewed, authorised, and still deliberately not executed
+
+The owner's authorisation to deploy is conditional on a safe audit outcome, and
+the audit produced the opposite: a deploy of the current file would change
+behaviour for legacy writers, not just for the reconciled collections. The
+precise blockers, each with its safe path:
+
+1. **Legacy post writes.** A normalising migration rewrites the 19 legacy
+   documents (`imageUrl` → `imageUrls`/`imagePaths`, drop `authorEmail`, add the
+   counter/timestamp fields, admin-side, document by document, after a backup
+   export) — or the owner confirms no pre-Stage-8 build is still installing.
+2. **`donors` read widening.** An owner privacy decision (name + phone to every
+   signed-in user); if declined, keep donors deny-all and donor search moves to
+   a server-side function instead.
+3. **No deployed-rules diff.** Until the Rules API is enabled (or the owner
+   exports the active ruleset from the console), "what changes on deploy" is
+   not fully answerable, and §10's second step cannot be completed.
+
+If the owner accepts all three, the deploy command is
+`firebase deploy --only firestore:rules --project sholovvo-blood-donation`, and
+the recovery artefact is `git show eb1b5e4:firestore.rules` (the
+pre-reconciliation file; HEAD `c5faf7f` already carries Stage 9.2).
+
+### Indexes
+
+No composite index is required by anything verified here: the Stage 9.1 window
+query (one equality) and the donor directory query (two equalities, no order)
+are both served by automatic single-field indexes, and the emulator run confirms
+the rule behaviour. This statement is about the queries tested, not a survey of
+the console.
+
+### Files changed
+
+| File | What happened |
+| --- | --- |
+| `firestore.rules` | `post_likes` read/write split; new `donors` block (459 → 525 lines) |
+| `firestore-rules-tests/firestore.test.js` | +10 client-context tests; `GeoPoint` import |
+| `firestore-rules-tests/firestore-feed.test.js` | test 21 rewritten: legacy row seeded, read succeeds, all three write verbs fail |
+| `firestore-rules-tests/production-audit/probe.mjs`, `REPORT.md` | new: the read-only probe and the full audit tables |
+| `post.dart`, `comment.dart`, `post_test.dart` | agreement recorded in the validators' comments; the padding test extended (behaviour unchanged) |
+
+### Remaining issues
+
+1. **Nothing is deployed and nothing is approved** — Stages 7, 8.2, 8.3, 9.1,
+   9.2, 9.3 all wait on the owner.
+2. **Rule enforcement in production is unverified** (emulator only, §6).
+3. **`donors` read-widening needs an owner decision** (above).
+4. **No donor-search UI exists yet** — Stage 9.3 built the security half only.
+5. **`response_claims` and `donation_ratings` have no live collection** — the
+   rules are ready for Stage 10; first use is untested against the real backend.
+6. **Legacy `requests` and legacy comment `postId` fields stay stranded** by
+   decision, not oversight.
+
+### Git state
+
+The owner committed the whole Stage 9.2 tree as `c5faf7f` ("Describe your
+changes", 4 November 2026) and it is pushed (`main` = `origin/main`, 0/0). This
+stage's work sits on top of it, uncommitted: the six modified files and the
+untracked `production-audit/` directory. Nothing was staged, committed, pushed
+or deployed.
+
+### Next stage
+
+1. **Owner decisions**: the three deploy blockers above, item by item.
+2. **Donor search client** over the now-readable `donors` collection.
+3. **Stage 10** — and with it the paired counter rules, the legacy-post
+   migration test, and the like/comment write paths.
+
+---
+
+## Stage 9.4 — Donor Search on a privacy-minimized read model, donors read-widening reverted, legacy-post migration prepared
+
+Executed 4 November 2026. This stage **supersedes one line of the Stage 9.3 "Next
+stage" plan**: 9.3 proposed building donor search "over the now-readable `donors`
+collection." That collection holds each donor's **phone number**, so opening it to every
+signed-in user is exactly the privacy widening the owner has *not* approved. Stage 9.4
+therefore **reverted the `donors` read-widening to owner-only** and built the search on a
+consent-safe read model instead (see below). Nothing was deployed; the whole stage lives in
+the uncommitted working tree on top of `c5faf7f`.
+
+### The privacy decision that shaped the feature (§4)
+
+Donor Search reads the **public `users/{uid}` profile documents**, filtered to
+`role == 'donor'`, and projects **only** the fields that profile already exposes publicly:
+`displayName`, `bloodGroup`, `isAvailable`, `area` (only while the donor published it) and
+`photoUrl`. **Phone number, street address, date of birth and gender are never read** — they
+live in the owner-only private `donors` row / private subcollection, which the discovery path
+structurally cannot reach. `lib/features/donors/data/models/donor_profile_document.dart`
+maps a fixed allow-list of keys, so even if a `users` document later grew a phone field it
+would not land on a `Donor` entity. Discoverability is the donor's own `role`/`isAvailable`
+switches; a donor who does not present as a discoverable `donor` simply is not matched.
+
+**No new Firestore rule is required for discovery.** The working-tree `users` read rule is
+already `allow read: if request.auth != null` with no per-field condition, so a signed-in
+client can already read the public profile. What Stage 9.4 does is keep the *private* `donors`
+collection closed and prove both halves in the emulator:
+
+| Rule fact pinned by the suite | Emulator test |
+| --- | --- |
+| A signed-in user can run the discovery query over public `users` profiles | Stage 9.4 §9.4.1 ✅ |
+| A signed-in user can read another donor's public profile | §9.4.2 ✅ |
+| An unauthenticated client cannot browse profiles | §9.4.3 ✅ |
+| The private subcollection that holds the phone stays owner-only | §9.4.4 ✅ |
+| The `donors` directory is **owner-only again** (widening reverted) | Stage 9.3 donors block ✅ |
+
+### What was built (Clean Architecture, mirrors the `requests` feature)
+
+`lib/features/donors/` — domain (`Donor` entity, `DonorQuery` normalisation, `DonorOrdering`
+availability-then-name stable sort, `DonorRepository` port, `DiscoveredDonors` window),
+data (`donor_documents` port + `DonorIssue` refuse-and-count mapper, Firestore data source
+running one equality-only query — no composite index — with over-fetch-by-one to measure
+`truncated`, `firestore_donor_repository`), application (`DonorSearchState`, `Notifier`
+controller with a one-read-at-a-time flag, providers whose default is the **real**
+`FirestoreDonorRepository`), presentation (`DonorSearchScreen` with loading / empty
+(filtered vs all) / error+retry / unreadable-partial states, `_FilterBar` for blood group,
+availability and area, `DonorCard`, `DonorDetailsScreen`). English **and** Bangla strings
+(25 `donor*` keys, ICU `donorSkippedNotice`/`donorTruncatedNotice`, parity-clean,
+`untranslated.json` = `{}`). Home's **Find donors** now pushes the screen
+(`home_screen.dart`, `_openDonorSearch`) instead of "coming soon".
+
+Bounded window of 30 (over-fetched by one); ordering is client-side after decode because a
+DB `orderBy` would need a deployed composite index. Pagination beyond one window is
+intentionally deferred to Stage 10.
+
+### Integration blocker (documented, not worked around)
+
+The provider default is the real `FirestoreDonorRepository`, so the feature is **ready for
+live Firestore**. It is exercised in tests through an isolated `FakeDonorRepository`
+(`test/support/fake_donors.dart`) — **never as production data**. The exact blocker to a live
+run is the owner's pending deploy decision on the held working-tree `firestore.rules`
+(Stage 9.3 deploy decision + this stage's `donors` revert). Until those rules land, discovery
+against real data is unverified; the rules themselves already permit it.
+
+### Legacy-post migration prepared (§5) — NOT executed against production
+
+`firestore-rules-tests/legacy-post-migration/` — `migration.js` (pure `classifyPost` /
+`normalizePost` / `planMigration` / `applyMigration`), `migration.test.js` (20 pure tests, no
+emulator), `migration_emulator.test.js` (5 emulator round-trip tests under
+`withSecurityRulesDisabled`, admin-style), and `MIGRATION_PLAN.md` (before/after schema, exact
+field transforms, idempotency, backup/rollback, installed-app compatibility and deploy
+ordering, emulator evidence, production-safety guarantees). It normalises the **19 audited
+legacy posts** forward to the modern create shape so the rule tightening never forces a
+weaker rule or loses data. It only ever points at the emulator (`demo-solovvo-tests`); no
+live project, no credential, no delete, and `firestore.rules` is unchanged. **Execution
+against production remains gated on the owner.**
+
+### Supabase follow-up (§7) — verification plan only
+
+`docs/storage/SUPABASE-VERIFICATION-PLAN.md` records exactly what is *required* to prove an
+authenticated upload works (a dedicated test Firebase identity + a synthetic object +
+Firebase third-party-auth confirmed + the SQL applied to a test project), and states plainly
+that the previously seen **HTTP 400 on `GET /object/list` proves reachability, NOT
+authenticated Storage access**. Nothing was uploaded/listed/deleted; no credential is exposed.
+The real authenticated path stays unverified, gated on the owner.
+
+### Verification (all gates re-run after the two test-code fixes this session)
+
+| Gate | Result |
+| --- | --- |
+| Firestore Rules emulator suite (whole folder, incl. migration round-trip) | **135 passed / 0 failed / 0 skipped**, `emulators:exec` exit 0 |
+| Pure migration unit tests (no emulator) | 20 passed |
+| `flutter analyze` | **No issues found** |
+| `flutter test` (full suite) | **939 passed / 63 skipped / 0 failed** (was 851/63 at 9.3; +88 donor + home) |
+| ARB parity + `untranslated.json` | parity test green; `untranslated.json` = `{}` |
+| `git diff --check` | clean (exit 0) |
+| Donor-search phone/address review | public `users` allow-list only; `donors` collection unreferenced; no phone/address/dob/gender mapped |
+
+Two defects were found and fixed by the honest run (neither was a weakened test): the
+emulator migration test first used `testEnv.adminFirestore` (the rules-testing package's own
+Firestore class) with the app's modular `collection()/doc()`, which rejects it — switched to
+a context `.firestore()` handle; and `withSecurityRulesDisabled` does not forward the
+callback's return value, so the cycle result is captured into an outer binding.
+
+### Files (Stage 9.4)
+
+| Path | What happened |
+| --- | --- |
+| `lib/features/donors/**` (new) | the whole feature, Clean Architecture |
+| `test/features/donors/**`, `test/support/fake_donors.dart` (new) | mapper/query/ordering/repository/controller/widget suites |
+| `lib/home/.../home_screen.dart`, `test/.../home_screen_test.dart` | Find donors wired to the screen; the old "coming soon" assertion upgraded to a real navigation check |
+| `lib/l10n/app_en.arb`, `app_bn.arb`, `generated/**` | 25 donor keys, EN+BN, parity-clean |
+| `firestore.rules` | `donors` read-widening **reverted** to owner-only (Stage 9.3 change undone for privacy) |
+| `firestore-rules-tests/firestore.test.js` | +4 Stage 9.4 public-profile discovery tests |
+| `firestore-rules-tests/legacy-post-migration/**` (new) | migration logic + pure/emulator tests + plan doc |
+| `docs/storage/SUPABASE-VERIFICATION-PLAN.md` (new) | §7 authenticated-upload verification plan |
+
+### Remaining issues / owner decisions
+
+1. **Nothing is deployed.** Stages 7, 8.2, 8.3, 9.1, 9.2, 9.3, 9.4 all wait on the owner.
+2. **Real donor-search integration is unverified** until the working-tree rules deploy; the
+   emulator proves the rules permit the privacy-safe read, and the fake proves the client.
+3. **`donors` phone-visibility stays a deliberate owner decision** — Stage 9.4 chose the
+   conservative public-profile read and left the `donors` collection owner-only.
+4. **Legacy-post migration is prepared, not run** (§5 / `MIGRATION_PLAN.md`), and the
+   installed-base impact check is still the owner's.
+5. **Supabase authenticated storage access remains unverified** (plan only; no prod writes).
+6. **Donor-search pagination** past a single 30-window is deferred to Stage 10.
+
+### Git state
+
+HEAD is `c5faf7f`; Stage 9.3's uncommitted tree is preserved and Stage 9.4 stacks on top of
+it. All Stage 9.4 work is uncommitted and untracked/modified in the working tree. Nothing was
+staged, committed, pushed or deployed; no branch was switched; no production write, rule
+deploy, migration, billing change or privacy-widening was performed.
+
+### Next stage
+
+1. **Owner decisions**: deploy the reconciled `firestore.rules` (with the `donors` revert),
+   then run the prepared legacy-post migration against production, then confirm the
+   installed base — or force-upgrade.
+2. **Live donor-search integration test** against real Firestore once the rules land.
+3. **Stage 10** — donor-search pagination, a donor "respond" flow (which is where a contact
+   path legitimately belongs, behind a request), the paired counter rules, and the
+   `post_likes` → `posts/{id}/likes/{uid}` like migration.

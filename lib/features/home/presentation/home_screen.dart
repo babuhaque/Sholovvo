@@ -7,6 +7,7 @@ import 'package:sholovvo_app/design/widgets/error_banner.dart';
 import 'package:sholovvo_app/design/widgets/soft_glow_background.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
+import 'package:sholovvo_app/features/donors/presentation/donor_search_screen.dart';
 import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/features/feed/application/feed_state.dart';
 import 'package:sholovvo_app/features/feed/presentation/feed_messages.dart';
@@ -127,6 +128,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     unawaited(Navigator.of(context).push(RequestsScreen.route()));
   }
 
+  /// The one way into donor discovery, from the "Find donors" quick action.
+  ///
+  /// A page, not a tab: it opens on a fresh read every time, which is right for a
+  /// directory whose contents move when a donor toggles availability. It reads the
+  /// consented public profiles only and writes nothing — contacting a donor is
+  /// Stage 10's.
+  void _openDonorSearch() {
+    unawaited(Navigator.of(context).push(DonorSearchScreen.route()));
+  }
+
   /// The honest response for an action whose screen does not exist yet.
   ///
   /// A disabled button would read as a bug and a fake screen would be a lie, so
@@ -225,7 +236,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         const SizedBox(height: AppSpacing.lg),
                         HomeQuickActions(
                           onRequestBlood: _comingSoon,
-                          onFindDonors: _comingSoon,
+                          onFindDonors: _openDonorSearch,
                           isWide: wide,
                         ),
                         const SizedBox(height: AppSpacing.xl),

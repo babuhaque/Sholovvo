@@ -934,6 +934,98 @@ class AppLocalizationsBn extends AppLocalizations {
       'এখানে দেখা যাচ্ছে কী এবং কোথায় দরকার। অনুরোধ গ্রহণ করার সুযোগ এই বিল্ডে এখনো নেই।';
 
   @override
+  String get donorSearchTitle => 'দাতা খুঁজুন';
+
+  @override
+  String get donorDetailsTitle => 'দাতার প্রোফাইল';
+
+  @override
+  String get donorUnnamed => 'রক্তদাতা';
+
+  @override
+  String get donorRetry => 'আবার চেষ্টা করুন';
+
+  @override
+  String get donorAvailable => 'উপলব্ধ';
+
+  @override
+  String get donorUnavailable => 'উপলব্ধ নন';
+
+  @override
+  String get donorGroupNotSet => 'রক্তের গ্রুপ নির্ধারণ করা হয়নি';
+
+  @override
+  String get donorAvailabilityHeading => 'উপলব্ধতা';
+
+  @override
+  String get donorAvailabilityFilter => 'শুধু উপলব্ধ দাতা';
+
+  @override
+  String get donorFilterAllGroups => 'সব গ্রুপ';
+
+  @override
+  String get donorAreaFieldLabel => 'এলাকা';
+
+  @override
+  String get donorAreaFieldHint => 'এলাকা বা মহল্লা';
+
+  @override
+  String get donorClearArea => 'এলাকা মুছে ফেলুন';
+
+  @override
+  String get donorSearchButton => 'খুঁজুন';
+
+  @override
+  String get donorErrorTitle => 'দাতাদের আনা যায়নি';
+
+  @override
+  String get donorUnreadableTitle => 'দাতাদের সম্পূর্ণভাবে পড়া যায়নি';
+
+  @override
+  String get donorUnreadableBody =>
+      'এর পেছনে দাতা আছেন, তবে তাঁদের প্রোফাইল পড়া যায়নি।';
+
+  @override
+  String get donorEmptyFilteredTitle => 'আপনার ফিল্টারে কোনো দাতা নেই';
+
+  @override
+  String get donorEmptyFilteredBody =>
+      'রক্তের গ্রুপ, উপলব্ধতা বা এলাকা কিছুটা বড় করে দেখুন।';
+
+  @override
+  String get donorEmptyAllTitle => 'এখনো কোনো দাতা তালিকাভুক্ত হননি';
+
+  @override
+  String get donorEmptyAllBody =>
+      'যিনি নিজেকে খোঁজে উঠতে সম্মতি দেবেন, তাঁরা এখানে দেখা যাবেন।';
+
+  @override
+  String get donorContactNote =>
+      'দাতাদের গোপনীয়তার জন্য যোগাযোগের তথ্য এখানে দেখানো হয় না। অনুরোধের মাধ্যমে যোগাযোগ করা হয়।';
+
+  @override
+  String get donorConsentNote =>
+      'এই দাতা অনুসন্ধানে দেখা দেওয়ার সম্মতি দিয়েছেন। এলাকা কেবল তিনি প্রকাশ করলেই দেখা যায়।';
+
+  @override
+  String donorSkippedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countStringজন দাতা দেখানো যায়নি';
+  }
+
+  @override
+  String donorTruncatedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'এখানে প্রথম $countStringজন দাতা দেখানো হচ্ছে। এর পেছনে আরও আছেন।';
+  }
+
+  @override
   String get errorPostTextRequired => 'পোস্ট করার আগে কিছু লিখুন';
 
   @override

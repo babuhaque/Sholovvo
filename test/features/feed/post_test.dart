@@ -68,10 +68,17 @@ void main() {
       expect(_issue(text: overLimit), PostIssue.textTooLong);
     });
 
-    test('the limit counts trimmed characters, not padding', () {
+    test('the limit counts trimmed characters, matching what publish stores', () {
+      // Stage 9.3 audit correction: the publish path trims `text` before the
+      // mapper writes it, so `firestore.rules` measures the trimmed length —
+      // the same value the validator checks. A draft padded past the raw limit
+      // trims back under it, is stored trimmed, and passes both boundaries.
+      // This pins the client/server agreement so neither can silently drift.
       final String padded =
           '${'  '}${'a' * PostValidator.maxTextLength}${'  '}';
 
+      expect(padded.length, greaterThan(PostValidator.maxTextLength));
+      expect(padded.trim().length, PostValidator.maxTextLength);
       expect(_issue(text: padded), isNull);
     });
   });

@@ -990,6 +990,104 @@ class AppLocalizationsEn extends AppLocalizations {
       'This list shows what is needed and where. Accepting a request is not available in this build yet.';
 
   @override
+  String get donorSearchTitle => 'Find donors';
+
+  @override
+  String get donorDetailsTitle => 'Donor profile';
+
+  @override
+  String get donorUnnamed => 'Donor';
+
+  @override
+  String get donorRetry => 'Try again';
+
+  @override
+  String get donorAvailable => 'Available';
+
+  @override
+  String get donorUnavailable => 'Not available';
+
+  @override
+  String get donorGroupNotSet => 'Blood group not set';
+
+  @override
+  String get donorAvailabilityHeading => 'Availability';
+
+  @override
+  String get donorAvailabilityFilter => 'Available donors only';
+
+  @override
+  String get donorFilterAllGroups => 'All groups';
+
+  @override
+  String get donorAreaFieldLabel => 'Area';
+
+  @override
+  String get donorAreaFieldHint => 'Area or neighbourhood';
+
+  @override
+  String get donorClearArea => 'Clear area';
+
+  @override
+  String get donorSearchButton => 'Search';
+
+  @override
+  String get donorErrorTitle => 'The donors could not be loaded';
+
+  @override
+  String get donorUnreadableTitle => 'The donors could not be fully read';
+
+  @override
+  String get donorUnreadableBody =>
+      'There are donors behind this, but their profiles could not be read.';
+
+  @override
+  String get donorEmptyFilteredTitle => 'No donors match your filters';
+
+  @override
+  String get donorEmptyFilteredBody =>
+      'Try widening the blood group, availability, or area.';
+
+  @override
+  String get donorEmptyAllTitle => 'No donors are listed yet';
+
+  @override
+  String get donorEmptyAllBody =>
+      'Donors who choose to make themselves discoverable will appear here.';
+
+  @override
+  String get donorContactNote =>
+      'To protect donors, their contact details are not shown here. Reaching out happens through a blood request.';
+
+  @override
+  String get donorConsentNote =>
+      'This donor chose to appear in search. Their area is shown only if they published it.';
+
+  @override
+  String donorSkippedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString donors could not be shown',
+      one: '$countString donor could not be shown',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String donorTruncatedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'Only the first $countString donors are shown here. More are still behind them.';
+  }
+
+  @override
   String get errorPostTextRequired => 'Write something before publishing';
 
   @override

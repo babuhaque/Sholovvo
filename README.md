@@ -8,8 +8,11 @@ Blood donation and social networking platform for Android and iOS.
 
 Stage 8.3 **implemented — hardening in progress**, five hardening steps done, and
 **Stage 9.1 — open blood requests, read path — implemented against fakes**, and
-**Stage 9.2 — the Firestore rules audit, the suite's first emulator run and the feed
-reconciliation — implemented and emulator-verified, not deployed**. **Stage 8
+**Stage 9.3 — the first live, read-only production compatibility audit, the
+deploy-safe rule refinements and the donor-directory rules — implemented and
+emulator-verified (106/106), held and not deployed**. **Stage 9.2 — the Firestore
+rules audit, the suite's first emulator run and the feed reconciliation —
+implemented and emulator-verified, not deployed**. **Stage 8
 is the social feed**, and the feed now both reads and writes: a paged `FeedScreen` over
 one Firestore
 query on `posts`, and a composer that publishes a text-plus-photographs post
@@ -23,15 +26,25 @@ emulator for the first time (96/96). Stage 9.1 reads `blood_requests` where
 `status` is `open`, one
 window of 25 soonest-needed-first, into the dashboard's requests section and into an
 **Open requests** screen behind **See all**; it writes nothing and does not do donor
-search, maps or distance.
+search, maps or distance. **Stage 9.4 — Donor Search, privacy-minimized — is implemented
+against fakes and emulator-verified**, and it **reverted** the Stage 9.3 `donors` read-
+widening back to owner-only because that collection holds each donor's phone number.
+Donor Search reads the public `users/{uid}` profiles where `role` is `donor` — name, blood
+group, availability, published area and photo only, never phone or address — behind the
+dashboard's now-live **Find donors** action, in English and Bangla; it writes nothing and
+is not run against a live collection. Stage 9.4 also **prepared (not executed)** the
+legacy-post migration for the 19 audited pre-feed posts, and wrote a Supabase
+authenticated-upload **verification plan**.
 
 Four things are true at once and belong in any resume-from-these-notes brief, so
 they are stated here rather than only in `docs/PROJECT_STATE.md`:
 
 - **The stage is implemented and the suite is green, and neither of those means
-  signed off.** `flutter analyze` reports no issues and `flutter test` reports 851
+  signed off.** `flutter analyze` reports no issues and `flutter test` reports 939
   passed, 63 skipped, **0 failed**, measured on today's tree — the one that carries
-  the Step 3, Step 4 and Step 5 feed hardening *and* Stage 9.1. The 63 skips are the
+  the feed hardening, Stage 9.1 and Stage 9.4 (the donor-search and home suites are the
+  increase over the previous 851). The Firestore Rules emulator suite is **135/135**,
+  now including the legacy-post migration round-trip. The 63 skips are the
   opt-in visual-review captures, which were actually run with
   `SOLOVVO_VISUAL_REVIEW=1` (63 passed) rather than left as skips. The one red test
   the recovery audit found in the feed was a test-synchronisation defect in the
@@ -427,6 +440,24 @@ gaps are recorded rather than hidden: list element types are unchecked (this
 emulator's rules engine fails list comprehensions), and production still enforces
 the old file until the owner deploys. See `docs/PROJECT_STATE.md`, Stage 9.2.
 
+**A further dated update (4 November 2026, Stage 9.3).** The first *live*
+read-only production audit was run (through the CLI credential over the Admin
+API — see `firestore-rules-tests/production-audit/`), and it changed the
+deployment picture with real data rather than assumptions: 42 live `post_likes`
+documents, 19 of 20 `posts` still on the legacy `authorEmail` + singular
+`imageUrl` schema, a `donors` collection that had **no rule at all**, and a
+legacy `requests` collection stranded. Two safe refinements followed —
+`post_likes` now reads for signed-in users but denies every write (closing the
+read would orphan data the deployed rules already serve), and a new `donors`
+block opens discovery reads and owner-only writes. Ten new client-context rule
+tests pin the `blood_requests` create shape (the `assignedDonorId`/status
+hazards) and the donor directory, taking the suite to **106/106**. The reconciled
+file is now **explicitly held, not deployed**: the audit proved it would reject
+legacy-shape writers whose installed base cannot be verified offline, so the
+three compatibility blockers and their migration paths are recorded in Stage 9.3
+for owner decision. One emulator defect was also pinned: a geopoint is
+`is latlng`, not `is geoPoint`, which does not compile.
+
 ## Security rules
 
 `firestore.rules` is deployed separately and is **not** part of the app bundle:
@@ -437,7 +468,8 @@ firebase deploy --only firestore:rules
 
 Rules tests live in `firestore-rules-tests/` and require the Firestore emulator:
 `firestore.test.js` (donation history, requests, response claims, notifications,
-the P0 remediations, and the Stage 9.1 open-requests read path) and
+the P0 remediations, the Stage 9.1 open-requests read path, and the Stage 9.3
+`blood_requests` client create-shape and `donors` directory suites) and
 `firestore-feed.test.js` (posts, comments, likes, reports — Stage 9.2). The
 recorded full run, from the repository root:
 
@@ -447,9 +479,13 @@ npx firebase-tools emulators:exec --only firestore --project demo-solovvo-tests 
 
 `npm test` is `node --test --test-concurrency=1`; the flag serialises the two
 files so their per-test `clearFirestore` cannot wipe each other's seeds. The
-last full run was **96/96** on 4 November 2026, offline, against a demo project.
-The rules are **not deployed**: production enforces the pre-reconciliation file
-until the owner runs the deploy above after reviewing this tree.
+last full run was **106/106** on 4 November 2026, offline, against a demo
+project. The rules are **not deployed** — and Stage 9.3 holds them deliberately:
+production enforces the pre-reconciliation file until the owner clears the
+compatibility blockers (legacy-post writers, the `donors` read widening, and the
+fact that the Firebase Rules API is not enabled for the project so the live
+ruleset cannot be diffed first). The recovery artefact is
+`git show eb1b5e4:firestore.rules`.
 
 Never commit Firebase Admin service account keys or Supabase service role keys.
 `.gitignore` blocks the common filename patterns; privileged operations must be

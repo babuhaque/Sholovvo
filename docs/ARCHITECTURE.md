@@ -81,11 +81,12 @@ what is actually implemented.
 | `auth` | `domain`, `data`, `presentation`, `application` | `AuthUser`, `AuthRepository` interface, validators, `FirebaseAuthRepository`, error mapping, sign-in / register / reset / verification screens |
 | `splash` | `presentation` | 2 s brand reveal, no navigation of its own |
 | `welcome` | `presentation` | unauthenticated landing screen |
-| `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, the open-requests preview and the community preview. Two of the three data surfaces are projections of another feature's controller — the feed preview of `feedControllerProvider` (§14.2) and the requests preview of `requestsControllerProvider` (§15) — so the dashboard and the destination screens cannot disagree. The two headline actions (**Request blood**, **Find donors**) are still `comingSoon`, because the write path and the donor search belong to later stages |
+| `home` | `domain`, `application`, `presentation` | the first tab of the shell: donor status strip, the two headline actions, the open-requests preview and the community preview. Two of the three data surfaces are projections of another feature's controller — the feed preview of `feedControllerProvider` (§14.2) and the requests preview of `requestsControllerProvider` (§15) — so the dashboard and the destination screens cannot disagree. **Find donors** opens `DonorSearchScreen` (§16); **Request blood** is still `comingSoon`, because the write path belongs to a later stage |
 | `profile` | `domain`, `data`, `application`, `presentation` | the signed-in donor's own profile: `UserProfile`, `DonationRecord`, validators, `FirestoreProfileRepository` over two documents, the profile screen and its edit form |
 | `feed` | `domain`, `data`, `application`, `presentation` | **Stages 8.1, 8.2 and 8.3 — 8.3 implemented, hardening in progress, not signed off.** `Post`, `Comment`, `Report` entities with their validators and enums, and the pure `PostDocument` mapper (8.1); the read path — `FeedRepository`/`FirestoreFeedRepository` over a `FeedDocuments` seam, `FeedController`, `FeedScreen`, `FeedPostTile` (8.2); and the write path — `PostRepository`/`PostWriter` ports, `FirestorePostRepository`, `FirestorePostWriter`, `PostImageStorage`/`SupabasePostImageStorage`, `ComposeController`, `ComposePostScreen` and `compose_image_grid` (8.3). See §14, and `docs/PROJECT_STATE.md` for what is **not** yet verified about 8.3 |
 | `settings` | `presentation` | account summary, the appearance sheet, build information, sign-out |
 | `requests` | `domain`, `data`, `application`, `presentation` | **Stage 9.1 — implemented against fakes, not against a live project.** The read side of `blood_requests` and nothing else: `BloodRequest` (a read model that carries no patient name and no phone number), `compareByUrgency`/`orderRequests`, the `BloodRequestDocument` mapper, `RequestRepository`/`RequestDocuments` ports over `FirestoreRequestDocuments`, `FirestoreRequestRepository`, `RequestsController`/`RequestsState`, `RequestsScreen` and the one `RequestTile` both surfaces share. See §15 |
+| `donors` | `domain`, `data`, `application`, `presentation` | **Stage 9.4 — implemented against fakes, not against a live project.** Privacy-minimized donor discovery. `Donor` is a read model that carries **only** `name`, `bloodGroup`, `isAvailable`, `area` (when published) and `photoUrl` — never phone/address/date-of-birth/gender; `DonorQuery` normalisation, `compareDonors`/`orderDonors` (availability-then-name, stable), `DonorRepository`/`DonorDocuments` ports, `DonorProfileDocument` mapper with a fixed key allow-list over `FirestoreDonorDocuments`, `FirestoreDonorRepository` (a single equality-only `users` query, no composite index, over-fetch-by-one window), `DonorSearchController`/`DonorSearchState`, `DonorSearchScreen`, `DonorCard` and `DonorDetailsScreen`. It reads the **public `users/{uid}` profiles** where `role == 'donor'`, not the phone-bearing `donors` collection (which stays owner-only). See §16 and `docs/PROJECT_STATE.md`, Stage 9.4 |
 
 ## 3. State management
 
@@ -780,6 +781,22 @@ enforce); list element types are unchecked because this emulator's rules engine
 fails list comprehensions over data-derived lists; and a post edit must now
 restamp `updatedAt`. No Dart file changed — the shipped create path passes the
 new rules unchanged, which was the point of mirroring `requiredFields`.
+
+**A further dated note — Stage 9.3, 4 November 2026.** A live read-only audit of
+production (see `docs/PROJECT_STATE.md` and
+`firestore-rules-tests/production-audit/REPORT.md`) found 42 real `post_likes`
+documents and 19 legacy `posts` still on the `authorEmail` + singular `imageUrl`
+schema. Two adjustments followed, neither a security weakening: the flat
+`post_likes` rule moved from Stage 9.2's `read, write: if false` to
+`read: auth != null; write: if false` — closing the read would have orphaned
+live rows that the deployed rules already serve, so writes stay fully closed and
+only the (already-allowed) read is preserved until a migration backfills the
+subcollection; and a new `donors` block was added (signed-in read for discovery,
+owner-only shape-checked write) so donor search has a rule to read against — a
+read **widening** flagged for owner approval. Because the audit showed the
+reconciled rules would reject legacy-shape writers whose installed base cannot
+be verified offline, the whole file is **held, not deployed**: the compatibility
+blockers and their safe migration paths are recorded in Stage 9.3.
 
 | Concern | `firestore.rules` today | Stage 8.1 types | Proposed |
 | --- | --- | --- | --- |
@@ -1669,3 +1686,62 @@ were uncommitted working-tree state at that moment. `docs/PROJECT_STATE.md`'s St
 9.1 *Git state* holds the full account; the short version is that **the pushed tree
 orders every AM/PM request as undated**, and only this tree does not.
 
+## 16. Donor discovery, read path (Stage 9.4)
+
+Stage 9.4 adds the second read-only discovery surface — finding *donors* — built on the
+same discipline as §15 (a window, refuse-and-count, one controller, fakes until the rules
+land) but with a different and more consequential privacy decision at its centre.
+
+### The phone is not in the read model, by construction
+
+The `donors` collection holds each donor's **phone number**. Stage 9.3 had opened that
+collection to every signed-in user for a directory feature; that widening is a privacy
+decision reserved to the owner and was **reverted** in this stage. Donor Search does not
+read `donors` at all. It reads the **public `users/{uid}` profile documents** where
+`role == 'donor'`, and `DonorProfileDocument.fromMap` projects a fixed allow-list of keys —
+`displayName`, `bloodGroup`, `isAvailable`, `area` and `photoUrl` — onto the `Donor` entity.
+Phone, street address, date of birth and gender are never named in the mapper, so they
+cannot reach the screen even if a `users` document later grew one of those fields. Ownership
+of the private fields stays with the owner-only `donors` row and its private subcollection.
+
+Discoverability is the donor's own switch: only a `users` profile that presents as
+`role == 'donor'` matches, and `isAvailable` is shown, not used to hide a donor. There is no
+copy of private fields into a public document anywhere in this path, and no consented field
+is invented — an absent `area` simply renders as no area.
+
+### The query: equality-only, no composite index, window with over-fetch
+
+`FirestoreDonorDocuments.fetch` runs one `users` query filtered by equality on
+`role == 'donor'`, `isAvailable` (when the filter is on), `bloodGroup` and `area`, plus a
+`limit`. Every predicate is an `==`, which the automatic single-field indexes serve with a
+merge join — **no composite index has to be deployed**. Donor ordering
+(`compareDonors`: available-first, then name, blank-name-last, stable via index tiebreak)
+happens client-side on the decoded list for the same reason §15 orders requests locally: a
+database `orderBy` across those fields would need a deployed composite index, and this stage
+deploys nothing. The window is 30 documents over-fetched by one to measure `truncated`
+exactly, and the mapper refuses-and-counts malformed rows into `skipped` — the feed's and
+requests' discipline reused.
+
+### The three empty/partial states are the same honest pair as §15
+
+`DonorSearchState` distinguishes initial loading, a fatal error (with retry), an *unreadable*
+result (there are donors behind this but their profiles could not be read — `skipped`/notice
+wording, no retry button for the same reason as requests), and a genuine empty result that
+further splits **filtered-empty** ("no donors match your filters") from **all-empty** ("no
+donors are listed yet"). The screen never converts a read it could not parse into "nobody is
+available", and the contact note says plainly that donor contact details are not shown here —
+reaching out happens through a blood request, which is where a contact path legitimately
+belongs (Stage 10).
+
+### Verification status
+
+The donor suite (`test/features/donors`, `test/support/fake_donors.dart`) covers the mapper
+(allow-list, degrade-vs-refuse, privacy), `DonorQuery` normalisation, `DonorOrdering`, the
+repository window over a fake `DonorDocuments`, the controller states, and the screen/card/
+details widgets. The whole Flutter suite is **939 passed, 63 skipped, 0 failed** with
+`flutter analyze` clean, and the Firestore Rules emulator suite is **135/135** including four
+Stage 9.4 tests that pin the public-profile read and the phone's owner-only subcollection.
+What it does **not** prove: no assertion has read a live `users` collection — the spellings
+come from `firestore.rules`, the provider default is the real `FirestoreDonorRepository` but
+tests override it with the fake, and the ruleset that makes discovery work in production is
+the same held working tree the owner has not deployed. Fake-verified is not live-verified.

@@ -350,11 +350,77 @@ service cloud.firestore {
       }
     }
 
-    // The old flat likes collection is retired with the subcollection move:
-    // no client of the canonical schema writes here any more, and nothing
-    // may read the stranded documents from a client either.
+    // The old flat likes collection is retired for WRITES by the subcollection
+    // move: no client of the canonical schema creates or edits a document here
+    // any more, and both are denied outright so a stranded row cannot be forged
+    // or grown. READ stays open to signed-in users, though, because a
+    // read-only audit of production (Stage 9.3) found 42 live `post_likes`
+    // documents written by a pre-Stage-8 build and the currently deployed rules
+    // already let any signed-in user read them. Denying that read would orphan
+    // real data and break any installed client still counting likes — a
+    // backward-incompatible change, not a security one. This is stricter than
+    // what is deployed today (writes fully closed) and no looser on reads.
+    // The read flips to `if false` only after a migration copies these rows to
+    // `posts/{id}/likes/{uid}` and no client queries the flat collection.
     match /post_likes/{likeId} {
-      allow read, write: if false;
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Donors directory. A read-only audit found this collection live in
+    // production with NO rule at all — deny-all — and its documents carry a
+    // `phone` next to each name. Stage 9.3 opened `read` here to every signed-in
+    // user to seed a directory; Stage 9.4 closes that again on the privacy rule
+    // that a directory may not expose phone numbers to all authenticated users.
+    // Donor discovery therefore reads the consent-gated PUBLIC `users/{uid}`
+    // profile instead — displayName, role, bloodGroup, isAvailable, photoUrl and
+    // the area only where the donor published it — which is the same read the
+    // profile screen already relies on and never holds a phone. This collection
+    // becomes owner-only: a donor can read, create and edit their own row, and no
+    // other account can read anybody's phone out of it. `delete` stays closed —
+    // leaving the donor pool is an availability change, not a destroy of the
+    // record the app counts on.
+    //
+    // A collection-wide query by a non-owner is denied precisely because the read
+    // is keyed on `resource.data.uid`: discovery is not supposed to read `donors`
+    // in bulk any more. Reads of a single's own document (`/donors/{their-uid}`)
+    // still succeed, so no current client that only touches its own row changes.
+    match /donors/{donorId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == donorId || resource.data.uid == request.auth.uid);
+
+      allow create: if request.auth != null
+        && request.auth.uid == donorId
+        && request.resource.data.keys().hasAll(['name', 'bloodGroup', 'phone', 'isAvailable', 'location', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'bloodGroup', 'phone', 'isAvailable', 'location', 'createdAt', 'uid', 'email'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.bloodGroup is string
+        && request.resource.data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() > 0
+        && request.resource.data.isAvailable is bool
+        && request.resource.data.location is latlng
+        && request.resource.data.createdAt == request.time
+        && (!request.resource.data.keys().hasAny(['uid']) || request.resource.data.uid == request.auth.uid)
+        && (!request.resource.data.keys().hasAny(['email']) || request.resource.data.email is string);
+
+      // A donor edits their own row. Identity, the id-binding uid and the
+      // creation stamp are immutable; only the directory fields may move.
+      allow update: if request.auth != null
+        && (resource.data.uid == request.auth.uid || request.auth.uid == donorId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'bloodGroup', 'phone', 'isAvailable', 'location', 'email'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.bloodGroup is string
+        && request.resource.data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() > 0
+        && request.resource.data.isAvailable is bool
+        && request.resource.data.location is latlng
+        && (!request.resource.data.keys().hasAny(['email']) || request.resource.data.email is string);
+
+      allow delete: if false;
     }
 
     // Reports: create-only, mirroring the Report entity (two targets, five

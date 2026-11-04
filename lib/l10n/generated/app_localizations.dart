@@ -1598,6 +1598,156 @@ abstract class AppLocalizations {
   /// **'This list shows what is needed and where. Accepting a request is not available in this build yet.'**
   String get requestsNoActionNote;
 
+  /// No description provided for @donorSearchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Find donors'**
+  String get donorSearchTitle;
+
+  /// No description provided for @donorDetailsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Donor profile'**
+  String get donorDetailsTitle;
+
+  /// No description provided for @donorUnnamed.
+  ///
+  /// In en, this message translates to:
+  /// **'Donor'**
+  String get donorUnnamed;
+
+  /// No description provided for @donorRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get donorRetry;
+
+  /// No description provided for @donorAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Available'**
+  String get donorAvailable;
+
+  /// No description provided for @donorUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get donorUnavailable;
+
+  /// No description provided for @donorGroupNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Blood group not set'**
+  String get donorGroupNotSet;
+
+  /// No description provided for @donorAvailabilityHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Availability'**
+  String get donorAvailabilityHeading;
+
+  /// No description provided for @donorAvailabilityFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Available donors only'**
+  String get donorAvailabilityFilter;
+
+  /// No description provided for @donorFilterAllGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'All groups'**
+  String get donorFilterAllGroups;
+
+  /// No description provided for @donorAreaFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Area'**
+  String get donorAreaFieldLabel;
+
+  /// No description provided for @donorAreaFieldHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Area or neighbourhood'**
+  String get donorAreaFieldHint;
+
+  /// No description provided for @donorClearArea.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear area'**
+  String get donorClearArea;
+
+  /// No description provided for @donorSearchButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get donorSearchButton;
+
+  /// No description provided for @donorErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The donors could not be loaded'**
+  String get donorErrorTitle;
+
+  /// No description provided for @donorUnreadableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The donors could not be fully read'**
+  String get donorUnreadableTitle;
+
+  /// No description provided for @donorUnreadableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'There are donors behind this, but their profiles could not be read.'**
+  String get donorUnreadableBody;
+
+  /// No description provided for @donorEmptyFilteredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No donors match your filters'**
+  String get donorEmptyFilteredTitle;
+
+  /// No description provided for @donorEmptyFilteredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Try widening the blood group, availability, or area.'**
+  String get donorEmptyFilteredBody;
+
+  /// No description provided for @donorEmptyAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No donors are listed yet'**
+  String get donorEmptyAllTitle;
+
+  /// No description provided for @donorEmptyAllBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Donors who choose to make themselves discoverable will appear here.'**
+  String get donorEmptyAllBody;
+
+  /// No description provided for @donorContactNote.
+  ///
+  /// In en, this message translates to:
+  /// **'To protect donors, their contact details are not shown here. Reaching out happens through a blood request.'**
+  String get donorContactNote;
+
+  /// No description provided for @donorConsentNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This donor chose to appear in search. Their area is shown only if they published it.'**
+  String get donorConsentNote;
+
+  /// No description provided for @donorSkippedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} donor could not be shown} other{{count} donors could not be shown}}'**
+  String donorSkippedNotice(num count);
+
+  /// No description provided for @donorTruncatedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the first {count} donors are shown here. More are still behind them.'**
+  String donorTruncatedNotice(num count);
+
   /// No description provided for @errorPostTextRequired.
   ///
   /// In en, this message translates to:

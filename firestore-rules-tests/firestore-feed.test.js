@@ -306,12 +306,31 @@ describe('Stage 8.1 comments — discovery', () => {
 });
 
 describe('Stage 8.1 likes — canonical subcollection', () => {
-  it('21. the flat post_likes collection is denied; posts/{id}/likes/{uid} is the only like shape', async () => {
+  it('21. post_likes is closed for writes but stays readable (backward-compat), and posts/{id}/likes/{uid} is the only writable like shape', async () => {
     await seedPost();
+    // A legacy flat like row, written by a pre-Stage-8 build. Stage 9.3 found
+    // 42 such documents live in production, and the deployed rules let any
+    // signed-in user read them, so the reconciliation keeps that read open
+    // while closing every write.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'post_likes', 'legacy_like_1'), {
+        postId: FEED.post,
+        userId: FEED.stranger,
+        createdAt: new Date('2026-10-01T09:00:00Z'),
+      });
+    });
     const db = testEnv.authenticatedContext(FEED.author).firestore();
+    // Reading the stranded row succeeds: it is not orphaned by the write ban.
+    await assertSucceeds(getDoc(doc(db, 'post_likes', 'legacy_like_1')));
+    // Every write to the flat collection is denied, whichever verb is used.
     await assertFails(
       setDoc(doc(db, 'post_likes', 'like_anything'), { userId: FEED.author }),
     );
+    await assertFails(
+      updateDoc(doc(db, 'post_likes', 'legacy_like_1'), { userId: FEED.author }),
+    );
+    await assertFails(deleteDoc(doc(db, 'post_likes', 'legacy_like_1')));
+    // The canonical subcollection is the only like a client can now write.
     await assertSucceeds(
       setDoc(doc(db, 'posts', FEED.post, 'likes', FEED.author), { likedAt: serverTimestamp() }),
     );

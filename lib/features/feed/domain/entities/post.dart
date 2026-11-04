@@ -56,9 +56,12 @@ enum PostIssue {
 /// document mapper ask the same question and get the same answer.
 abstract final class PostValidator {
   /// Two thousand characters: long enough for an account of a blood drive,
-  /// short enough that a feed page is still a page. `firestore.rules` will have
-  /// to agree with this number when the write path lands (Stage 8.2), which is
-  /// why it is a constant here rather than a literal in the form.
+  /// short enough that a feed page is still a page. `firestore.rules` enforces
+  /// this ceiling on the **stored** `text`, and the publish path trims before it
+  /// writes (see `compose_providers`), so the trimmed length measured here is
+  /// exactly the length the server will check — the client never accepts a
+  /// draft the rules would reject. Why it is a constant here rather than a
+  /// literal in the form.
   static const int maxTextLength = 2000;
 
   /// Four. Fixed by the compose screen's grid, by the storage budget (four
@@ -79,6 +82,10 @@ abstract final class PostValidator {
     if (text.trim().isEmpty) {
       return PostIssue.textRequired;
     }
+    // Trimmed length: the publish path stores `state.text.trim()`, so the
+    // value the rules measure equals this trimmed measure. A draft padded past
+    // the limit trims back under it and is stored trimmed — client and server
+    // agree. See the note on [maxTextLength] and the compose publish trim.
     if (text.trim().length > maxTextLength) {
       return PostIssue.textTooLong;
     }

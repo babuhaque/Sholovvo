@@ -10,6 +10,8 @@ import 'package:sholovvo_app/design/widgets/error_banner.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
+import 'package:sholovvo_app/features/donors/application/donor_search_providers.dart';
+import 'package:sholovvo_app/features/donors/presentation/donor_search_screen.dart';
 import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/domain/feed_repository.dart';
@@ -30,6 +32,7 @@ import 'package:sholovvo_app/features/requests/presentation/requests_screen.dart
 import 'package:sholovvo_app/features/requests/presentation/widgets/request_tile.dart';
 
 import '../../support/fake_auth_repository.dart';
+import '../../support/fake_donors.dart';
 import '../../support/fake_feed.dart';
 import '../../support/fake_profile_repository.dart';
 import '../../support/fake_requests.dart';
@@ -108,6 +111,10 @@ Future<FakeAuthRepository> _pumpHome(
         requestRepositoryProvider.overrideWithValue(
           requestRepository ?? FakeRequestRepository(),
         ),
+        // Stubbed for the same reason as the feed and requests seams: since Stage
+        // 9.4 the "Find donors" action opens the donor search, which reads this
+        // provider on mount, and the shipped default builds a Firestore instance.
+        donorRepositoryProvider.overrideWithValue(FakeDonorRepository()),
       ],
       child: testApp(
         // Mounted the way the shell mounts it: the dashboard is a tab, and its
@@ -255,8 +262,8 @@ void main() {
       expect(find.textContaining('donations'), findsNothing);
     });
 
-    testWidgets('offers both headline actions, and says they are still to '
-        'come', (WidgetTester tester) async {
+    testWidgets('offers both headline actions: one still to come, one opens '
+        'the donor search', (WidgetTester tester) async {
       await _pumpHome(tester);
 
       final Finder requestBlood = find.widgetWithText(
@@ -273,8 +280,13 @@ void main() {
       await _tapVisible(tester, requestBlood);
       expect(find.text('Coming soon.'), findsOneWidget);
 
+      // Since Stage 9.4 "Find donors" is a real destination: it pushes the donor
+      // search page rather than reporting a feature that now exists as coming soon.
       await _tapVisible(tester, findDonors);
-      expect(find.text('Coming soon.'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(DonorSearchScreen), findsOneWidget);
     });
 
     testWidgets('shows one honest empty card per section and no "See all" '

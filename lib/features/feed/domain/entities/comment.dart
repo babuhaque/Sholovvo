@@ -33,6 +33,8 @@ enum CommentIssue {
 /// The rules a comment has to satisfy.
 abstract final class CommentValidator {
   /// Five hundred: a comment answers a post, it does not compete with it.
+  /// Measured against the stored text the publish path trims to, matching the
+  /// ceiling `firestore.rules` applies to the comment document.
   static const int maxTextLength = 500;
 
   static CommentIssue? validate({
@@ -43,6 +45,8 @@ abstract final class CommentValidator {
     if (text.trim().isEmpty) {
       return CommentIssue.textRequired;
     }
+    // Trimmed length, matching the post validator and the stored value the
+    // rules measure.
     if (text.trim().length > maxTextLength) {
       return CommentIssue.textTooLong;
     }

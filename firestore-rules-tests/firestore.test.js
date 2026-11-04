@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   serverTimestamp,
+  GeoPoint,
   doc,
   getDoc,
   setDoc,
@@ -1600,6 +1601,235 @@ describe('Stage 9.1 blood_requests open-requests read path', () => {
     await assertFails(
       getDocs(query(collection(db, 'notifications'), where('recipientUid', '==', IDS.recipient))),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stage 9.3 — the production compatibility audit turned two documented hazards
+// into executed assertions. Both were previously proven only through the admin
+// bypass (seedBase writes assignedDonorId: null with rules disabled), so a rule
+// regression that started accepting a client-supplied assignment would have
+// gone unnoticed. These run in a real client context.
+// ---------------------------------------------------------------------------
+
+// Exactly the fourteen keys every live production blood_requests document
+// carries (Stage 9.3 read of the 11 open requests), which is also the create
+// rule's hasOnly set. status is 'open' and createdAt is the server clock.
+const productionRequestData = (overrides = {}) => ({
+  userId: IDS.recipient,
+  patientName: 'Patient',
+  phoneNumber: '+8801700000000',
+  bloodGroup: 'A+',
+  bloodBags: 1,
+  hospitalName: 'Dhaka Medical College',
+  hospitalAddress: 'Dhaka',
+  requiredDateTime: '2026-11-10 10:00 AM',
+  requestType: 'Normal',
+  notes: '',
+  latitude: 23.8,
+  longitude: 90.4,
+  status: 'open',
+  createdAt: serverTimestamp(),
+  ...overrides,
+});
+
+describe('Stage 9.3 blood_requests client create shape', () => {
+  it('1. a client create of the exact production shape is accepted', async () => {
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'blood_requests', 'req_client_1'), productionRequestData()),
+    );
+  });
+
+  it('2. a client cannot pre-assign a donor: adding assignedDonorId is refused by hasOnly', async () => {
+    // The admin-bypass seed writes assignedDonorId: null, so only a client-
+    // context test proves the create rule still excludes the key entirely.
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(doc(db, 'blood_requests', 'req_client_2'), productionRequestData({ assignedDonorId: null })),
+    );
+    await assertFails(
+      setDoc(doc(db, 'blood_requests', 'req_client_3'), productionRequestData({ assignedDonorId: IDS.donor })),
+    );
+  });
+
+  it('3. a request is born open: a client cannot create it already accepted or fulfilled', async () => {
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(doc(db, 'blood_requests', 'req_client_4'), productionRequestData({ status: 'accepted' })),
+    );
+    await assertFails(
+      setDoc(doc(db, 'blood_requests', 'req_client_5'), productionRequestData({ status: 'fulfilled' })),
+    );
+  });
+
+  it('4. a client cannot create a request for another user, unauthenticated, or with a device clock', async () => {
+    const strangerDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(
+      setDoc(doc(strangerDb, 'blood_requests', 'req_client_6'), productionRequestData({ userId: IDS.recipient })),
+    );
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      setDoc(doc(anonDb, 'blood_requests', 'req_client_7'), productionRequestData()),
+    );
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(doc(ownerDb, 'blood_requests', 'req_client_8'), productionRequestData({ createdAt: new Date() })),
+    );
+  });
+});
+
+describe('Stage 9.3 donors directory (donor discovery)', () => {
+  // The production donors row: name, bloodGroup, phone, isAvailable, a geopoint
+  // location, createdAt, and for the newer rows a uid binding the Firebase user.
+  const validDonor = (overrides = {}) => ({
+    name: 'Donor One',
+    bloodGroup: 'A+',
+    phone: '+8801700000001',
+    isAvailable: true,
+    location: new GeoPoint(23.8, 90.4),
+    createdAt: serverTimestamp(),
+    ...overrides,
+  });
+
+  const seedDonor = async (donorId, data) => {
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'donors', donorId), {
+        ...data,
+        uid: donorId,
+        createdAt: new Date('2026-10-01T09:00:00Z'),
+      });
+    });
+  };
+
+  it('1. the owner reads their own donor row; a stranger cannot, and cannot browse', async () => {
+    // Stage 9.4 makes `donors` owner-only: it holds a phone, so it is no longer a
+    // world-readable directory. A donor reads their own document; another signed-in
+    // user is refused the same read, and a bulk browse is refused too. Discovery
+    // reads the consent-gated public `users` profile instead (suite below).
+    await seedDonor(IDS.donor, validDonor({ uid: undefined }));
+    await seedDonor(IDS.otherDonor, validDonor({ bloodGroup: 'B+', isAvailable: false, uid: undefined }));
+    const ownerDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertSucceeds(getDoc(doc(ownerDb, 'donors', IDS.donor)));
+    const strangerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(getDoc(doc(strangerDb, 'donors', IDS.donor)));
+    await assertFails(
+      getDocs(query(collection(strangerDb, 'donors'), where('bloodGroup', '==', 'A+'), where('isAvailable', '==', true))),
+    );
+  });
+
+  it('2. an unauthenticated client cannot browse the directory', async () => {
+    await seedDonor(IDS.donor, validDonor({ uid: undefined }));
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(anonDb, 'donors', IDS.donor)));
+  });
+
+  it('3. a donor creates their own row keyed to their uid, with the server clock', async () => {
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertSucceeds(setDoc(doc(db, 'donors', IDS.donor), validDonor({ uid: IDS.donor })));
+  });
+
+  it('4. a donor cannot write a row under another uid, or forge the shape', async () => {
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(setDoc(doc(db, 'donors', IDS.otherDonor), validDonor()));
+    await assertFails(setDoc(doc(db, 'donors', IDS.donor), validDonor({ uid: IDS.otherDonor })));
+    await assertFails(setDoc(doc(db, 'donors', IDS.donor), validDonor({ bloodGroup: 'Z+' })));
+    await assertFails(setDoc(doc(db, 'donors', IDS.donor), validDonor({ location: '23.8,90.4' })));
+    await assertFails(setDoc(doc(db, 'donors', IDS.donor), validDonor({ createdAt: new Date() })));
+  });
+
+  it('5. the owner toggles availability; a stranger cannot edit anyone', async () => {
+    await seedDonor(IDS.donor, validDonor({ uid: undefined }));
+    await seedDonor(IDS.otherDonor, validDonor({ uid: undefined }));
+    const ownerDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertSucceeds(updateDoc(doc(ownerDb, 'donors', IDS.donor), { isAvailable: false }));
+    const strangerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(updateDoc(doc(strangerDb, 'donors', IDS.otherDonor), { isAvailable: false }));
+  });
+
+  it('6. a donor cannot rewrite their own identity binding or delete the row', async () => {
+    await seedDonor(IDS.donor, validDonor({ uid: undefined }));
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    // uid is outside the update allow-list, so it can never move.
+    await assertFails(updateDoc(doc(db, 'donors', IDS.donor), { uid: IDS.otherDonor }));
+    await assertFails(deleteDoc(doc(db, 'donors', IDS.donor)));
+  });
+});
+
+describe('Stage 9.4 donor discovery reads the public users profile', () => {
+  // A public `users/{uid}` document, spelled the way ProfileDocuments.publicFields
+  // writes it: only discovery-safe fields. `phone`, `addressLine`, date of birth and
+  // gender live in the owner-only `private/profile` subcollection and are NOT here —
+  // that absence is what makes the directory safe to open to signed-in users.
+  const publicProfile = (overrides = {}) => ({
+    displayName: 'Donor One',
+    role: 'donor',
+    bloodGroup: 'A+',
+    isAvailable: true,
+    photoUrl: null,
+    ...overrides,
+  });
+
+  const seedUser = async (uid, data) => {
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', uid), data);
+    });
+  };
+
+  it('1. a signed-in user can run the discovery query over public profiles', async () => {
+    await seedUser(IDS.donor, publicProfile());
+    await seedUser(IDS.otherDonor, publicProfile({ bloodGroup: 'B+', isAvailable: false }));
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(db, 'users'),
+          where('role', '==', 'donor'),
+          where('isAvailable', '==', true),
+          where('bloodGroup', '==', 'A+'),
+        ),
+      ),
+    );
+    // The area filter is a third equality on a published-area row; equality-only
+    // queries merge single-field indexes, so no composite index is required.
+    await seedUser(IDS.donor, publicProfile({ area: 'Dhanmondi' }));
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(db, 'users'),
+          where('role', '==', 'donor'),
+          where('area', '==', 'Dhanmondi'),
+        ),
+      ),
+    );
+  });
+
+  it('2. a signed-in user can read another donor\'s public profile', async () => {
+    await seedUser(IDS.donor, publicProfile());
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(getDoc(doc(db, 'users', IDS.donor)));
+  });
+
+  it('3. an unauthenticated client cannot browse profiles', async () => {
+    await seedUser(IDS.donor, publicProfile());
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(anonDb, 'users', IDS.donor)));
+  });
+
+  it('4. the private subcollection that holds the phone stays owner-only', async () => {
+    // Discovery must not reach the phone even though the public read is open: the
+    // PII lives under `users/{uid}/private/profile`, which only the owner reads.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', IDS.donor, 'private', 'profile'), {
+        phone: '+8801700000001',
+        addressLine: 'House 1, Road 2',
+        publishAreaInSearch: true,
+      });
+    });
+    const strangerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(getDoc(doc(strangerDb, 'users', IDS.donor, 'private', 'profile')));
+    const ownerDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertSucceeds(getDoc(doc(ownerDb, 'users', IDS.donor, 'private', 'profile')));
   });
 });
 
