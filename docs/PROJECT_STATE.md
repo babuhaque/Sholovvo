@@ -3662,8 +3662,10 @@ stage" plan**: 9.3 proposed building donor search "over the now-readable `donors
 collection." That collection holds each donor's **phone number**, so opening it to every
 signed-in user is exactly the privacy widening the owner has *not* approved. Stage 9.4
 therefore **reverted the `donors` read-widening to owner-only** and built the search on a
-consent-safe read model instead (see below). Nothing was deployed; the whole stage lives in
-the uncommitted working tree on top of `c5faf7f`.
+consent-safe read model instead (see below). Nothing was deployed. At the time of writing the
+work lived in the uncommitted working tree on top of `c5faf7f`; as of the independent audit
+below it has since been committed (HEAD is now `605bf53`, working tree clean). Committing is
+not deploying — the `firestore.rules` change is still **undeployed**, gated on the owner.
 
 ### The privacy decision that shaped the feature (§4)
 
@@ -3785,10 +3787,122 @@ callback's return value, so the cycle result is captured into an outer binding.
 
 ### Git state
 
-HEAD is `c5faf7f`; Stage 9.3's uncommitted tree is preserved and Stage 9.4 stacks on top of
-it. All Stage 9.4 work is uncommitted and untracked/modified in the working tree. Nothing was
-staged, committed, pushed or deployed; no branch was switched; no production write, rule
-deploy, migration, billing change or privacy-widening was performed.
+At completion HEAD was `c5faf7f` and the whole of Stage 9.3 + 9.4 sat uncommitted in the
+working tree. Since then the work was committed (a normal project commit, not by this audit):
+**as of the independent audit below, HEAD is `605bf53` and `git status` reports a clean tree.**
+Committing is not a deploy — no rule was deployed, no branch was switched by the audit, no
+production write / migration / billing change / privacy-widening was performed. The
+`firestore.rules` change and the legacy-post migration remain gated on the owner.
+
+### Independent security & architecture audit (Stage 9.4-ISA) — 4 November 2026
+
+A fresh, evidence-based re-audit performed **without** relying on the completion report above.
+Every claim below was re-read from source or re-run in this session. No production write, no
+rule deploy, no migration, no billing change and no Git write were performed; the only files
+touched by the audit are this `docs/PROJECT_STATE.md` (appending this section and correcting
+two stale Git-state sentences — see "Git state" above).
+
+**Gates re-run (all green):**
+
+| Gate | Result |
+| --- | --- |
+| Firestore Rules emulator suite (`firebase emulators:exec --only firestore --project demo-solovvo-tests`, incl. migration round-trip) | **135 passed / 0 failed / 0 skipped**, exit 0 |
+| `flutter analyze` | **No issues found** |
+| `flutter test` (full suite) | **939 passed / 63 skipped / 0 failed**; the 63 skips are the `visual_review_test.dart` capture suite gated behind an env flag, not donor logic |
+| ARB / localisation parity | covered by `test/l10n/arb_parity_test.dart` inside the green run |
+| `git diff --check` | clean (exit 0) |
+
+Note the toolchain path had to be worked around: the `System32` `firebase.cmd` shim is broken
+in this environment; the suite was driven through `node …\firebase-tools\lib\bin\firebase.js`
+(15.34.2). This is a local tooling detail, not a project defect.
+
+**Privacy model — verified correct (No finding):**
+- Consent (`publishAreaInSearch`) is enforced on the *write* side: `ProfileDocuments.publicFields`
+  projects `area` to the public doc only while the flag is on, else `FieldValue.delete()` (the
+  value becomes unreadable, not merely hidden). The canonical `area` and all of phone / address /
+  dob / gender are written only to `users/{uid}/private/profile` (owner-only, pinned by emulator
+  test §9.4.4).
+- The discovery read path (`FirestoreDonorDocuments` → `DonorProfileDocument.fromUserDoc` →
+  `FirestoreDonorRepository` → `DonorSearchController` → `DonorCard`/`DonorDetailsScreen`) reads,
+  maps and renders **only** `role, bloodGroup, displayName, isAvailable, area, photoUrl`. A
+  `Donor` carries no phone/address/dob/gender field, so no query, mapper, log line or UI can
+  surface one.
+- Logs are value-free: `_describe()` returns `runtimeType` only; `DiscoveredDonors`/`Donor`
+  `toString()` carry counts / uid / group / availability, never a name or area; the repository
+  logs only the skip `Failure`.
+- Availability visibility is the donor's own switch; discovery never flips it.
+- Real vs fake contract parity holds: the provider default is the **real** `FirestoreDonorRepository`
+  (`donor_search_providers.dart`), fakes live only under `test/`, and both fake classes document
+  exactly which responsibilities they stand in for (filtering is emulator-covered; window logic is
+  fake-covered). No fake is presented as production.
+
+**Findings by severity:**
+
+- **Critical — none.**
+- **High — none** introduced or left by Stage 9.4. The `donors` read-widening was correctly
+  reverted to owner-only; request/response/claim/notification/post/donation_history rules show
+  no privilege-escalation or unintended-field path (ownership fixed at create, response claims are
+  immutable transaction anchors, counters/identity are pinned on update).
+- **Medium:**
+  - **M1 — No global discoverability opt-out / consent-withdrawal affordance.** Discoverability is
+    exactly `role == 'donor'` on the public doc, and `publicFields` always writes `role: 'donor'`.
+    There is no in-app way for a donor to stop being listed while keeping the account, and no
+    profile/account deletion in this stage; `isAvailable=false` only hides them under the default
+    "available only" filter, not under "show all". §4's "opt-out and withdrawal" is therefore met
+    at the *area* level only. Owner/product decision; not safely auto-fixable inside audit scope.
+  - **M2 — Public `users/{uid}` write has no field allow-list in `firestore.rules`**
+    (`allow write: if auth.uid == userId`). The privacy split is enforced by the client writer +
+    the read-model mapper, **not** by rules: a client (bug or a donor self-sabotaging their own
+    doc) could place `phone` into the globally-readable public document and rules would accept it,
+    where any signed-in user could then read it at the DB layer. Not directly exploitable against
+    *another* user (write is owner-only) and the `Donor` mapper would still refuse to surface it,
+    so this is a defense-in-depth hardening, not an active leak. A rules change → deploy-gated, so
+    this is report-only; recommend a field allow-list (or forbid phone/address/dob/gender keys on
+    the public doc) plus an emulator test if the owner accepts it.
+  - **M3 — (Pre-existing, outside 9.4 scope) `blood_requests` reads expose patient contact data.**
+    `allow read: if request.auth != null` makes `phoneNumber`/`hospitalAddress`/`patientName`
+    readable by every signed-in user before any match. This is the legacy open-request-board
+    design, was **not** introduced by Stage 9.4, and is only in scope for the Stage 10 contact flow.
+    Recorded as an observation for that decision, not a 9.4 defect.
+- **Low:**
+  - **L1 — Stale Git-state documentation** (fixed this session): the 9.4 report claimed all work was
+    uncommitted at HEAD `c5faf7f`; it is in fact committed at HEAD `605bf53` with a clean tree.
+    Corrected in the intro and the "Git state" section above. Documentation-only; no behaviour change.
+- **No finding** for: consent enforcement, availability visibility, unauthorised private-field
+  access, phone/address exposure through query/mapper/logs/UI, repository contract parity,
+  no-fake-as-production, privilege escalation, request/response atomicity, feed/legacy
+  compatibility, and all five verification gates.
+
+**Migration safety — verified (No finding):** `migration.js` talks to no database by itself;
+the only caller passes the emulator (`demo-solovvo-tests`), with no project id / credential /
+default connection to `sholovvo-blood-donation`. It never deletes, takes a verbatim pre-write
+backup, is idempotent (second pass plans zero writes — emulator-pinned), leaves modern docs
+byte-for-byte and refuses unreadable docs (preservation tests green). `MIGRATION_PLAN.md` backup
+/rollback/deploy-ordering text matches the code. Accidental prod selection is guarded by the
+explicit `--project demo-solovvo-tests` in the documented command; note the repo-wide
+`.firebaserc` default is still the live project, so **any bare `firebase deploy`/CLI run without
+`--project` would target production** — the owner must keep passing `--project` until they choose
+otherwise.
+
+**Missing integration tests / production blockers:**
+1. No live donor-search test against real Firestore — blocked on the owner deploying the held
+   `firestore.rules`; the emulator proves the rules permit the privacy-safe read, the fakes prove
+   the client. This is the single gating blocker to calling discovery "live".
+2. If M2 is accepted, add an emulator test asserting a stranger cannot read a phone that was
+   self-written into the public doc (this is currently unenforceable — the exact gap M2 describes).
+3. No end-to-end test that flipping `publishAreaInSearch` off removes the public `area` at the DB
+   level (unit + widget cover the client write; rules cannot, since it is a client projection).
+4. Pagination beyond one 30-window is deferred to Stage 10 (documented).
+
+**Stage 10 readiness recommendation:** Stage 10 (donor "respond"/contact flow, paired counter
+rules, pagination, `post_likes`→subcollection migration) **may begin**, with three conditions:
+(i) M1 (discoverability opt-out/withdrawal) and M2 (public-doc field allow-list) are decided by
+the owner — M1 especially, because Stage 10 adds the contact path that makes being discoverable
+consequential; (ii) the reconciled `firestore.rules` (with the `donors` revert) is deployed and a
+live donor-search verification test is added before donor discovery is described as production;
+and (iii) the Stage 10 contact flow must not reintroduce phone/address into any globally-readable
+document. No confirmed Stage 9.4 defect blocks starting Stage 10 development work; the blockers
+above are owner decisions and live-verification steps, not code faults.
 
 ### Next stage
 
@@ -3799,3 +3913,224 @@ deploy, migration, billing change or privacy-widening was performed.
 3. **Stage 10** — donor-search pagination, a donor "respond" flow (which is where a contact
    path legitimately belongs, behind a request), the paired counter rules, and the
    `post_likes` → `posts/{id}/likes/{uid}` like migration.
+
+## Stage 9.5 — Privacy hardening: donor-discovery consent, public-profile field allow-list, request-contact PII split
+
+Stage 9.4-ISA identified three privacy defects that Stage 9.4 itself did not close: (M1) donor
+discovery had no per-donor consent, so a signed-in account could list every user with
+`role == 'donor'`; (M2) the `users/{uid}` public projection accepted *any* owner write, so a
+buggy or hostile client could put phone, address or date-of-birth onto a document every signed-in
+account reads; (M3) the request document stored `patientName` and `phoneNumber` on a document
+with `allow read: if request.auth != null`, which made a directory of every blood recipient's
+contact details available to every signed-in account. Stage 9.5 closes all three at the rules
+layer. **Production data is not migrated and rules are not deployed as part of Stage 9.5** — the
+owner has not authorised either. What is delivered here is the reconciled rule set, the consent
+surface, the read-model plumbing and the emulator evidence, so the owner can decide when to
+deploy and when (and whether) to run the historical-PII cleanup.
+
+### 9.5.1 — M1: donor discovery requires an explicit opt-in
+
+`UserProfile.allowDonorDiscovery` is a new boolean (default `false`, opt-in) that lands beside
+`publishAreaInSearch` on the private `users/{uid}/private/profile` subcollection and mirrors onto
+the public `users/{uid}` projection only while true. `FirestoreDonorDocuments.fetch` adds
+`where('allowDonorDiscovery', '==', true)` to the query — legacy documents that do not carry the
+key at all also drop out, so a donor who has never seen Stage 9.5 is not silently listed.
+`DonorProfileDocument.fromMap` re-checks the flag at the mapper boundary (defence-in-depth: a
+test seam that hands the mapper a raw map cannot bypass the consent gate). The privacy card
+renders three independent switches (availability, publish area, allow discovery), each addressed
+by a `ValueKey` so a widget test can target it without ambiguity. Withdrawal writes
+`FieldValue.delete()` on the public mirror so a stale `true` does not sit on the projection after
+the opt-out.
+
+| Evidence | Location | Result |
+|---|---|---|
+| Consent field carried through the value object | `test/features/profile/user_profile_test.dart` (copyWith, withPhoto, draft) | ✅ |
+| Consent re-check refuses opted-out, missing-key, null and truthy-non-bool values | `test/features/donors/donor_profile_document_test.dart` (7-case Stage 9.5 group) | ✅ |
+| Repository skips opted-out and legacy documents without disturbing the truncation over-count | `test/features/donors/firestore_donor_repository_test.dart` (3 new cases) | ✅ |
+| Consent switch has its own key on both the view and edit screens | `test/features/profile/profile_screen_test.dart`, `test/features/profile/profile_edit_screen_test.dart` | ✅ |
+| English and Bengali labels present, placeholders preserved, no ASCII digits in Bengali | `test/l10n/arb_parity_test.dart` (auto-extended by the new strings) | ✅ |
+| Rules query filters on the consent flag | `firestore-rules-tests/firestore.test.js` — *Stage 9.5 donor discovery requires an explicit opt-in* (5 tests) | ✅ |
+
+### 9.5.2 — M2: public profile Firestore field allow-list
+
+The `users/{userId}` rule no longer says `allow write: if request.auth != null &&
+request.auth.uid == userId`. It splits into `create`, `update` and `delete`, and both write
+verbs are gated against a fixed eight-key allow-list: `displayName`, `role`, `isAvailable`,
+`updatedAt`, `bloodGroup`, `photoUrl`, `area`, `allowDonorDiscovery`. `create` uses
+`request.resource.data.keys().hasOnly([...])` on the whole new shape; `update` uses
+`request.resource.data.diff(resource.data).affectedKeys().hasOnly([...])` on what the write
+changes, which is what lets a legacy `users/{uid}` document (still carrying pre-Stage-9.5 keys
+like `fullName`, `uid`) be updated normally through the profile-save path — an untouched legacy
+key is not part of `affectedKeys()`, only writing a new sensitive key is refused. The private
+subcollection is unchanged and stays the sink for every field the allow-list refuses.
+
+| Evidence | Location | Result |
+|---|---|---|
+| Eight-key allow-list matches what `ProfileDocuments.publicFields` writes | `firestore.test.js` M2 test 12 (sanity assertion) | ✅ |
+| Owner cannot create or inject phone, addressLine, dateOfBirth, gender, publishAreaInSearch | `firestore.test.js` M2 tests 2–4 | ✅ |
+| Owner can still legitimately update displayName / isAvailable / photoUrl / allowDonorDiscovery | `firestore.test.js` M2 tests 5–6 | ✅ |
+| Stranger cannot write anything, unauthenticated cannot write anything | `firestore.test.js` M2 tests 7, 9 | ✅ |
+| Owner can still delete their public document | `firestore.test.js` M2 test 8 | ✅ |
+| A legacy doc with pre-M2 keys still accepts legal updates on allow-listed keys but refuses phone | `firestore.test.js` M2 test 10 | ✅ |
+| Private subcollection holds every sensitive key the public allow-list refuses | `firestore.test.js` M2 test 11 | ✅ |
+
+### 9.5.3 — M3: request contact PII moves to `blood_requests/{requestId}/private/contact`
+
+Corrected in **M3-C1** (hospitalAddress) and **M3-C2** (authoritative donor
+authorization). Three patient-identifying fields — `patientName`, `phoneNumber`
+**and** `hospitalAddress` — are gone from the public `blood_requests/{requestId}`
+create shape (both `hasAll` and `hasOnly`), gone from the "patient edits details"
+update branch's affected-keys set, and now live on a one-document subcollection
+pinned to id `contact`. The subcollection's write shape is exactly
+`['patientName', 'phoneNumber', 'hospitalAddress']` (`patientName`/`phoneNumber`
+non-empty strings; `hospitalAddress` a string, permitted empty), owner-only via
+`get(parent).userId == request.auth.uid`. The public projection keeps only
+`hospitalName` (plus the optional coarse `latitude`/`longitude` pin);
+`BloodRequest.area` resolves to `hospitalName` and the request row no longer
+renders a street address, so **no private address is exposed through the public
+document or the UI**.
+
+**Reads are owner-only in this stage (M3-C2).** The intended "matched donor may
+read" branch was NOT landed, because the existing architecture cannot prove a
+legitimate match inside a rule without a shortcut, and the reviewer directed that
+no shortcut be invented. What was verified:
+
+- **How a donor legitimately becomes matched:** the booking transaction writes
+  three documents atomically — `request_responses/{uuid}` (donor/request/status),
+  the immutable `response_claims/{claimId}` (create-only, `update`/`delete` are
+  `if false`, and creation requires `existsAfter` a matching `request_responses`
+  row), and the `blood_requests` assignment update. The `response_claims` row is
+  the tamper-evident anchor.
+- **Forgeability confirmed:** a matching, available donor can set
+  `assignedDonorId = self` and `status = accepted` with a **single public
+  `blood_requests` update, without any claim** (the existing claim branch does not
+  require a `response_claims` row). So the earlier three-signal gate
+  (`assignedDonorId` + status + role) is forgeable and is explicitly not trusted.
+- **The authoritative anchor is unreachable from a rule:** the `response_claims`
+  id is length-prefixed (`req_{requestId.length}_{requestId}_donor_{donorId.length}_{donorId}`)
+  and **Firestore security rules cannot cast an int to a string** — the `+`
+  operator rejects `string + int` (empirically confirmed: the emulator raised
+  "Received: string + int" when a rule tried to rebuild the id), and there is no
+  `string()` builtin. `request_responses` ids are opaque uuids and rules cannot
+  query. So neither authoritative record is addressable from
+  `(requestId, request.auth.uid)`.
+
+Minimum safe interim: **owner-only contact read**, which is strictly safe and
+unregressing (the app reads no contact today). The full response/claim invariants
+are left untouched. Unlocking a donor read is a Stage-10 architecture decision —
+either (a) a rule-derivable anchor whose id uses only strings
+(`blood_requests/{requestId}/private/match/{donorId}` written in the same
+transaction), or (b) a length-free `RequestResponseService.getClaimId` (a
+production data-shape change, out of scope). The `contactDoc == 'contact'` guard on
+every clause keeps the shape one-per-request and closes the alternate-id burial hole.
+
+`BloodRequest` no longer carries `hospitalAddress`; its `area` getter returns
+`hospitalName`, and `BloodRequestDocument` no longer reads `hospitalAddress`.
+`RequestTile` drops the address line and renders `request.area` only.
+
+**What Stage 9.5 does NOT do.** Nothing in this stage writes `blood_requests` from Dart — the
+requests screen is still read-only, and M3 does not add a write path. Existing production
+`blood_requests` documents still carry `patientName`/`phoneNumber`/`hospitalAddress` on the public
+document; the new rules only stop future writes. **M3-C3 prepares (does NOT execute) the
+historical-PII migration** — see `firestore-rules-tests/request-pii-migration/`
+(`MIGRATION_PLAN.md`, the pure `migration.js` copy-then-delete contract with backup, idempotency,
+read-before-delete verification, rollback and dry-run/reporting, plus 19 pure tests and 7 emulator
+round-trip tests). The owner has not authorised a production run.
+
+| Evidence | Location | Result |
+|---|---|---|
+| Public create refuses `patientName`, `phoneNumber`, `hospitalAddress` injection | `firestore.test.js` M3 tests 1–2, 2b | ✅ |
+| Public create still accepts the eleven-key shape without PII | `firestore.test.js` M3 test 3 | ✅ |
+| Owner can create/update/delete the `private/contact` doc | `firestore.test.js` M3 tests 4, 19 | ✅ |
+| Contact shape is exactly `{patientName, phoneNumber, hospitalAddress}`; extra/missing keys and blank name/phone refused; blank address allowed | `firestore.test.js` M3 tests 5–7 | ✅ |
+| Stranger cannot create contact; unauth cannot read | `firestore.test.js` M3 tests 8, 15 | ✅ |
+| Owner reads own contact | `firestore.test.js` M3 test 9 | ✅ |
+| **Owner-only interim: every donor read refused** — accepted, donation_completed, fulfilled, open — with a real claim present | `firestore.test.js` M3 tests 10–13 | ✅ |
+| Stranger / role-changed / deleted-user caller cannot read | `firestore.test.js` M3 tests 14, 16, 17 | ✅ |
+| `private/{id != contact}` is unreachable — the fixed-name guard | `firestore.test.js` M3 test 18 | ✅ |
+| Patient-edits-details branch no longer permits changing PII on a legacy doc | `firestore.test.js` M3 test 21 | ✅ |
+| Shape sanity: exactly the three keys | `firestore.test.js` M3 test 22 | ✅ |
+| **Forged self-assignment (no claim) does NOT open the contact** | `firestore.test.js` M3 test 23 | ✅ |
+| **Unrelated donor cannot read even attempting to forge** | `firestore.test.js` M3 test 24 | ✅ |
+| **Even the full legitimate booking transaction does NOT open a donor read yet (reported blocker)** | `firestore.test.js` M3 test 25 | ✅ |
+| Migration: pure contract (classify/extract/plan/verify/apply ordering/rollback) | `request-pii-migration/migration.test.js` (19 tests) | ✅ |
+| Migration: emulator round-trip closes the read leak, idempotent, partial-doc, rollback | `request-pii-migration/migration_emulator.test.js` (7 tests) | ✅ |
+
+### 9.5.4 — Verification evidence (all three milestones)
+
+| Gate | Command | Result |
+|---|---|---|
+| Static analysis | `flutter analyze` | ✅ No issues found |
+| Widget/unit suite | `flutter test` | ✅ 962 pass, 63 skipped, 0 fail (M3-C1 removed `hospitalAddress` from the read model, fixtures and tile) |
+| ARB parity | `flutter test test/l10n/arb_parity_test.dart` | ✅ 8 pass |
+| Rules + migration emulator suite | `firebase emulators:exec --only firestore --project demo-solovvo-tests "npm test"` | ✅ **204 pass, 0 fail** (M1+M2+M3-C1+M3-C2 rules, plus the 7 M3-C3 migration emulator tests) |
+| Migration pure suite | part of `npm test` (`node --test`) | ✅ 19 pass, 0 fail |
+| Whitespace check | `git diff --check` | ✅ clean |
+
+All emulator commands ran against the `demo-solovvo-tests` project. No production project was
+touched, no rules deployed, no data migrated, no billing or Git-write operation performed.
+
+### Files (Stage 9.5)
+
+| File | Change |
+|---|---|
+| `lib/features/profile/domain/user_profile.dart` | `allowDonorDiscovery` field on the value object, default `false`, `copyWith`/`withPhoto`/equality carried through |
+| `lib/features/profile/data/profile_documents.dart` | Private-subcollection read of `allowDonorDiscovery`; public write mirrors the flag while consent is on and writes `FieldValue.delete()` on withdrawal |
+| `lib/features/donors/data/firestore_donor_documents.dart` | Query filter `where('allowDonorDiscovery', '==', true)` |
+| `lib/features/donors/data/models/donor_profile_document.dart` | Consent re-check at the mapper boundary (refuses missing-key, `null`, and truthy-non-bool values) |
+| `lib/features/profile/presentation/widgets/profile_privacy_card.dart` | New "Discoverable" switch with its own `ValueKey`, alongside the existing availability and publish-area switches |
+| `lib/features/profile/presentation/profile_screen.dart`, `profile_edit_screen.dart` | Read/save wiring for `allowDonorDiscovery` |
+| `lib/l10n/app_en.arb`, `lib/l10n/app_bn.arb` | Consent strings in both locales (parity test passes) |
+| `lib/features/requests/domain/entities/blood_request.dart` | M3-C1: drops the `hospitalAddress` field; `area` getter returns `hospitalName`; doc comment rewritten for the post-M3 rules |
+| `lib/features/requests/data/models/blood_request_document.dart` | M3-C1: mapper no longer reads `hospitalAddress`; doc comment rewritten for the eleven-key create shape |
+| `lib/features/requests/presentation/widgets/request_tile.dart` | M3-C1: removes the address line; renders `request.area` (hospital name) only |
+| `firestore.rules` | M2 (`users/{userId}` field allow-list) and M3-C1/M3-C2 (`blood_requests/{id}/private/contact` split to three keys, updated create/update shape, owner-only read with the M3-C2 blocker documented) |
+| `firestore-rules-tests/firestore.test.js` | Three new describes: 5 M1 tests, 12 M2 tests, 25 M3 tests (incl. forgery/owner-only controls). `p0OpenRequestData`/`p0RequestDoc`/`productionRequestData` fixtures trimmed to the eleven-key public shape |
+| `firestore-rules-tests/request-pii-migration/MIGRATION_PLAN.md` | M3-C3: prepared (not executed) historical-PII migration plan — fields, backup, idempotency, read-before-delete verification, rollback, dry-run/reporting |
+| `firestore-rules-tests/request-pii-migration/migration.js` | M3-C3: pure two-document copy-then-delete migration (plan/apply/verify/rollback) |
+| `firestore-rules-tests/request-pii-migration/migration.test.js` | M3-C3: 19 pure contract tests (classification, extract/normalize, plan split, write-ordering, rollback) |
+| `firestore-rules-tests/request-pii-migration/migration_emulator.test.js` | M3-C3: 7 emulator round-trip tests (leak closed to a stranger, idempotent, partial doc, rollback) |
+| `test/features/profile/user_profile_test.dart`, `profile_documents_test.dart`, `profile_screen_test.dart`, `profile_edit_screen_test.dart` | M1 consent coverage; `ValueKey` disambiguation for the three privacy switches |
+| `test/features/donors/donor_profile_document_test.dart`, `firestore_donor_repository_test.dart` | M1 mapper refusal coverage |
+| `test/support/fake_donors.dart` | Consent-aware fake writer for tests that opt donors in |
+
+### Stage 10 readiness recommendation (post-9.5)
+
+Stage 9.5 completion is **NOT approved**; Stage 10 is **not started**. The M3-C1
+(hospitalAddress) and M3-C3 (migration plan) corrections are landed and green. One
+M3-C2 item remains an explicit, reported **blocker** rather than a code gap. Decisions
+that stand outside this stage:
+
+1. Deploy the reconciled `firestore.rules` (M2 allow-list on `users/{uid}`, M3-C1/M3-C2
+   `blood_requests/{id}/private/contact` split and owner-only read). Nothing is enforced
+   on production until the rules land.
+2. **M3-C2 blocker — matched-donor contact read.** The contact is owner-only because the
+   authoritative `response_claims` anchor cannot be addressed from a rule (length-prefixed
+   id; rules cannot stringify an int, cannot query; `assignedDonorId`/`status` are
+   forgeable and not trusted). No shortcut was invented. To enable a donor read, the owner
+   must pick a minimum safe design: (a) add a rule-derivable, string-only-id anchor such as
+   `blood_requests/{requestId}/private/match/{donorId}` written inside the existing booking
+   transaction, or (b) change `RequestResponseService.getClaimId` to a length-free composite
+   id (a production data-shape change). Until one lands, `firestore.test.js` M3 test 25 stays
+   a failing-if-relaxed owner-only guard and MUST flip to `assertSucceeds` only together with
+   the chosen anchor plus new emulator tests proving a still-forged read fails.
+3. Execute the **prepared** historical-PII migration (M3-C3) only after the owner authorises
+   it: run `request-pii-migration/migration.js` first against the emulator (the round-trip
+   tests already do), then a dry-run report against production, then the copy-then-delete
+   with read-before-delete verification. Rules have no field-level read filter, so historical
+   `patientName`/`phoneNumber`/`hospitalAddress` on public docs remain exposed to a raw-SDK
+   reader until this migration physically removes them.
+
+Stage 10's donor "respond"/contact flow is the natural place to build the write path for
+`blood_requests/{requestId}/private/contact` and to land whichever M3-C2 anchor the owner
+chooses, then to complete the historical-PII cleanup the owner authorises alongside it.
+
+### Next stage (Stage 10)
+
+1. **Owner decisions**: resolve the M3-C2 matching-anchor design; deploy the reconciled
+   `firestore.rules` (M2 + M3-C1/M3-C2); run the prepared M3-C3 migration against the
+   emulator and a production dry-run first, then against production only on approval.
+2. **Stage 10 development** — donor "respond"/contact flow, which is where the
+   `private/contact` write path is legitimately raised by the app for the first time; paired
+   counter rules; `post_likes` → `posts/{id}/likes/{uid}` like migration; donor-search
+   pagination beyond the single 30-window.

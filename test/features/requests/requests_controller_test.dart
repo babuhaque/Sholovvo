@@ -306,14 +306,12 @@ void main() {
   group('RequestsState', () {
     test('names its own numbers and no place', () {
       // `toString` lands in log lines and in test failures, and these windows are
-      // built from documents that carry a patient name, a phone number and an
-      // address.
+      // built from documents that carry a patient name and a phone number.
       final RequestsState state = RequestsState(
         status: RequestsStatus.ready,
         requests: <BloodRequest>[
           fakeRequest(
             hospitalName: 'Dhaka Medical College',
-            hospitalAddress: 'Dhaka',
           ),
         ],
         truncated: true,

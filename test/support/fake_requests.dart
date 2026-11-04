@@ -15,9 +15,10 @@ import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
 ///
 /// The map is built rather than the entity so the repository tests exercise
 /// `BloodRequestDocument.fromMap` — the half of the mapper that reads what another
-/// client wrote. `patientName` and `phoneNumber` are included because every real
-/// document has them: a test that does not put them in would not be testing that
-/// the read model leaves them out.
+/// client wrote. `patientName`, `phoneNumber` and `hospitalAddress` are included
+/// because every legacy document has them: a test that does not put them in would
+/// not be testing that the read model leaves them out (Stage 9.5 M3-C1 moved all
+/// three to the private/contact subcollection).
 /// The mutable fields are typed `Object?` on purpose: half of what this mapper is
 /// for is deciding what to do with a document whose `bloodBags` is a string or
 /// whose `bloodGroup` is a ninth spelling, and a helper that only accepted the
@@ -70,7 +71,6 @@ BloodRequest fakeRequest({
   String id = 'req-1',
   String bloodGroup = 'A+',
   String hospitalName = 'Dhaka Medical College',
-  String hospitalAddress = 'Dhaka',
   int units = 1,
   DateTime? neededBy,
   String neededByText = '',
@@ -79,7 +79,6 @@ BloodRequest fakeRequest({
     id: id,
     bloodGroup: bloodGroup,
     hospitalName: hospitalName,
-    hospitalAddress: hospitalAddress,
     units: units,
     neededBy: neededBy,
     neededByText: neededByText,

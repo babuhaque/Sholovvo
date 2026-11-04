@@ -353,6 +353,13 @@ class AppLocalizationsBn extends AppLocalizations {
       'কোনো অনুরোধের সঙ্গে মেলানোর আগে আপনার রক্তের গ্রুপ যোগ করুন।';
 
   @override
+  String get profilePrivacyDiscoveryTitle => 'অন্য দাতারা যেন আমাকে খুঁজে পান';
+
+  @override
+  String get profilePrivacyDiscoveryBody =>
+      'এটি চালু থাকলেই কেবল আপনার ডোনার কার্ড \"দাতা খুঁজুন\" তালিকায় দেখা যাবে। নিরীখে বন্ধ; আগে থেকে নিবন্ধিত দাতারা এটি চালু না করা পর্যন্ত তালিকায় থাকবেন না।';
+
+  @override
   String get profilePrivacyAreaTitle => 'অন্য ডোনারদের কাছে আমার এলাকা দেখান';
 
   @override

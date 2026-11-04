@@ -2,15 +2,23 @@ import 'package:flutter/foundation.dart';
 
 /// One open blood request, as this app reads it.
 ///
-/// **What is deliberately not here.** `patientName` and `phoneNumber` are fields
-/// of the same document, and `firestore.rules` lets any signed-in user read them
-/// (`allow read: if request.auth != null` on `/blood_requests/{id}`, with no
-/// field condition to hide behind). They are absent from this entity because the
-/// screen has no use for them: a donor deciding whether to help needs the group,
-/// the units, the place and the date, and a list of patients' names and phone
-/// numbers is a directory of people in a medical emergency. A read model is the
-/// place where that choice gets made — the rule cannot make it, because the rule
-/// is frozen — so a row that could show the phone number does not carry it.
+/// **What is deliberately not here.** `patientName`, `phoneNumber` and
+/// `hospitalAddress` are no longer fields of this document at all. As of Stage
+/// 9.5 (M3, corrected in M3-C1) the Firestore security rules moved all three to
+/// `blood_requests/{id}/private/contact`, where the owner and the single donor
+/// whose immutable `response_claims` record actually landed are the only callers
+/// who may read them; the public create/update rules refuse those keys. Before
+/// M3 the same fields lived on the public document with `allow read: if
+/// request.auth != null`, which made every patient's name, phone number and
+/// street address a directory available to any signed-in account — a leak a read
+/// model could mitigate by omission but not prevent. M3 closes the door at the
+/// rules layer.
+///
+/// This entity remains the read model for the open-requests list, and a donor
+/// deciding whether to help needs the group, the units, the hospital and the
+/// date — never the patient's name, phone or the specific street line. A future
+/// Stage-10 contact flow that legitimately needs them reads the private/contact
+/// subcollection directly, gated by the rules, not through this entity.
 ///
 /// `notes` is left out for the same reason in the other direction: it is free
 /// text typed by whoever raised the request, and this stage has not decided what
@@ -31,7 +39,6 @@ final class BloodRequest {
     required this.id,
     required this.bloodGroup,
     required this.hospitalName,
-    required this.hospitalAddress,
     required this.units,
     required this.neededBy,
     required this.neededByText,
@@ -46,11 +53,10 @@ final class BloodRequest {
   /// blood type is a medical-severity mistake, not a cosmetic one.
   final String bloodGroup;
 
+  /// The facility a row names as its place. The specific street `hospitalAddress`
+  /// was moved to `private/contact` in Stage 9.5 (M3-C1), so the hospital name is
+  /// now the only location the public list shows — [area] returns it.
   final String hospitalName;
-
-  /// The address as typed, which may be a district or a full line. Empty when the
-  /// document does not carry one — see [area], which is what a row shows.
-  final String hospitalAddress;
 
   /// Bags of blood asked for. At least one: the create rule requires an `int`
   /// `>= 1`, and the mapper refuses anything else.
@@ -65,14 +71,15 @@ final class BloodRequest {
   /// and also empty when [neededBy] came from a real timestamp.
   final String neededByText;
 
-  /// The place a row names. The address when there is one, otherwise the
-  /// hospital — which is never empty, because the create rule requires a
-  /// non-empty `hospitalName`.
+  /// The place a row names. Since Stage 9.5 (M3-C1) that is always the hospital
+  /// name — the private `hospitalAddress` never reaches this read model — and the
+  /// hospital name is never empty, because the create rule requires a non-empty
+  /// `hospitalName`.
   ///
   /// Not a distance: nothing in this stage knows where the donor is standing, and
   /// "near you" over a list that cannot compute near is a claim about the world
   /// the app has not checked.
-  String get area => hospitalAddress.isNotEmpty ? hospitalAddress : hospitalName;
+  String get area => hospitalName;
 
   /// Whether the row has any date to show at all, in either form.
   bool get hasNeededBy => neededBy != null || neededByText.isNotEmpty;

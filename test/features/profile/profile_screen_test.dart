@@ -84,18 +84,22 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
   await tester.pump(const Duration(milliseconds: 300));
 }
 
-/// The availability switch specifically — there are two switches on this
-/// screen and they write different documents.
+/// The availability switch — there are three switches on this screen now (the
+/// availability one, and the two inside `ProfilePrivacyCard`) and each writes
+/// a different field of the profile.
 Finder get _availabilitySwitch => find.descendant(
   of: find.byType(ProfileAvailabilityCard),
   matching: find.byType(Switch),
 );
 
-/// The publication switch.
-Finder get _privacySwitch => find.descendant(
-  of: find.byType(ProfilePrivacyCard),
-  matching: find.byType(Switch),
-);
+/// The publication-of-area switch inside the privacy card. Scoped by key
+/// because Stage 9.5 added a second switch to the same card.
+Finder get _privacySwitch => find.byKey(ProfilePrivacyCard.publishAreaSwitchKey);
+
+/// The Stage 9.5 discovery-consent switch. Off means the donor is not in the
+/// directory at all, independent of area publication or availability.
+Finder get _discoverableSwitch =>
+    find.byKey(ProfilePrivacyCard.discoverableSwitchKey);
 
 /// The colour a card actually paints, read off its decoration rather than
 /// assumed from the theme.
@@ -288,6 +292,73 @@ void main() {
 
       await _tapVisible(tester, _privacySwitch);
       expect(repo.saveCalls, 0);
+    });
+
+    testWidgets('Stage 9.5: opting into discovery saves the whole profile', (
+      WidgetTester tester,
+    ) async {
+      // Consent is not narrow-writable: withdrawing it later has to delete the
+      // public projection atomically with the private flag, so opting in also
+      // goes through the full save path.
+      final FakeProfileRepository repo = await _pumpProfile(
+        tester,
+        profile: filledProfile,
+      );
+      expect(tester.widget<Switch>(_discoverableSwitch).value, isFalse);
+
+      await _tapVisible(tester, _discoverableSwitch);
+
+      expect(repo.saveCalls, 1);
+      expect(repo.lastSaved?.allowDonorDiscovery, isTrue);
+      // The other flags are preserved exactly.
+      expect(repo.lastSaved?.publishAreaInSearch, isTrue);
+      expect(repo.lastSaved?.isAvailable, isTrue);
+      expect(tester.widget<Switch>(_discoverableSwitch).value, isTrue);
+    });
+
+    testWidgets('Stage 9.5: opting out of discovery saves the whole profile', (
+      WidgetTester tester,
+    ) async {
+      final FakeProfileRepository repo = await _pumpProfile(
+        tester,
+        profile: filledProfile.copyWith(allowDonorDiscovery: true),
+      );
+      expect(tester.widget<Switch>(_discoverableSwitch).value, isTrue);
+
+      await _tapVisible(tester, _discoverableSwitch);
+
+      expect(repo.saveCalls, 1);
+      expect(repo.lastSaved?.allowDonorDiscovery, isFalse);
+      expect(tester.widget<Switch>(_discoverableSwitch).value, isFalse);
+    });
+
+    testWidgets('Stage 9.5: discovery consent is independent of area publication', (
+      WidgetTester tester,
+    ) async {
+      // Flipping one must not touch the other, and neither depends on the
+      // donor having set an area — a valid invariant on a legacy profile with
+      // `publishAreaInSearch=false` and `allowDonorDiscovery=false` still
+      // allows opting in.
+      await _pumpProfile(tester, profile: partialProfile);
+      expect(tester.widget<Switch>(_discoverableSwitch).onChanged, isNotNull);
+      expect(tester.widget<Switch>(_privacySwitch).onChanged, isNull);
+    });
+
+    testWidgets('Stage 9.5: reports a failure and does not lie about the switch', (
+      WidgetTester tester,
+    ) async {
+      final FakeProfileRepository repo = await _pumpProfile(
+        tester,
+        profile: filledProfile,
+      );
+      repo.saveFailure = const NetworkFailure(debugMessage: 'offline');
+
+      await _tapVisible(tester, _discoverableSwitch);
+
+      expect(find.byType(ErrorBanner), findsOneWidget);
+      expect(find.text(english.failureNetwork), findsOneWidget);
+      // Not optimistic: the switch still reads the stored value.
+      expect(tester.widget<Switch>(_discoverableSwitch).value, isFalse);
     });
 
     testWidgets('says that phone and address are always private', (

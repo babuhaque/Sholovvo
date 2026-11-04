@@ -8,6 +8,7 @@ import 'package:sholovvo_app/design/widgets/solovvo_text_field.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/features/profile/presentation/profile_edit_screen.dart';
+import 'package:sholovvo_app/features/profile/presentation/widgets/profile_privacy_card.dart';
 
 import '../../support/fake_auth_repository.dart';
 import '../../support/fake_profile_repository.dart';
@@ -154,7 +155,17 @@ void main() {
             .selected,
         isTrue,
       );
-      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+      expect(tester.widget<Switch>(find.byKey(ProfilePrivacyCard.publishAreaSwitchKey)).value, isTrue);
+      // The Stage 9.5 discovery consent defaults off on a profile that never
+      // opted in. `filledProfile` has no `allowDonorDiscovery: true`, so the
+      // switch on screen has to read that as off too — silently opt-in on
+      // mount would defeat the whole point of the flag.
+      expect(
+        tester
+            .widget<Switch>(find.byKey(ProfilePrivacyCard.discoverableSwitchKey))
+            .value,
+        isFalse,
+      );
     });
   });
 
@@ -373,7 +384,12 @@ void main() {
     ) async {
       // partialProfile has no area at all.
       await _pumpEditor(tester, initial: partialProfile);
-      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+      expect(
+        tester
+            .widget<Switch>(find.byKey(ProfilePrivacyCard.publishAreaSwitchKey))
+            .onChanged,
+        isNull,
+      );
 
       await _enterText(
         tester,
@@ -381,7 +397,28 @@ void main() {
         'Dhanmondi, Dhaka',
       );
 
-      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNotNull);
+      expect(
+        tester
+            .widget<Switch>(find.byKey(ProfilePrivacyCard.publishAreaSwitchKey))
+            .onChanged,
+        isNotNull,
+      );
+    });
+
+    testWidgets('discovery consent is always tappable — it does not need an area', (
+      WidgetTester tester,
+    ) async {
+      // The two switches are independent. Availability of a phone number in the
+      // directory is not conditioned on the donor having typed an area.
+      await _pumpEditor(tester, initial: partialProfile);
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(ProfilePrivacyCard.discoverableSwitchKey),
+            )
+            .onChanged,
+        isNotNull,
+      );
     });
 
     testWidgets('carries the published area into the saved profile', (
@@ -392,12 +429,59 @@ void main() {
         initial: filledProfile,
       );
 
-      await _tapVisible(tester, find.byType(Switch));
+      await _tapVisible(
+        tester,
+        find.byKey(ProfilePrivacyCard.publishAreaSwitchKey),
+      );
       await _tapVisible(tester, _save);
 
       expect(repo.lastSaved?.publishAreaInSearch, isFalse);
       // The value itself is kept: it is the publication that stops.
       expect(repo.lastSaved?.area, filledProfile.area);
+    });
+
+    testWidgets('saves the discovery consent the donor chose', (
+      WidgetTester tester,
+    ) async {
+      // Stage 9.5. `filledProfile` has no `allowDonorDiscovery` — off by
+      // default. Tapping the switch must produce a saved profile with the flag
+      // on; the profile screen and the repository write path do the rest.
+      final FakeProfileRepository repo = await _pumpEditor(
+        tester,
+        initial: filledProfile,
+      );
+
+      await _tapVisible(
+        tester,
+        find.byKey(ProfilePrivacyCard.discoverableSwitchKey),
+      );
+      await _tapVisible(tester, _save);
+
+      expect(repo.lastSaved?.allowDonorDiscovery, isTrue);
+      // The other flags are not disturbed.
+      expect(repo.lastSaved?.publishAreaInSearch, isTrue);
+      expect(repo.lastSaved?.isAvailable, isTrue);
+    });
+
+    testWidgets('withdrawing consent survives a save round trip', (
+      WidgetTester tester,
+    ) async {
+      // A donor who has opted in and then opts out must not stay in the
+      // directory: the write path deletes the public projection. Here we only
+      // assert that the form actually carries the switch's `false` through to
+      // the repository — the delete is covered in profile_documents_test.
+      final FakeProfileRepository repo = await _pumpEditor(
+        tester,
+        initial: filledProfile.copyWith(allowDonorDiscovery: true),
+      );
+
+      await _tapVisible(
+        tester,
+        find.byKey(ProfilePrivacyCard.discoverableSwitchKey),
+      );
+      await _tapVisible(tester, _save);
+
+      expect(repo.lastSaved?.allowDonorDiscovery, isFalse);
     });
   });
 

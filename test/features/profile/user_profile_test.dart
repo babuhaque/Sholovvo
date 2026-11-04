@@ -52,6 +52,10 @@ void main() {
       expect(draft.phone, isNull);
       expect(draft.isAvailable, isFalse);
       expect(draft.publishAreaInSearch, isFalse);
+      // Stage 9.5: a fresh draft is not discoverable. Directory listing needs
+      // an explicit opt-in, so nothing the onboarding flow can do by default
+      // should place a new donor in front of other users' searches.
+      expect(draft.allowDonorDiscovery, isFalse);
       // The name carried over from registration is the only field that counts.
       expect(draft.completedCount, 1);
       expect(draft.missingFields, isNot(contains(ProfileField.name)));
@@ -146,13 +150,14 @@ void main() {
   });
 
   group('copyWith', () {
-    test('changes only the two flags it is allowed to touch', () {
+    test('changes only the three flags it is allowed to touch', () {
       final UserProfile hidden = _completeProfile.copyWith(
         publishAreaInSearch: false,
       );
 
       expect(hidden.publishAreaInSearch, isFalse);
       expect(hidden.isAvailable, isTrue);
+      expect(hidden.allowDonorDiscovery, isFalse);
       // Everything else is carried over exactly, including the nullable fields.
       expect(hidden.uid, _completeProfile.uid);
       expect(hidden.displayName, _completeProfile.displayName);
@@ -168,10 +173,64 @@ void main() {
     test('leaves a flag alone when it is not named', () {
       expect(_completeProfile.copyWith().isAvailable, isTrue);
       expect(_completeProfile.copyWith().publishAreaInSearch, isTrue);
+      expect(_completeProfile.copyWith().allowDonorDiscovery, isFalse);
       expect(
         _completeProfile.copyWith(isAvailable: false).publishAreaInSearch,
         isTrue,
       );
+      // Availability and discovery are independent — flipping one must not
+      // disturb the other, and neither should disturb publication of the area.
+      expect(
+        _completeProfile.copyWith(isAvailable: false).allowDonorDiscovery,
+        isFalse,
+      );
+      expect(
+        _completeProfile.copyWith(allowDonorDiscovery: true).isAvailable,
+        isTrue,
+      );
+      expect(
+        _completeProfile.copyWith(allowDonorDiscovery: true).publishAreaInSearch,
+        isTrue,
+      );
+    });
+
+    test('toggles allowDonorDiscovery without disturbing the other flags', () {
+      final UserProfile optedIn = _completeProfile.copyWith(
+        allowDonorDiscovery: true,
+      );
+
+      expect(optedIn.allowDonorDiscovery, isTrue);
+      expect(optedIn.isAvailable, _completeProfile.isAvailable);
+      expect(
+        optedIn.publishAreaInSearch,
+        _completeProfile.publishAreaInSearch,
+      );
+    });
+  });
+
+  group('withPhoto', () {
+    test('carries every flag across, including allowDonorDiscovery', () {
+      final UserProfile original = _completeProfile.copyWith(
+        allowDonorDiscovery: true,
+      );
+      final UserProfile rePhotoed = original.withPhoto(
+        'https://example.test/new.jpg',
+      );
+
+      expect(rePhotoed.photoUrl, 'https://example.test/new.jpg');
+      expect(rePhotoed.allowDonorDiscovery, isTrue);
+      expect(rePhotoed.publishAreaInSearch, isTrue);
+      expect(rePhotoed.isAvailable, isTrue);
+    });
+
+    test('clearing the photo does not clear consent', () {
+      final UserProfile optedIn = _completeProfile.copyWith(
+        allowDonorDiscovery: true,
+      );
+      final UserProfile cleared = optedIn.withPhoto(null);
+
+      expect(cleared.photoUrl, isNull);
+      expect(cleared.allowDonorDiscovery, isTrue);
     });
   });
 
@@ -185,6 +244,16 @@ void main() {
       expect(
         _completeProfile,
         isNot(equals(_completeProfile.copyWith(isAvailable: false))),
+      );
+      expect(
+        _completeProfile,
+        isNot(equals(_completeProfile.copyWith(allowDonorDiscovery: true))),
+      );
+      // Sanity: two profiles that differ only in a shared consent flag are
+      // equal, and one that differs on the flag from the base is not.
+      expect(
+        _completeProfile.copyWith(allowDonorDiscovery: true),
+        equals(_completeProfile.copyWith(allowDonorDiscovery: true)),
       );
       expect(
         _completeProfile,

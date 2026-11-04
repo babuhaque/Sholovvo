@@ -16,6 +16,7 @@ import 'package:sholovvo_app/features/profile/application/profile_providers.dart
 import 'package:sholovvo_app/features/profile/domain/profile_validators.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/features/profile/presentation/profile_messages.dart';
+import 'package:sholovvo_app/features/profile/presentation/widgets/profile_privacy_card.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
 /// Creates or edits the signed-in donor's own profile.
@@ -74,6 +75,7 @@ class _ProfileEditFormState extends ConsumerState<_ProfileEditForm> {
   late DateTime? _dateOfBirth = widget.initial.dateOfBirth;
   late ProfileGender? _gender = widget.initial.gender;
   late bool _publishArea = widget.initial.publishAreaInSearch;
+  late bool _discoverable = widget.initial.allowDonorDiscovery;
 
   final Map<ProfileFormField, ProfileFieldIssue?> _issues =
       <ProfileFormField, ProfileFieldIssue?>{};
@@ -164,6 +166,7 @@ class _ProfileEditFormState extends ConsumerState<_ProfileEditForm> {
       dateOfBirth: _dateOfBirth,
       gender: _gender,
       publishAreaInSearch: _publishArea,
+      allowDonorDiscovery: _discoverable,
     );
 
     final AppLocalizations l10n = context.l10n;
@@ -334,6 +337,38 @@ class _ProfileEditFormState extends ConsumerState<_ProfileEditForm> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
                               Text(
+                                l10n.profilePrivacyDiscoveryTitle,
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                l10n.profilePrivacyDiscoveryBody,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          key: ProfilePrivacyCard.discoverableSwitchKey,
+                          value: _discoverable,
+                          onChanged: _busy
+                              ? null
+                              : (bool value) =>
+                                    setState(() => _discoverable = value),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  SolovvoCard(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
                                 l10n.profilePrivacyAreaTitle,
                                 style: Theme.of(context).textTheme.titleSmall,
                               ),
@@ -346,6 +381,7 @@ class _ProfileEditFormState extends ConsumerState<_ProfileEditForm> {
                           ),
                         ),
                         Switch(
+                          key: ProfilePrivacyCard.publishAreaSwitchKey,
                           value: _publishArea,
                           onChanged: _busy || !hasArea
                               ? null

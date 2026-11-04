@@ -28,17 +28,24 @@ enum RequestIssue {
 /// `firestore.rules`, which is in this repository and enumerates the keys:
 ///
 /// ```
-/// hasAll(['userId', 'patientName', 'phoneNumber', 'bloodGroup', 'bloodBags',
-///         'hospitalName', 'hospitalAddress', 'requiredDateTime', 'status',
-///         'createdAt'])
-///   && hasOnly([… , 'requestType', 'notes', 'latitude', 'longitude', …])
+/// hasAll(['userId', 'bloodGroup', 'bloodBags', 'hospitalName',
+///         'requiredDateTime', 'status', 'createdAt'])
+///   && hasOnly([…, 'requestType', 'notes', 'latitude', 'longitude', …])
 ///   && status == 'open' && bloodGroup in [the eight] && bloodBags is int >= 1
-///   && patientName.size() > 0 && hospitalName.size() > 0
+///   && hospitalName.size() > 0
 /// ```
 ///
-/// Those constraints are the *create* rule. Documents written before it — the
-/// collection came from the app this repository replaced — are not covered by it,
-/// which is why every field is re-checked on the way in rather than trusted.
+/// Those constraints are the *create* rule as of Stage 9.5 (M3, corrected in
+/// M3-C1). The shape also used to require `patientName`, `phoneNumber` and
+/// `hospitalAddress`, but the rules moved all three into
+/// `blood_requests/{id}/private/contact` (owner, and the one donor whose
+/// immutable `response_claims` record landed, only). The public create rule now
+/// refuses them via `hasOnly`, so this mapper never sees them.
+///
+/// Documents written before either rule — the collection came from the app this
+/// repository replaced, and any production document still carries the pre-M3
+/// keys until a data-migration pass runs — are not covered by the create rule.
+/// That is why every field is re-checked on the way in rather than trusted.
 ///
 /// **What is refused and what is degraded, and the line between them.** A
 /// document is refused when the field that is wrong is the one the row's medical
@@ -46,11 +53,11 @@ enum RequestIssue {
 /// that says "O−, 3 bags, X Hospital" on the strength of a document that does not
 /// support it is worse than no row.
 ///
-/// Everything else is *degraded*, not refused. `requiredDateTime` and
-/// `hospitalAddress` are display detail: a request whose date nobody can read is
-/// still a request, and hiding it over a spelling would leave blood un-collected
-/// in silence. This is a deliberate difference from the feed, where the text *is*
-/// the post and a malformed document has nothing left to show.
+/// Everything else is *degraded*, not refused. `requiredDateTime` is display
+/// detail: a request whose date nobody can read is still a request, and hiding it
+/// over a spelling would leave blood un-collected in silence. This is a
+/// deliberate difference from the feed, where the text *is* the post and a
+/// malformed document has nothing left to show.
 abstract final class BloodRequestDocument {
   /// Collection name. Kept here so the query, the tests and `firestore.rules` all
   /// quote one string.
@@ -107,9 +114,10 @@ abstract final class BloodRequestDocument {
       );
     }
 
-    // The create rule requires a non-empty `hospitalName`, and it is the field the
-    // row falls back to when there is no address — so a document without one has
-    // no place a donor could go to.
+    // The create rule requires a non-empty `hospitalName`, and it is the only
+    // place a row can now name — the private `hospitalAddress` left the public
+    // document in Stage 9.5 (M3-C1) — so a document without one leaves a donor no
+    // facility to go to.
     final Object? name = data['hospitalName'];
     final String hospitalName = name is String ? name.trim() : '';
     if (hospitalName.isEmpty) {
@@ -121,11 +129,6 @@ abstract final class BloodRequestDocument {
       );
     }
 
-    // Degraded rather than refused: a wrong-typed or blank address still leaves a
-    // row that names the hospital.
-    final Object? address = data['hospitalAddress'];
-    final String hospitalAddress = address is String ? address.trim() : '';
-
     final (DateTime? instant, String text) = _neededBy(data['requiredDateTime']);
 
     return Success<BloodRequest>(
@@ -133,7 +136,6 @@ abstract final class BloodRequestDocument {
         id: requestId,
         bloodGroup: group,
         hospitalName: hospitalName,
-        hospitalAddress: hospitalAddress,
         units: bags,
         neededBy: instant,
         neededByText: text,

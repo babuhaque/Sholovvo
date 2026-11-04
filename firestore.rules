@@ -3,32 +3,96 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Users collection (Public profile data & private sensitive PII subcollection)
+    //
+    // Stage 9.5 (M2): the public document at `users/{uid}` was previously open
+    // to any owner write. That was too broad — the profile layer stores every
+    // PII field (phone, street address, date of birth, gender, publication and
+    // consent flags) in the owner-only `private/profile` subcollection, so a
+    // write of one of those fields into the public document is either a client
+    // bug or a malicious payload trying to leak a user's phone to every
+    // signed-in reader. The field allow-list below is what makes that leak
+    // impossible regardless of what any client sends: even the account's own
+    // owner can no longer write a sensitive field into the public projection.
+    //
+    // The list is exactly what `ProfileDocuments.publicFields`,
+    // `availabilityFields` and `photoFields` may write today:
+    //   - displayName, role, isAvailable, updatedAt — always present on write
+    //   - bloodGroup, photoUrl — only while the profile has them
+    //   - area — only while `publishAreaInSearch` is on
+    //   - allowDonorDiscovery — only while the donor has opted into discovery
+    //
+    // `update` looks at *affected* keys rather than the whole stored shape, so
+    // a legacy `users/{uid}` document carrying a pre-Stage-9.5 field can still
+    // be updated through the normal profile-save path — the untouched legacy
+    // key is not part of `affectedKeys()`. Only writing a new sensitive key
+    // into such a document, or creating a new one with a sensitive key, is
+    // refused.
     match /users/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
 
-      // Private sensitive PII subcollection (Strict owner-only read/write)
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'role', 'isAvailable', 'updatedAt',
+          'bloodGroup', 'photoUrl', 'area', 'allowDonorDiscovery'
+        ]);
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'role', 'isAvailable', 'updatedAt',
+          'bloodGroup', 'photoUrl', 'area', 'allowDonorDiscovery'
+        ]);
+
+      // The owner may still delete their whole public document. Delete is not
+      // field-scoped, so no allow-list applies; the write-side leak the list is
+      // defending against cannot happen via a delete.
+      allow delete: if request.auth != null && request.auth.uid == userId;
+
+      // Private sensitive PII subcollection (Strict owner-only read/write).
+      // This is where every field the public allow-list refuses must live:
+      // phone, addressLine, dateOfBirth, gender, publishAreaInSearch, and the
+      // source-of-truth copy of `allowDonorDiscovery`. Owner-only, no field
+      // list — the subcollection is private by construction, so a bug inside
+      // it can only hurt the owner, never a stranger's directory read.
       match /private/{privateDoc} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
     // Blood requests collection
+    //
+    // Stage 9.5 (M3): the request document splits into a public projection and a
+    // private contact subcollection. Everything the request list needs to let a
+    // stranger decide whether to help — group, units, hospital name, and the
+    // "when" text — stays on the public document. Everything that identifies or
+    // reaches the patient, or pins the exact place a patient would be met
+    // (`patientName`, `phoneNumber`, `hospitalAddress`) moves to
+    // `blood_requests/{requestId}/private/contact`, where only the request's
+    // owner and the single donor whose claim actually landed may read it. That
+    // closes the pre-Stage-9.5 design, where `allow read: if request.auth != null`
+    // on the public doc made a directory of every patient's name, phone and
+    // street address available to every signed-in account.
+    //
+    // The public row still shows a location, but only through `hospitalName`
+    // (and the optional coarse `latitude`/`longitude` map pin) — the specific
+    // street `hospitalAddress` is no longer on the public document and is no
+    // longer rendered by the list.
     match /blood_requests/{requestId} {
       allow read: if request.auth != null;
 
       // A request is born open and unassigned, created by the patient it is for.
       // Ownership is fixed at creation: the completion, assignment and
-      // cancellation fields cannot be forged or pre-filled by the creator.
+      // cancellation fields cannot be forged or pre-filled by the creator. The
+      // contact PII fields are gone from this shape entirely — a client that
+      // tries to add `patientName`, `phoneNumber` or `hospitalAddress` to a
+      // create is refused by `hasOnly` before any of the other clauses even run.
       allow create: if request.auth != null
-        && request.resource.data.keys().hasAll(['userId', 'patientName', 'phoneNumber', 'bloodGroup', 'bloodBags', 'hospitalName', 'hospitalAddress', 'requiredDateTime', 'status', 'createdAt'])
-        && request.resource.data.keys().hasOnly(['userId', 'patientName', 'phoneNumber', 'bloodGroup', 'bloodBags', 'hospitalName', 'hospitalAddress', 'requiredDateTime', 'requestType', 'notes', 'latitude', 'longitude', 'status', 'createdAt'])
+        && request.resource.data.keys().hasAll(['userId', 'bloodGroup', 'bloodBags', 'hospitalName', 'requiredDateTime', 'status', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['userId', 'bloodGroup', 'bloodBags', 'hospitalName', 'requiredDateTime', 'requestType', 'notes', 'latitude', 'longitude', 'status', 'createdAt'])
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'open'
         && request.resource.data.createdAt == request.time
-        && request.resource.data.patientName is string
-        && request.resource.data.patientName.size() > 0
-        && request.resource.data.phoneNumber is string
         && request.resource.data.hospitalName is string
         && request.resource.data.hospitalName.size() > 0
         && request.resource.data.bloodGroup is string
@@ -47,6 +111,12 @@ service cloud.firestore {
       // Every branch is keyed on the stored document, so the owner identity
       // cannot be rewritten, a request cannot be handed to another user, an
       // assigned donor cannot be swapped, and no status can move backwards.
+      //
+      // The "patient edits details" branch no longer lists `patientName`,
+      // `phoneNumber` or `hospitalAddress` in its affected-keys set — those
+      // fields are not on this document any more. A client that tries to inject
+      // them is refused by the same `hasOnly` that already refused pre-filling
+      // `assignedDonorId`.
       allow update: if request.auth != null && (
         (
           resource.data.userId == request.auth.uid &&
@@ -55,8 +125,8 @@ service cloud.firestore {
             (resource.data.status == 'open' &&
              request.resource.data.status == 'open' &&
              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-               'patientName', 'phoneNumber', 'bloodGroup', 'bloodBags',
-               'hospitalName', 'hospitalAddress', 'requiredDateTime',
+               'bloodGroup', 'bloodBags',
+               'hospitalName', 'requiredDateTime',
                'requestType', 'notes', 'latitude', 'longitude'
              ])) ||
             (resource.data.status in ['open', 'accepted'] &&
@@ -91,6 +161,87 @@ service cloud.firestore {
         )
       );
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+
+      // Stage 9.5 (M3): the request's private contact record. One document per
+      // request, always named `contact`, holding the fields the public
+      // projection refuses — `patientName`, `phoneNumber` and `hospitalAddress`.
+      //
+      // Writes are owner-only, shape-checked to exactly those three keys
+      // (`patientName` and `phoneNumber` non-empty strings; `hospitalAddress` a
+      // string, still permitted empty so a patient with no street line is not
+      // blocked). A rule that permitted any document id under `private/` would
+      // let a caller bury PII in a well-known path but then have to guess what to
+      // read back; the `contactDoc == 'contact'` guard on every clause pins the
+      // id so the shape stays one-per-request and predictable.
+      //
+      // Reads were intended to widen from the owner to the donor whose claim
+      // actually landed — and only while the match is live. The proof of a
+      // legitimate match is the immutable `response_claims` row, NOT the parent's
+      // client-writable `assignedDonorId` / `status`: the `blood_requests` update
+      // rule lets any matching, available donor self-assign with a single public
+      // write, so trusting those fields alone would let a donor read a patient's
+      // name, phone and address they never earned.
+      //
+      // READS ARE THEREFORE OWNER-ONLY IN THIS STAGE — see M3-C2 below for why
+      // the intended "matched donor may read" branch cannot be landed yet.
+      //
+      // M3-C2 BLOCKER (reported, not shortcut). The authoritative proof that a
+      // donor was legitimately matched is the immutable `response_claims` row,
+      // which can only be created inside the booking transaction alongside a
+      // valid `request_responses` row. The rules must reach that row by path, and
+      // its id is length-prefixed:
+      //   req_${requestId.length}_${requestId}_donor_${donorId.length}_${donorId}
+      // Firestore security rules CANNOT cast an integer to a string — the `+`
+      // operator rejects `string + int` ("Received: string + int"), and there is
+      // no `string()` builtin — so `requestId.size()` cannot be spliced into the
+      // path. `request_responses` ids are opaque uuids and rules cannot query,
+      // so neither authoritative record is addressable from `(requestId, uid)`.
+      // Reconstructing the claim id in a rule is therefore impossible against the
+      // existing id scheme, and a client-written `assignedDonorId` / `status` is
+      // explicitly not trusted. The minimum safe design to unlock a donor read is
+      // an OWNER / Stage-10 architecture decision (see docs): either (a) move the
+      // booking lock to a rule-derivable anchor whose id uses only strings — e.g.
+      // `blood_requests/{requestId}/private/match/{donorId}` written in the same
+      // transaction and gated on the request being assigned to the caller — or
+      // (b) change `RequestResponseService.getClaimId` to a length-free composite
+      // id, which alters a production data shape and is out of scope here. Until
+      // one of those lands, the contact is readable by the owner alone; the app
+      // reads no contact today (the requests screen is read-only against the
+      // public projection), so owner-only is strictly safe and unregressing.
+      //
+      // Note the parent doc must exist for these checks to resolve. The write
+      // path a future stage will build therefore raises the public create first
+      // and the contact create second (in a transaction that also uses
+      // `getAfter()` on the parent if the two writes must land atomically).
+      // Nothing in this stage writes `blood_requests` from Dart — the requests
+      // screen is read-only — so the deferred shape is safe to land now.
+      match /private/{contactDoc} {
+        allow create, update: if request.auth != null
+          && contactDoc == 'contact'
+          && get(/databases/$(database)/documents/blood_requests/$(requestId)).data.userId == request.auth.uid
+          && request.resource.data.keys().hasAll(['patientName', 'phoneNumber', 'hospitalAddress'])
+          && request.resource.data.keys().hasOnly(['patientName', 'phoneNumber', 'hospitalAddress'])
+          && request.resource.data.patientName is string
+          && request.resource.data.patientName.size() > 0
+          && request.resource.data.phoneNumber is string
+          && request.resource.data.phoneNumber.size() > 0
+          && request.resource.data.hospitalAddress is string;
+
+        // Owner-only. The "matched donor may read" branch is deferred pending a
+        // rule-derivable authoritative anchor (see the M3-C2 blocker above): no
+        // donor — legitimately matched or self-forged — can read the contact while
+        // the only trustworthy proof of a match is unreachable from a rule.
+        allow read: if request.auth != null
+          && contactDoc == 'contact'
+          && get(/databases/$(database)/documents/blood_requests/$(requestId)).data.userId == request.auth.uid;
+
+        // Only the owner may delete their contact record — same rule as the
+        // parent's delete, applied at the subcollection level so the client can
+        // wipe the contact without tearing down the whole request.
+        allow delete: if request.auth != null
+          && contactDoc == 'contact'
+          && get(/databases/$(database)/documents/blood_requests/$(requestId)).data.userId == request.auth.uid;
+      }
     }
 
     // Request responses collection (Secured: read by donor or request owner; create/update with immutable IDs & valid status)

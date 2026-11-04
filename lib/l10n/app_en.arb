@@ -168,6 +168,8 @@
   "profileAvailabilityOnBody": "Your donor card shows you as available. You can switch this off at any time.",
   "profileAvailabilityOffBody": "Nobody looking for blood will be matched with you. Only you can switch this on.",
   "profileAvailabilityNeedsGroup": "Add your blood group before a request can be matched with you.",
+  "profilePrivacyDiscoveryTitle": "Let other donors find me",
+  "profilePrivacyDiscoveryBody": "Only when this is on does your donor card appear in the Find Donors list. Off by default; existing donors are not listed until they switch this on.",
   "profilePrivacyAreaTitle": "Show my area to other donors",
   "profilePrivacyAreaBody": "When this is on your area is published on your donor card. When it is off the area is removed from it.",
   "profilePrivacyPrivateTitle": "Always private",

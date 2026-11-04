@@ -49,7 +49,7 @@ Future<void> _pumpTile(
 
 void main() {
   group('RequestTile', () {
-    testWidgets('shows the four facts a donor decides on', (
+    testWidgets('shows the facts a donor decides on', (
       WidgetTester tester,
     ) async {
       await _pumpTile(
@@ -57,7 +57,6 @@ void main() {
         fakeRequest(
           bloodGroup: 'AB+',
           hospitalName: 'Dhaka Medical College',
-          hospitalAddress: 'Dhaka',
           units: 3,
           neededBy: _neededByDate,
         ),
@@ -66,7 +65,6 @@ void main() {
       expect(find.byType(BloodGroupBadge), findsOneWidget);
       expect(find.text('AB+'), findsOneWidget);
       expect(find.text('Dhaka Medical College'), findsOneWidget);
-      expect(find.text('Dhaka'), findsOneWidget);
       expect(find.textContaining(english.homeUnitsNeeded(3)), findsOneWidget);
       expect(find.textContaining(_neededByLabel(tester, english)), findsOneWidget);
     });
@@ -87,41 +85,32 @@ void main() {
       );
     });
 
-    testWidgets('repeats the hospital name in one place only', (
+    testWidgets('names the hospital once, and never an address', (
       WidgetTester tester,
     ) async {
-      // Plenty of these documents type the same district into both fields. A second
-      // line saying what the first already said costs vertical space in a list the
-      // donor scrolls looking for their group.
+      // Stage 9.5 (M3-C1): `hospitalAddress` left the public document for the
+      // private/contact subcollection, so the row has one location line — the
+      // hospital — and nothing below it that could carry a street.
       await _pumpTile(
         tester,
-        fakeRequest(
-          hospitalName: 'Islami Bank Hospital',
-          hospitalAddress: 'Islami Bank Hospital',
-        ),
+        fakeRequest(hospitalName: 'Islami Bank Hospital'),
       );
 
       expect(find.text('Islami Bank Hospital'), findsOneWidget);
     });
 
-    testWidgets('says nothing when there is no address to add', (
+    testWidgets('is always three lines: badge, hospital, units with the date', (
       WidgetTester tester,
     ) async {
+      // There is no longer an optional fourth line for an address, so the row's
+      // height does not vary with a field the donor can no longer be shown.
       await _pumpTile(
         tester,
-        fakeRequest(hospitalName: 'Rajshahi Medical', hospitalAddress: ''),
+        fakeRequest(hospitalName: 'Rajshahi Medical'),
       );
 
       expect(find.text('Rajshahi Medical'), findsOneWidget);
-      // Three lines of text, not four: the badge, the hospital, and the units with
-      // the date. An absent address is not a fact worth its height in the list.
       expect(tester.widgetList(find.byType(Text)).length, 3);
-
-      await _pumpTile(
-        tester,
-        fakeRequest(hospitalName: 'Rajshahi Medical', hospitalAddress: 'Rajshahi'),
-      );
-      expect(tester.widgetList(find.byType(Text)).length, 4);
     });
 
     testWidgets('shows the words the requester typed when the date cannot be '
@@ -173,7 +162,6 @@ void main() {
       final BloodRequest long = fakeRequest(
         hospitalName:
             'Bangabandhu Sheikh Medical University Institute of Cardiac Disease',
-        hospitalAddress: 'Shahbag, Dhaka 1000, Bangladesh',
         units: 12,
         neededBy: _neededByDate,
       );

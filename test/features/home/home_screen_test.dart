@@ -180,7 +180,6 @@ BloodRequest _request({
     id: 'req-1',
     bloodGroup: bloodGroup,
     hospitalName: hospital,
-    hospitalAddress: '',
     units: units,
     neededBy: neededBy,
     neededByText: neededByText,

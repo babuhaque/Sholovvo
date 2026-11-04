@@ -366,6 +366,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Add your blood group before a request can be matched with you.';
 
   @override
+  String get profilePrivacyDiscoveryTitle => 'Let other donors find me';
+
+  @override
+  String get profilePrivacyDiscoveryBody =>
+      'Only when this is on does your donor card appear in the Find Donors list. Off by default; existing donors are not listed until they switch this on.';
+
+  @override
   String get profilePrivacyAreaTitle => 'Show my area to other donors';
 
   @override

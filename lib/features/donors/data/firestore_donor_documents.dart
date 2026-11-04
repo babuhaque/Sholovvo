@@ -10,9 +10,10 @@ import 'package:sholovvo_app/features/donors/domain/donor_query.dart';
 /// Reads the public `users` profiles, one window at a time.
 ///
 /// **What the query is, and why it is this shape.** It always filters
-/// `role == 'donor'`, then adds an equality filter for each refinement the
-/// [DonorQuery] carries — `isAvailable`, `bloodGroup`, `area` — and a `limit`. No
-/// `orderBy`, no cursor. Each absence is a decision:
+/// `role == 'donor'` and `allowDonorDiscovery == true`, then adds an equality
+/// filter for each refinement the [DonorQuery] carries — `isAvailable`,
+/// `bloodGroup`, `area` — and a `limit`. No `orderBy`, no cursor. Each absence is
+/// a decision:
 ///
 /// * **Only equality filters.** Firestore serves a query of any number of equality
 ///   filters by merge-joining the automatic single-field indexes, so this read needs
@@ -24,6 +25,14 @@ import 'package:sholovvo_app/features/donors/domain/donor_query.dart';
 ///   hold.
 /// * **The window is bounded, not paged.** With no trusted order there is nothing to
 ///   resume, so `search` re-runs on a filter change instead of scrolling.
+/// * **Consent is enforced at the database, not in memory.** The
+///   `allowDonorDiscovery == true` filter is applied by the same Firestore query
+///   that returns the window: no opted-out document is ever downloaded, so a
+///   directory that grew to a million donors costs the same bandwidth and refuses
+///   the same way a small one does. Documents that have no `allowDonorDiscovery`
+///   key at all — every legacy `users/{uid}` written before Stage 9.5 — also do
+///   not match, which is what "existing donors must not silently become
+///   discoverable" means in a query the app can actually send.
 /// * **It reads only the public document.** Discovery is `users/{uid}`, which the
 ///   profile layer keeps free of phone, address, date of birth and gender — those are
 ///   in `users/{uid}/private/profile`, which `firestore.rules` opens to the owner
@@ -54,6 +63,13 @@ class FirestoreDonorDocuments implements DonorDocuments {
   static const String bloodGroupField = 'bloodGroup';
   static const String areaField = 'area';
 
+  /// The Stage 9.5 consent key. Present-and-true means the donor has opted into
+  /// the directory; absent or false means they have not. Querying equality on
+  /// `true` (rather than writing an explicit `false` for opted-out donors) keeps
+  /// legacy documents — which have no such key at all — out of the results
+  /// without a data migration.
+  static const String discoveryField = 'allowDonorDiscovery';
+
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection(DonorProfileDocument.collection);
 
@@ -82,6 +98,10 @@ class FirestoreDonorDocuments implements DonorDocuments {
         roleField,
         isEqualTo: DonorProfileDocument.donorRole,
       );
+      // Consent is always on, for every query — it is not a refinement the
+      // caller can turn off. Filtering here (not in the mapper and not after
+      // the read) is what keeps opted-out documents off the wire.
+      built = built.where(discoveryField, isEqualTo: true);
       if (normalised.availableOnly) {
         built = built.where(availabilityField, isEqualTo: true);
       }

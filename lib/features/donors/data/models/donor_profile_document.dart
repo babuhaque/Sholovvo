@@ -7,6 +7,7 @@ import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 enum DonorIssue {
   idMissing,
   notADonor,
+  notDiscoverable,
   bloodGroupUnknown,
   fieldMalformed,
 }
@@ -20,7 +21,8 @@ enum DonorIssue {
 /// **Where the field list comes from.** Not a schema file and not a live collection:
 /// it is the write side of the profile layer, `ProfileDocuments.publicFields`, which
 /// is the only thing that populates this document. It writes `displayName`, `role`,
-/// `isAvailable`, `updatedAt`, and — when they are present — `bloodGroup`, `photoUrl`
+/// `isAvailable`, `updatedAt`, `allowDonorDiscovery` (only while the donor has opted
+/// into the directory), and — when they are present — `bloodGroup`, `photoUrl`
 /// and `area` (the last only while the donor has published it). Phone, street
 /// address, date of birth and gender are written to the *private* subcollection and
 /// never land here, so there is nothing in this document for the mapper to leak. The
@@ -28,9 +30,12 @@ enum DonorIssue {
 /// grew a phone key would still not put it on a [Donor].
 ///
 /// **What is refused and what is degraded, and the line between them.** A document
-/// is refused when it is not a donor profile at all (`role != 'donor'`) or when its
-/// blood group is a ninth spelling the backend would reject — a group badge next to
-/// a donor's own that cannot be matched is a medical-severity mistake, exactly as in
+/// is refused when it is not a donor profile at all (`role != 'donor'`), when the
+/// donor has not opted into discovery (`allowDonorDiscovery` is absent or is not
+/// `true` — Stage 9.5 consent, defended here as a second line even though the
+/// query already filters on the same key), or when its blood group is a ninth
+/// spelling the backend would reject — a group badge next to a donor's own that
+/// cannot be matched is a medical-severity mistake, exactly as in
 /// `blood_requests`. Everything else is degraded: a blank display name is still a
 /// donor, and an absent area simply means the donor did not publish one.
 abstract final class DonorProfileDocument {
@@ -60,6 +65,21 @@ abstract final class DonorProfileDocument {
     if (data['role'] != donorRole) {
       return FailureResult<Donor>(
         _reject(DonorIssue.notADonor, 'role: ${_describe(data['role'])}'),
+      );
+    }
+
+    // Stage 9.5 consent — a donor must have opted in to appear. Absent or false
+    // are the same thing (a legacy document that predates the field is treated
+    // exactly like an explicit opt-out). The Firestore query already excludes
+    // these rows, so this line is defence in depth: if the mapper is fed a
+    // document from any other source — a test seam, a future cache, a manually
+    // seeded row — it still refuses to publish a donor who has not said yes.
+    if (data['allowDonorDiscovery'] != true) {
+      return FailureResult<Donor>(
+        _reject(
+          DonorIssue.notDiscoverable,
+          'allowDonorDiscovery: ${_describe(data['allowDonorDiscovery'])}',
+        ),
       );
     }
 

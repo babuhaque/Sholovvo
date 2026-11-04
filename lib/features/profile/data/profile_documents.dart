@@ -14,13 +14,22 @@ import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 ///
 /// | Document | Readable by | Holds |
 /// | --- | --- | --- |
-/// | `users/{uid}` | any signed-in user | display name, role, blood group, availability, photo URL, and the area *only* when the donor published it |
-/// | `users/{uid}/private/profile` | the owner only | area, street address, phone, date of birth, gender, the publication flag |
+/// | `users/{uid}` | any signed-in user | display name, role, blood group, availability, photo URL, the discovery-consent flag *only* while the donor has opted in, and the area *only* when the donor published it |
+/// | `users/{uid}/private/profile` | the owner only | area, street address, phone, date of birth, gender, the publication flag, the discoverability flag |
 ///
 /// `area` appears in both on purpose: the private copy is the source of truth,
 /// the public copy is a projection that exists only while the donor has switched
 /// publication on. Un-publishing writes `FieldValue.delete()` for the public
 /// copy, so the value becomes unreadable rather than merely hidden.
+///
+/// `allowDonorDiscovery` uses the same shape as `area`: the private document
+/// carries the source-of-truth boolean, the public document carries a
+/// projection that exists only while the donor has opted in. Opting out writes
+/// `FieldValue.delete()` for the public copy so the discovery query
+/// `where('allowDonorDiscovery', isEqualTo: true)` stops matching, and a legacy
+/// document that predates Stage 9.5 has no field at all, which the query also
+/// does not match. Existing donors are therefore not silently re-listed on
+/// upgrade — explicit, per-donor opt-in is the only path to the directory.
 abstract final class ProfileDocuments {
   static const String privateCollection = 'private';
   static const String privateDocument = 'profile';
@@ -48,12 +57,22 @@ abstract final class ProfileDocuments {
       'area',
       profile.publishAreaInSearch ? profile.area : null,
     );
+    // Discovery consent is projected onto the public document only when the
+    // donor has explicitly opted in. Off writes a deletion, not a false flag:
+    // the field stops being present, which is what the discovery query
+    // (`where('allowDonorDiscovery', isEqualTo: true)`) matches against. A
+    // legacy document that has never carried this key remains opted-out, so
+    // upgrading the app does not silently re-list anyone.
+    fields['allowDonorDiscovery'] = profile.allowDonorDiscovery
+        ? true
+        : FieldValue.delete();
     return fields;
   }
 
   static Map<String, Object?> privateFields(UserProfile profile) {
     final Map<String, Object?> fields = <String, Object?>{
       'publishAreaInSearch': profile.publishAreaInSearch,
+      'allowDonorDiscovery': profile.allowDonorDiscovery,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
@@ -72,7 +91,11 @@ abstract final class ProfileDocuments {
   ///
   /// Only fields the switch is allowed to touch. `role` is included so a donor
   /// who flips the switch on a profile that was never saved still ends up
-  /// matchable, because a rules-side donor check requires both fields.
+  /// matchable, because a rules-side donor check requires both fields. The
+  /// availability switch deliberately does NOT touch `allowDonorDiscovery`:
+  /// a donor who becomes available has not thereby opted into directory
+  /// listing, and a donor who becomes unavailable has not thereby withdrawn
+  /// consent either. Those are two independent decisions.
   static Map<String, Object?> availabilityFields(bool isAvailable) {
     return <String, Object?>{
       'isAvailable': isAvailable,
@@ -127,6 +150,10 @@ abstract final class ProfileDocuments {
       dateOfBirth: _date(privateData['dateOfBirth']),
       gender: _gender(privateData['gender']),
       publishAreaInSearch: privateData['publishAreaInSearch'] == true,
+      // The private copy is the source of truth; a missing or non-bool value
+      // reads as opted-out, so a legacy document that predates Stage 9.5
+      // stays hidden from the directory until its owner opts in explicitly.
+      allowDonorDiscovery: privateData['allowDonorDiscovery'] == true,
       updatedAt: _date(public['updatedAt']),
     );
   }

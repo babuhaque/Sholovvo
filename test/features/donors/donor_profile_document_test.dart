@@ -133,6 +133,80 @@ void main() {
     });
   });
 
+  group('DonorProfileDocument Stage 9.5 consent gate', () {
+    // The query already filters `allowDonorDiscovery == true`, so anything the
+    // mapper sees on a live read should have opted in. These tests exercise the
+    // defence-in-depth line: a test seam, a future cache, or a manually seeded
+    // row that bypasses the query still has to be refused. Absent and false are
+    // the same thing (a legacy document has never carried the key at all).
+    test('refuses an explicit opt-out', () {
+      final ValidationFailure failure = _refusal(
+        donorFields(allowDonorDiscovery: false),
+      );
+
+      expect(failure.messageKey, DonorIssue.notDiscoverable.name);
+    });
+
+    test('refuses a legacy document with no allowDonorDiscovery key', () {
+      final Map<String, Object?> fields = donorFields()
+        ..remove('allowDonorDiscovery');
+
+      expect(
+        _refusal(fields).messageKey,
+        DonorIssue.notDiscoverable.name,
+      );
+    });
+
+    test('refuses a null allowDonorDiscovery, not just a missing one', () {
+      expect(
+        _refusal(donorFields(allowDonorDiscovery: null)).messageKey,
+        DonorIssue.notDiscoverable.name,
+      );
+    });
+
+    test('refuses a non-bool truthy value', () {
+      // Only a real `true` counts as consent. A document that says `1`, or
+      // `'true'`, or any other type was not written by `publicFields`, so the
+      // mapper will not accept it as an opt-in.
+      for (final Object? value in <Object?>[1, 'true', 0, '']) {
+        expect(
+          _refusal(donorFields(allowDonorDiscovery: value)).messageKey,
+          DonorIssue.notDiscoverable.name,
+          reason: 'value $value must not read as consent',
+        );
+      }
+    });
+
+    test('consent is checked after role, so a non-donor is reported as such', () {
+      // The refusals have a defined order: an unroled or wrongly-roled document
+      // is not a donor at all, and the consent question never arises. Reporting
+      // `notADonor` here is more useful to an operator than `notDiscoverable`.
+      final ValidationFailure failure = _refusal(
+        donorFields(role: 'recipient', allowDonorDiscovery: false),
+      );
+
+      expect(failure.messageKey, DonorIssue.notADonor.name);
+    });
+
+    test('consent is checked before blood group, so an opted-out corrupt row reports consent', () {
+      // Both would be refused; the consent refusal is the more important
+      // operator-facing fact because it names the privacy invariant, not the
+      // data-quality one.
+      final ValidationFailure failure = _refusal(
+        donorFields(allowDonorDiscovery: false, bloodGroup: 'C+'),
+      );
+
+      expect(failure.messageKey, DonorIssue.notDiscoverable.name);
+    });
+
+    test('accepts a consented donor — the default in the helper', () {
+      // Sanity: the shared fixture is opted-in so unrelated tests do not have
+      // to spell it out. A refusal test that forgets to reset the flag will not
+      // accidentally start passing.
+      expect(_donor(donorFields()).uid, 'uid-1');
+    });
+  });
+
   group('DonorProfileDocument privacy', () {
     test('a phone key on the document never reaches the donor', () {
       // The public document holds no phone today, but the mapper reads only the

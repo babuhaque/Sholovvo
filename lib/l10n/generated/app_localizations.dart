@@ -698,6 +698,18 @@ abstract class AppLocalizations {
   /// **'Add your blood group before a request can be matched with you.'**
   String get profileAvailabilityNeedsGroup;
 
+  /// No description provided for @profilePrivacyDiscoveryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Let other donors find me'**
+  String get profilePrivacyDiscoveryTitle;
+
+  /// No description provided for @profilePrivacyDiscoveryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Only when this is on does your donor card appear in the Find Donors list. Off by default; existing donors are not listed until they switch this on.'**
+  String get profilePrivacyDiscoveryBody;
+
   /// No description provided for @profilePrivacyAreaTitle.
   ///
   /// In en, this message translates to:

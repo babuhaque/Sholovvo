@@ -30,6 +30,14 @@ DonorDocument _unreadable(String id) {
   return donorDocument(id, fields: donorFields(role: 'recipient'));
 }
 
+/// A Stage 9.5 consent refusal: a real donor whose `allowDonorDiscovery` is
+/// explicitly off. The live Firestore query filters these out at the database
+/// (see `FirestoreDonorDocuments.fetch`), so a well-behaved read never returns
+/// one, but the mapper still refuses them and the repository still counts them.
+DonorDocument _notDiscoverable(String id) {
+  return donorDocument(id, fields: donorFields(allowDonorDiscovery: false));
+}
+
 ({FirestoreDonorRepository repository, FakeDonorDocuments documents}) _build(
   List<DonorDocument> documents,
 ) {
@@ -215,6 +223,58 @@ void main() {
       expect(window.donors, isEmpty);
       expect(window.isEmpty, isTrue);
       expect(window.skipped, 2);
+    });
+
+    test('Stage 9.5: an opted-out donor is refused and counted, not listed', () async {
+      // Defence in depth: the live query already excludes opted-out documents
+      // (`where('allowDonorDiscovery', isEqualTo: true)`), but a test seam, a
+      // cache, or a manually seeded row could hand one to the repository. The
+      // mapper refuses it; the operator sees the skip count.
+      final harness = _build(<DonorDocument>[
+        _notDiscoverable('opted-out'),
+        donorDocument('consented'),
+      ]);
+
+      final DiscoveredDonors window = _window(
+        await harness.repository.search(DonorQuery.any),
+      );
+
+      expect(_uids(window.donors), <String>['consented']);
+      expect(window.skipped, 1);
+    });
+
+    test('Stage 9.5: a legacy document with no consent key is refused', () async {
+      // Absent and false are the same thing to the mapper: an upgrade never
+      // silently re-lists someone whose document predates the field.
+      final Map<String, Object?> legacy = donorFields()..remove('allowDonorDiscovery');
+      final harness = _build(<DonorDocument>[
+        donorDocument('legacy', fields: legacy),
+        donorDocument('consented'),
+      ]);
+
+      final DiscoveredDonors window = _window(
+        await harness.repository.search(DonorQuery.any),
+      );
+
+      expect(_uids(window.donors), <String>['consented']);
+      expect(window.skipped, 1);
+    });
+
+    test('Stage 9.5: consent refusal does not disturb the truncation over-count', () async {
+      // The extra document that decides truncation is not scored as skipped, so
+      // a window that filled and then hit an opted-out row still reports the
+      // opted-out row as refused rather than quietly rolling it into the count.
+      final List<DonorDocument> full = _documents(DonorRepository.window);
+      full.add(_notDiscoverable('opted-out-behind'));
+      final harness = _build(full);
+
+      final DiscoveredDonors window = _window(
+        await harness.repository.search(DonorQuery.any),
+      );
+
+      expect(window.truncated, isTrue);
+      expect(window.skipped, 0);
+      expect(window.donors, hasLength(DonorRepository.window));
     });
   });
 

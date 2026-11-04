@@ -18,6 +18,7 @@ final UserProfile _profile = UserProfile(
   dateOfBirth: DateTime(1996, 4, 17, 15, 30),
   gender: ProfileGender.female,
   publishAreaInSearch: true,
+  allowDonorDiscovery: true,
 );
 
 void main() {
@@ -33,12 +34,14 @@ void main() {
         'bloodGroup',
         'photoUrl',
         'area',
+        'allowDonorDiscovery',
       });
       expect(fields['displayName'], 'Ayesha Rahman');
       expect(fields['role'], 'donor');
       expect(fields['isAvailable'], isTrue);
       expect(fields['bloodGroup'], 'O+');
       expect(fields['photoUrl'], 'https://example.test/ayesha.jpg');
+      expect(fields['allowDonorDiscovery'], isTrue);
       expect(fields['updatedAt'], FieldValue.serverTimestamp());
     });
 
@@ -74,6 +77,25 @@ void main() {
       );
     });
 
+    test('projects allowDonorDiscovery only while the donor has opted in', () {
+      // Stage 9.5 consent. The key is present-and-true only when the donor
+      // has actively switched on directory listing. Off writes a deletion —
+      // not a false — so the discovery query
+      // (`where('allowDonorDiscovery', isEqualTo: true)`) stops matching, and
+      // an upgrade never silently re-lists an existing donor whose document
+      // has never carried the key at all.
+      expect(
+        ProfileDocuments.publicFields(_profile)['allowDonorDiscovery'],
+        isTrue,
+      );
+      expect(
+        ProfileDocuments.publicFields(
+          _profile.copyWith(allowDonorDiscovery: false),
+        )['allowDonorDiscovery'],
+        FieldValue.delete(),
+      );
+    });
+
     test('deletes the optional fields when they are absent or blank', () {
       final Map<String, Object?> fields = ProfileDocuments.publicFields(
         const UserProfile(
@@ -89,6 +111,9 @@ void main() {
       expect(fields['photoUrl'], FieldValue.delete());
       // The switch is off, so the area it holds is not published either.
       expect(fields['area'], FieldValue.delete());
+      // And consent has never been given, so it is not projected either —
+      // this is exactly what a legacy document looks like.
+      expect(fields['allowDonorDiscovery'], FieldValue.delete());
     });
   });
 
@@ -100,6 +125,7 @@ void main() {
 
       expect(fields.keys.toSet(), <String>{
         'publishAreaInSearch',
+        'allowDonorDiscovery',
         'updatedAt',
         'area',
         'addressLine',
@@ -112,6 +138,7 @@ void main() {
       expect(fields['phone'], '01712345678');
       expect(fields['gender'], 'female');
       expect(fields['publishAreaInSearch'], isTrue);
+      expect(fields['allowDonorDiscovery'], isTrue);
       expect(fields['updatedAt'], FieldValue.serverTimestamp());
     });
 
@@ -123,6 +150,19 @@ void main() {
           _profile.copyWith(publishAreaInSearch: false),
         )['area'],
         'Dhanmondi, Dhaka',
+      );
+    });
+
+    test('keeps the canonical allowDonorDiscovery flag as a plain bool', () {
+      // The private copy is the source of truth. Unlike the public projection,
+      // it writes `false` rather than a deletion: the profile screen must be
+      // able to render the switch consistently from either state, and the
+      // private subcollection is owner-only so nothing else can read it.
+      expect(
+        ProfileDocuments.privateFields(
+          _profile.copyWith(allowDonorDiscovery: false),
+        )['allowDonorDiscovery'],
+        isFalse,
       );
     });
 
@@ -148,6 +188,9 @@ void main() {
       expect(fields['addressLine'], FieldValue.delete());
       expect(fields['phone'], FieldValue.delete());
       expect(fields['publishAreaInSearch'], isTrue);
+      // Consent is not a text field, so it is stored as a real bool even on a
+      // profile that has never filled in a single string.
+      expect(fields['allowDonorDiscovery'], isFalse);
     });
 
     test('never duplicates the identity the public document owns', () {
@@ -182,6 +225,11 @@ void main() {
       // A rules-side donor check requires both fields, so a switch flipped on a
       // profile that was never saved still ends up matchable.
       expect(fields['role'], 'donor');
+      // Stage 9.5: availability is independent of consent. Flipping the switch
+      // must not silently add `allowDonorDiscovery` to the public document —
+      // that would be the exact "existing donors become discoverable" leak the
+      // owner asked to avoid.
+      expect(fields.containsKey('allowDonorDiscovery'), isFalse);
     });
   });
 
@@ -206,6 +254,7 @@ void main() {
           'photoUrl': 'https://example.test/ayesha.jpg',
           'isAvailable': true,
           'area': 'Dhanmondi, Dhaka',
+          'allowDonorDiscovery': true,
           'updatedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 1)),
         },
         private: <String, dynamic>{
@@ -215,6 +264,7 @@ void main() {
           'gender': 'female',
           'dateOfBirth': Timestamp.fromDate(DateTime.utc(1996, 4, 17)),
           'publishAreaInSearch': true,
+          'allowDonorDiscovery': true,
         },
       );
 
@@ -231,6 +281,7 @@ void main() {
       expect(profile.gender, ProfileGender.female);
       expect(profile.dateOfBirth, Timestamp.fromDate(DateTime.utc(1996, 4, 17)).toDate());
       expect(profile.publishAreaInSearch, isTrue);
+      expect(profile.allowDonorDiscovery, isTrue);
       expect(profile.updatedAt, Timestamp.fromDate(DateTime.utc(2026, 10, 1)).toDate());
     });
 
@@ -254,6 +305,37 @@ void main() {
       expect(profile.dateOfBirth, isNull);
       expect(profile.gender, isNull);
       expect(profile.publishAreaInSearch, isFalse);
+      // A legacy private document that has never carried the key reads as
+      // opted-out, exactly as the Stage 9.5 consent rule requires: no silent
+      // re-listing on upgrade.
+      expect(profile.allowDonorDiscovery, isFalse);
+    });
+
+    test('reads allowDonorDiscovery from the private copy, not the public', () {
+      // The public copy is a projection; the source of truth is private. If
+      // they disagree — a mid-write crash, a manually seeded document — the
+      // profile screen has to show what the donor actually chose, which is
+      // what the private flag carries.
+      final UserProfile? profile = ProfileDocuments.fromDocuments(
+        uid: 'uid-verified',
+        public: <String, dynamic>{'displayName': 'Ayesha'},
+        private: <String, dynamic>{'allowDonorDiscovery': true},
+      );
+
+      expect(profile!.allowDonorDiscovery, isTrue);
+    });
+
+    test('treats a non-bool allowDonorDiscovery value as opted-out', () {
+      // Defence against a manually written or corrupted document: only a real
+      // `true` counts as consent.
+      for (final Object? value in <Object?>[null, 'true', 1]) {
+        final UserProfile? profile = ProfileDocuments.fromDocuments(
+          uid: 'uid-verified',
+          public: <String, dynamic>{'displayName': 'Ayesha'},
+          private: <String, dynamic>{'allowDonorDiscovery': value},
+        );
+        expect(profile!.allowDonorDiscovery, isFalse, reason: '$value');
+      }
     });
 
     test('reads a value of the wrong type as absent rather than as a guess', () {

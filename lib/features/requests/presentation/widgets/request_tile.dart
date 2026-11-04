@@ -22,10 +22,12 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// promise the app cannot keep. The dashboard's "See all" is the one control here,
 /// because that one leads somewhere real.
 ///
-/// **What it does not show.** No patient name and no phone number, even though the
-/// document holds both and the rules let any signed-in user read them — see
-/// [BloodRequest] for why the read model leaves them out. No distance: the app does
-/// not know where the donor is.
+/// **What it does not show.** No patient name, no phone number and no street
+/// address. As of Stage 9.5 (M3-C1) those fields live in
+/// `blood_requests/{id}/private/contact`, gated by the rules so this read model
+/// never carries them and the row cannot render them — see [BloodRequest]. The
+/// row names the hospital (and only the hospital) and the date. No distance: the
+/// app does not know where the donor is.
 class RequestTile extends StatelessWidget {
   const RequestTile({super.key, required this.request});
 
@@ -35,13 +37,6 @@ class RequestTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = context.l10n;
     final TextTheme text = Theme.of(context).textTheme;
-
-    // The address line is only worth its height when it says something the
-    // hospital name did not. Plenty of these documents put the district in both
-    // fields, and repeating it is noise that pushes the rest of the list down.
-    final bool showAddress =
-        request.hospitalAddress.isNotEmpty &&
-        request.hospitalAddress != request.hospitalName;
 
     return SolovvoCard(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -58,20 +53,11 @@ class RequestTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  request.hospitalName,
+                  request.area,
                   style: text.titleMedium,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (showAddress) ...<Widget>[
-                  const SizedBox(height: 2),
-                  Text(
-                    request.hospitalAddress,
-                    style: text.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
                 const SizedBox(height: 2),
                 Text(
                   '${l10n.homeUnitsNeeded(request.units)} · '

@@ -1745,3 +1745,127 @@ What it does **not** prove: no assertion has read a live `users` collection — 
 come from `firestore.rules`, the provider default is the real `FirestoreDonorRepository` but
 tests override it with the fake, and the ruleset that makes discovery work in production is
 the same held working tree the owner has not deployed. Fake-verified is not live-verified.
+
+## 17. Privacy hardening (Stage 9.5)
+
+Stage 9.4-ISA's independent audit surfaced three privacy defects the code had been aware of but
+not closed. Stage 9.5 closes them at the rules layer and around the consent surface. Nothing in
+Stage 9.5 deploys rules or migrates production data; the reconciled rule set sits in the working
+tree and the evidence lives in the emulator project `demo-solovvo-tests`.
+
+### 17.1 Consent at the discovery boundary (M1)
+
+`UserProfile.allowDonorDiscovery` is the third consent flag on the profile (with availability
+and publish-area), stored on `users/{uid}/private/profile` as the source of truth and mirrored
+onto the public `users/{uid}` projection only while true. Withdrawal writes `FieldValue.delete()`
+on the mirror so a stale value cannot keep the document matching a discovery query. The
+discovery query itself adds `where('allowDonorDiscovery', '==', true)` — legacy documents that
+do not carry the key are excluded, so a donor who has never opened Stage 9.5 is not silently
+listed. The mapper re-checks the same flag (`DonorProfileDocument.fromMap`), which is defence
+in depth against a test seam that hands it a raw map without going through the query layer.
+
+The three switches on the privacy card are disambiguated by `ValueKey` constants exposed as
+`ProfilePrivacyCard.publishAreaSwitchKey` and `ProfilePrivacyCard.discoverableSwitchKey`, so a
+widget test that flips one does not silently flip the other.
+
+### 17.2 Public users profile as a projection, not a mirror of the whole form (M2)
+
+Before Stage 9.5, `users/{userId}` allowed any owner write. That was a leak waiting for a client
+bug: the profile form knows about phone, address, date-of-birth, gender and consent flags, and
+the layer that writes them to `users/{uid}/private/profile` was one refactor away from writing
+them to the public projection. Stage 9.5 splits `allow write` into `allow create`,
+`allow update` and `allow delete` and gates both write verbs against a fixed eight-key allow-list
+(`displayName`, `role`, `isAvailable`, `updatedAt`, `bloodGroup`, `photoUrl`, `area`,
+`allowDonorDiscovery`). `create` inspects the whole new shape with `keys().hasOnly(...)`;
+`update` inspects only the fields the write touches with `.diff(resource.data).affectedKeys().
+hasOnly(...)`, which is why a legacy `users/{uid}` document that still carries a pre-Stage-9.5
+key can be updated through the normal profile-save path — the untouched legacy key is not in
+`affectedKeys()`.
+
+The `private/profile` subcollection is unchanged: it accepts every sensitive key the public
+allow-list refuses, owner-only, no field list. The two documents together are the projection
+model — public is what a stranger sees, private is what the owner's client wrote.
+
+### 17.3 Blood request contact PII moves behind a rules-gated subcollection (M3)
+
+Before Stage 9.5, `blood_requests/{requestId}` was readable by any signed-in caller and
+carried `patientName` and `phoneNumber` on the document. That made the collection a directory
+of every person in a medical emergency plus their phone number. The `BloodRequest` entity had
+been deliberately built without those fields — a read-model choice documented in
+`## 15` — but the rule could not make that choice, and a hostile caller with a raw SDK was not
+stopped.
+
+Stage 9.5 (corrected in M3-C1) moves **three** patient-identifying fields — `patientName`,
+`phoneNumber` **and** `hospitalAddress` — to `blood_requests/{requestId}/private/contact`, one
+document per request, always named `contact`, shape-checked to exactly
+`{patientName, phoneNumber, hospitalAddress}` (`patientName`/`phoneNumber` non-empty strings;
+`hospitalAddress` a string, permitted empty so a patient with no street line is not blocked).
+Writes are owner-only via `get(parent).userId == request.auth.uid`. The public projection keeps
+only `hospitalName` (and the optional coarse `latitude`/`longitude` pin); `BloodRequest.area`
+resolves to `hospitalName`, and the request row no longer renders a street address, so no private
+address is exposed through the public document or the UI.
+
+**Reads are owner-only in this stage (M3-C2).** The intended "the matched donor may read" branch
+was NOT landed, because the existing architecture cannot prove a legitimate match inside a rule
+without a shortcut. The authoritative proof of a match is the immutable `response_claims` row,
+which is only ever written inside the booking transaction alongside a valid `request_responses`
+row and the parent assignment; the parent's `assignedDonorId` / `status` are **client-writable**
+and forgeable (a matching, available donor can self-assign with a single public `blood_requests`
+update, no claim), so they are explicitly not trusted as the read gate. Reaching the authoritative
+claim by path, however, is impossible from a rule:
+
+- the `response_claims` id is length-prefixed
+  (`req_{requestId.length}_{requestId}_donor_{donorId.length}_{donorId}`), and Firestore security
+  rules **cannot cast an integer to a string** — the `+` operator rejects `string + int` and there
+  is no `string()` builtin — so `requestId.size()` cannot be spliced into the path;
+- `request_responses` ids are opaque uuids, and rules cannot query.
+
+Neither authoritative record is therefore addressable from `(requestId, request.auth.uid)`. The
+minimum safe interim is owner-only reads: the app reads no contact today (the requests screen is
+read-only against the public projection), so this is strictly safe and unregressing. Unlocking a
+donor read is a Stage-10 architecture decision — either (a) move the booking lock to a
+rule-derivable anchor whose id uses only strings (e.g. `blood_requests/{requestId}/private/match/{donorId}`,
+written in the same transaction and gated on the request being assigned to the caller), or
+(b) change `RequestResponseService.getClaimId` to a length-free composite id, which alters a
+production data shape and is out of scope here. The emulator suite locks this posture: every donor
+read — legitimately matched (a real `response_claims` row present) or self-forged — is asserted to
+fail, and only the owner read succeeds.
+
+The `match /private/{contactDoc}` block enforces `contactDoc == 'contact'` on every clause, so
+`blood_requests/{requestId}/private/anythingElse` falls through to default-deny. A caller cannot
+bury a copy of the phone number at an alternate id next to the legitimate record.
+
+### 17.4 What Stage 9.5 does **not** do
+
+- It does not deploy the reconciled rules. The owner has to do that.
+- It does not migrate existing `blood_requests` documents. Firestore rules have no field-level
+  read filter, so historical `patientName`/`phoneNumber`/`hospitalAddress` values that already sit
+  on a public document are **not** hidden by the M3 change; only future writes are refused. The
+  copy-then-delete production migration is **prepared, not executed** — see
+  `firestore-rules-tests/request-pii-migration/` (`MIGRATION_PLAN.md`, the pure `migration.js`
+  contract, and its emulator tests) — and remains a Stage-10 owner decision.
+- It does not grant a matched donor read of the contact. As recorded in 17.3, the authoritative
+  claim is unreachable from a rule, so the read is owner-only until a rule-derivable anchor lands.
+- It does not add a Dart write path for `blood_requests` or its `private/contact`
+  subcollection. The requests screen is still read-only. The write path belongs in the same
+  Stage 10 flow that raises the donor "respond" action.
+- It does not touch the `donors` collection. Stage 9.4 kept that owner-only and Stage 9.5 does
+  not change the decision.
+
+### 17.5 Verification status (Stage 9.5)
+
+| Gate | Result |
+|---|---|
+| `flutter analyze` | Clean |
+| `flutter test` | 963 pass, 63 skipped, 0 fail |
+| Rules emulator suite (`demo-solovvo-tests`) | 174 pass, 0 fail — 140 baseline + 12 M2 + 22 M3, with 5 M1 consent tests already inside the 140 |
+
+M1 consent is exercised on `UserProfile`, `ProfileDocuments`, `DonorProfileDocument`,
+`FirestoreDonorRepository`, the profile screen, the edit screen, and the rules (query filter).
+M2 is exercised on the rules (`users/{uid}` create/update/legacy-doc/private-subcollection).
+M3 is exercised on the rules (`blood_requests/{id}` public create/update, `private/contact`
+create/read/write/delete across every status transition and every caller role).
+
+Same caveat as Stage 9.4: fake-verified is not live-verified. The rules have not been read from
+a live Firestore project; nothing in Stage 9.5 has run against production. The evidence is the
+emulator against the working-tree rules, plus the Dart fakes against the working-tree models.

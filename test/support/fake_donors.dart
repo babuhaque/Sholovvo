@@ -17,9 +17,17 @@ import 'package:sholovvo_app/features/donors/domain/entities/donor.dart';
 /// has finished onboarding has them: a test that did not put them in would not be
 /// testing that the read model keeps them while leaving a phone out. The corruptible
 /// fields are typed `Object?` on purpose: much of what this mapper is for is deciding
-/// what to do with a document whose `role` is not `donor` or whose `bloodGroup` is a
-/// ninth spelling, and a helper that only accepted the valid shape could not feed it
+/// what to do with a document whose `role` is not `donor`, whose
+/// `allowDonorDiscovery` is absent or false, or whose `bloodGroup` is a ninth
+/// spelling, and a helper that only accepted the valid shape could not feed it
 /// one.
+///
+/// `allowDonorDiscovery` defaults to `true` because every existing donor test in
+/// the repository models a consented donor — those tests are about window
+/// assembly, ordering, refusal counting and privacy, not about the consent gate.
+/// Tests that specifically cover the Stage 9.5 consent path pass
+/// `allowDonorDiscovery: false` or `null` (or remove the key) to feed the mapper
+/// an opted-out or a legacy document.
 Map<String, Object?> donorFields({
   String role = 'donor',
   Object? displayName = 'Ayesha Rahman',
@@ -27,6 +35,7 @@ Map<String, Object?> donorFields({
   Object? isAvailable = true,
   Object? area = 'Dhanmondi, Dhaka',
   Object? photoUrl,
+  Object? allowDonorDiscovery = true,
 }) {
   return <String, Object?>{
     'role': role,
@@ -35,6 +44,7 @@ Map<String, Object?> donorFields({
     'isAvailable': isAvailable,
     'area': area,
     'photoUrl': ?photoUrl,
+    'allowDonorDiscovery': allowDonorDiscovery,
     'updatedAt': 0,
   };
 }

@@ -144,6 +144,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  /// Opting in or out of the Donor Search directory.
+  ///
+  /// Also routed through the full profile write, for the same reason as
+  /// [_setPublishArea]: withdrawing consent must delete the public projection
+  /// of `allowDonorDiscovery`, and only `saveProfile` writes the private
+  /// source of truth and the public projection atomically in the same batch.
+  /// The two copies must never diverge — a private `true` sitting next to a
+  /// public copy that still lists the donor would mean the UI and the
+  /// directory disagree about what the donor asked for.
+  Future<void> _setDiscoverable(UserProfile profile, bool value) async {
+    if (_anyBusy) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _failure = null;
+    });
+    final Result<void> result = await ref
+        .read(profileControllerProvider.notifier)
+        .save(profile.copyWith(allowDonorDiscovery: value));
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busy = false);
+    result.fold(
+      onSuccess: (void _) {},
+      onFailure: (Failure failure) => setState(() => _failure = failure),
+    );
+  }
+
   /// Opens the photo sheet and performs whatever the donor chose there.
   ///
   /// The work happens after the sheet has closed, so the spinner and the error
@@ -408,9 +438,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         SectionHeader(title: l10n.profileSectionPrivacy),
         const SizedBox(height: AppSpacing.xs),
         ProfilePrivacyCard(
+          discoverable: profile.allowDonorDiscovery,
           publishArea: profile.publishAreaInSearch,
           hasArea: (profile.area ?? '').trim().isNotEmpty,
           isBusy: _anyBusy,
+          onDiscoverableChanged: (bool value) =>
+              unawaited(_setDiscoverable(profile, value)),
           onChanged: (bool value) => unawaited(_setPublishArea(profile, value)),
         ),
         const SizedBox(height: AppSpacing.xl),

@@ -795,14 +795,18 @@ const P0 = {
 
 // A payload the create rule accepts: open, unassigned, own uid, server time.
 // Overrides exist so a test can violate exactly one clause at a time.
+//
+// Stage 9.5 (M3 / M3-C1): the payload no longer carries `patientName`,
+// `phoneNumber` or `hospitalAddress` — those fields moved to the private/contact
+// subcollection and the public create rule now refuses them via `hasOnly`. The
+// fixture is the post-M3 public shape; a client that wanted to also raise the
+// contact record would setDoc it separately at
+// `blood_requests/{id}/private/contact`.
 const p0OpenRequestData = (overrides = {}) => ({
   userId: P0.attacker,
-  patientName: 'P0 Patient',
-  phoneNumber: '+8801700000000',
   bloodGroup: 'A+',
   bloodBags: 1,
   hospitalName: P0_HOSPITAL,
-  hospitalAddress: 'Dhaka',
   requiredDateTime: '2026-11-10 10:00 AM',
   requestType: 'Normal',
   notes: '',
@@ -815,7 +819,11 @@ const p0OpenRequestData = (overrides = {}) => ({
 
 // A stored request at an arbitrary point in its life. Only ever written with
 // the rules disabled: these tests are about what a client may do next, not
-// about how the document got into that state.
+// about how the document got into that state. Stage 9.5 (M3 / M3-C1) drops the
+// contact PII fields here too — the downstream tests key on `status` and
+// `assignedDonorId`, never on `patientName`/`phoneNumber`/`hospitalAddress`, so
+// the shape stays minimal and honest about what the rules now expect on a live
+// document.
 const p0RequestDoc = ({
   userId = P0.owner,
   status = 'open',
@@ -824,12 +832,9 @@ const p0RequestDoc = ({
   hospitalName = P0_HOSPITAL,
 } = {}) => ({
   userId,
-  patientName: 'P0 Patient',
-  phoneNumber: '+8801700000000',
   bloodGroup,
   bloodBags: 1,
   hospitalName,
-  hospitalAddress: 'Dhaka',
   requiredDateTime: '2026-11-10 10:00 AM',
   requestType: 'Normal',
   notes: '',
@@ -1612,17 +1617,18 @@ describe('Stage 9.1 blood_requests open-requests read path', () => {
 // gone unnoticed. These run in a real client context.
 // ---------------------------------------------------------------------------
 
-// Exactly the fourteen keys every live production blood_requests document
-// carries (Stage 9.3 read of the 11 open requests), which is also the create
-// rule's hasOnly set. status is 'open' and createdAt is the server clock.
+// The eleven keys the post-Stage-9.5-M3 (corrected in M3-C1) client create rule
+// expects on the public `blood_requests` projection. The three contact-PII keys
+// (`patientName`, `phoneNumber`, `hospitalAddress`) that used to sit here as part
+// of the fourteen-key production shape have moved to
+// `blood_requests/{id}/private/contact`; a client that tries to write them into
+// the public document is now refused by `hasOnly`.
+// status is 'open' and createdAt is the server clock.
 const productionRequestData = (overrides = {}) => ({
   userId: IDS.recipient,
-  patientName: 'Patient',
-  phoneNumber: '+8801700000000',
   bloodGroup: 'A+',
   bloodBags: 1,
   hospitalName: 'Dhaka Medical College',
-  hospitalAddress: 'Dhaka',
   requiredDateTime: '2026-11-10 10:00 AM',
   requestType: 'Normal',
   notes: '',
@@ -1833,3 +1839,935 @@ describe('Stage 9.4 donor discovery reads the public users profile', () => {
   });
 });
 
+describe('Stage 9.5 donor discovery requires an explicit opt-in', () => {
+  // The consent gate is a query-level filter, not a rules gate: `users/{uid}`
+  // stays publicly readable (Stage 9.4 relies on it), but the discovery
+  // query that the donor-search feature runs always adds
+  // `where('allowDonorDiscovery', '==', true)`. These tests prove the query
+  // does what the design says it does: opted-out and legacy documents are
+  // never returned, so the app cannot accidentally list a donor who has not
+  // said yes. A rules change is not required and none is being made here —
+  // the enforcement is in the shape of the write and the shape of the query.
+  const consented = (overrides = {}) => ({
+    displayName: 'Consented Donor',
+    role: 'donor',
+    bloodGroup: 'A+',
+    isAvailable: true,
+    allowDonorDiscovery: true,
+    ...overrides,
+  });
+  const optedOut = (overrides = {}) => ({
+    displayName: 'Opted-Out Donor',
+    role: 'donor',
+    bloodGroup: 'A+',
+    isAvailable: true,
+    allowDonorDiscovery: false,
+    ...overrides,
+  });
+  // A pre-Stage-9.5 document: written by an older build, so the key has never
+  // been present. The consent gate has to treat absence as false.
+  const legacy = (overrides = {}) => ({
+    displayName: 'Legacy Donor',
+    role: 'donor',
+    bloodGroup: 'A+',
+    isAvailable: true,
+    ...overrides,
+  });
+
+  const seed = async (uid, data) => {
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', uid), data);
+    });
+  };
+
+  const discoveryQuery = (db) =>
+    query(
+      collection(db, 'users'),
+      where('role', '==', 'donor'),
+      where('allowDonorDiscovery', '==', true),
+    );
+
+  const idsFrom = async (snapshot) =>
+    (await Promise.resolve(snapshot)).docs.map((d) => d.id).sort();
+
+  it('1. the consented donor appears; opted-out and legacy do not', async () => {
+    await seed(IDS.donor, consented());
+    await seed(IDS.otherDonor, optedOut({ displayName: 'Opted-Out' }));
+    const legacyUid = 'legacy_donor_3';
+    await seed(legacyUid, legacy({ displayName: 'Legacy Donor' }));
+
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    const snapshot = await assertSucceeds(getDocs(discoveryQuery(db)));
+    const ids = await idsFrom(snapshot);
+
+    // Only the opted-in document matches. Absent and false behave the same way
+    // because the query asks for `== true`, and Firestore does not return a
+    // document whose filter field is missing.
+    assert.deepEqual(ids, [IDS.donor]);
+  });
+
+  it('2. the discovery query still permits additional equality filters', async () => {
+    // The consent filter is always on; other filters stack on top of it. This
+    // mirrors `FirestoreDonorDocuments.fetch` where role + consent + optional
+    // bloodGroup / area / availability are combined with only equality
+    // filters, so single-field indexes are enough and nothing needs deploying.
+    await seed(IDS.donor, consented({ bloodGroup: 'O+' }));
+    await seed(IDS.otherDonor, consented({ bloodGroup: 'B+' }));
+
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    const snapshot = await assertSucceeds(
+      getDocs(
+        query(
+          collection(db, 'users'),
+          where('role', '==', 'donor'),
+          where('allowDonorDiscovery', '==', true),
+          where('bloodGroup', '==', 'O+'),
+        ),
+      ),
+    );
+    const ids = await idsFrom(snapshot);
+
+    assert.deepEqual(ids, [IDS.donor]);
+  });
+
+  it('3. opting out after opting in removes the donor from the query', async () => {
+    // Round-trip: a document that had `allowDonorDiscovery: true` and is then
+    // set to `false` (or, as `publicFields` does for withdrawal, has the key
+    // deleted) stops appearing. This is the "withdraw consent" path the
+    // profile screen takes.
+    await seed(IDS.donor, consented());
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+
+    const before = await idsFrom(getDocs(discoveryQuery(db)));
+    assert.deepEqual(before, [IDS.donor]);
+
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      // Mimics the merge-write pattern ProfileDocuments uses: an update that
+      // writes `false` (as the private copy does) or deletes the key (as the
+      // public projection does) — either is enough for the query to stop
+      // matching.
+      await updateDoc(doc(adminCtx.firestore(), 'users', IDS.donor), {
+        allowDonorDiscovery: false,
+      });
+    });
+
+    const after = await idsFrom(getDocs(discoveryQuery(db)));
+    assert.deepEqual(after, []);
+  });
+
+  it('4. a recipient browsing users is not filtered by consent — the rules do not gate reads on the flag', async () => {
+    // Consent is a *directory* control, not a *read* control. Any signed-in
+    // user can still `getDoc(users/{uid})` for a peer, exactly as they could
+    // before Stage 9.5; the change is that the discovery query does not hand
+    // them opted-out rows in a bulk read. This distinction matters because the
+    // recipient who has matched with a donor through a request still needs to
+    // see that donor's profile — the consent is about the searchable
+    // directory, not about the person they are already talking to.
+    await seed(IDS.donor, optedOut());
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+
+    // A direct getDoc on the same document is still allowed by the rules.
+    const snap = await assertSucceeds(getDoc(doc(db, 'users', IDS.donor)));
+    assert.equal(snap.data().displayName, 'Opted-Out Donor');
+
+    // But a discovery query would not have returned it — the query, not the
+    // rules, is what hides it.
+    const q = await assertSucceeds(getDocs(discoveryQuery(db)));
+    assert.equal(q.docs.length, 0);
+  });
+
+  it('5. an unauthenticated client cannot run the discovery query either', async () => {
+    // Stage 9.4 already closed unauthenticated browsing of `users`; Stage 9.5
+    // does not widen it. The consent filter is on top of the same rules.
+    await seed(IDS.donor, consented());
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+
+    await assertFails(getDocs(discoveryQuery(anonDb)));
+  });
+});
+
+describe('Stage 9.5 M2 — public users profile field allow-list', () => {
+  // Stage 9.5 (M2). The rule that used to sit here was `allow write: if
+  // request.auth != null && request.auth.uid == userId`, so any owner write
+  // went through, no matter which fields it carried. That made it possible —
+  // through a client bug or a hostile payload — for a phone number, a street
+  // address, or a date of birth to land on `users/{uid}`, which every
+  // signed-in account can read. The allow-list closes that hole: even the
+  // account's own owner can no longer put a sensitive field into the public
+  // projection.
+  //
+  // The allow-list matches what `ProfileDocuments.publicFields`,
+  // `availabilityFields` and `photoFields` actually write. Any of the private
+  // keys — `phone`, `addressLine`, `dateOfBirth`, `gender`,
+  // `publishAreaInSearch` — must be refused on both create and update.
+  const PUBLIC_FIELDS = [
+    'displayName',
+    'role',
+    'isAvailable',
+    'updatedAt',
+    'bloodGroup',
+    'photoUrl',
+    'area',
+    'allowDonorDiscovery',
+  ];
+
+  const legalPublicDoc = (overrides = {}) => ({
+    displayName: 'Rafiq Hasan',
+    role: 'donor',
+    isAvailable: true,
+    bloodGroup: 'O+',
+    updatedAt: new Date(),
+    ...overrides,
+  });
+
+  it('1. the owner can create their public profile with only the allow-listed keys', async () => {
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    // The exact shape `ProfileDocuments.publicFields` writes for a consented
+    // donor with an area — every key on the allow-list, none off it.
+    const payload = legalPublicDoc({
+      photoUrl: 'https://cdn/ayesha.jpg',
+      area: 'Dhanmondi, Dhaka',
+      allowDonorDiscovery: true,
+    });
+
+    await assertSucceeds(setDoc(doc(db, 'users', IDS.donor), payload));
+    const snap = await getDoc(doc(db, 'users', IDS.donor));
+    assert.equal(snap.data().displayName, 'Rafiq Hasan');
+  });
+
+  it('2. the owner cannot create a public profile that carries a phone', async () => {
+    // The whole point of M2. A buggy or hostile client that tried to write
+    // `phone` into the public projection is refused at the rules layer, not
+    // at the write path — a leak stops being a discipline problem.
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(
+      setDoc(doc(db, 'users', IDS.donor), legalPublicDoc({ phone: '+8801700000001' })),
+    );
+  });
+
+  it('3. the owner cannot create a public profile with addressLine, dateOfBirth or gender', async () => {
+    // Each sensitive key is its own refusal, not a shared one. A test that
+    // batched them together would only prove one of them was in the deny set.
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    for (const [key, value] of [
+      ['addressLine', 'House 12, Road 5'],
+      ['dateOfBirth', new Date('1996-04-17')],
+      ['gender', 'female'],
+      ['publishAreaInSearch', true],
+    ]) {
+      await assertFails(
+        setDoc(doc(db, 'users', IDS.donor), legalPublicDoc({ [key]: value })),
+        `${key} must not be creatable on the public profile`,
+      );
+    }
+  });
+
+  it('4. the owner cannot inject a sensitive field by updating an existing public profile', async () => {
+    // A hostile update against an existing profile is the more realistic
+    // attack than a create: a legitimate profile already lives at
+    // `users/{uid}`, and the caller adds `phone` to it. `affectedKeys()`
+    // catches the addition even when every other field on the document is
+    // already allow-listed.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', IDS.donor), legalPublicDoc());
+    });
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+
+    await assertFails(
+      updateDoc(doc(db, 'users', IDS.donor), { phone: '+8801700000001' }),
+    );
+  });
+
+  it('5. the owner can legitimately update an allow-listed field', async () => {
+    // Preserving legitimate profile-edit: a name change, an availability
+    // toggle, a photo upload or a discovery-consent flip must all keep
+    // working after the allow-list lands.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', IDS.donor), legalPublicDoc());
+    });
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+
+    await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { displayName: 'Rafiq Uddin' }));
+    await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { isAvailable: false }));
+    await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { photoUrl: 'https://cdn/new.jpg' }));
+    await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { allowDonorDiscovery: true }));
+  });
+
+  it('6. the owner can clear an optional field via merge-delete of an allow-listed key', async () => {
+    // `ProfileDocuments.publicFields` writes `FieldValue.delete()` to
+    // withdraw an area or discovery consent. Firestore's affected-keys diff
+    // reports that as touching the deleted key, which is on the allow-list,
+    // so the write is legal.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(
+        doc(adminCtx.firestore(), 'users', IDS.donor),
+        legalPublicDoc({ area: 'Dhanmondi', allowDonorDiscovery: true }),
+      );
+    });
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', IDS.donor), {
+        area: null,
+        allowDonorDiscovery: false,
+      }),
+    );
+  });
+
+  it('7. a signed-in stranger cannot write anything to another account\'s public profile', async () => {
+    // The `request.auth.uid == userId` half of the rule still applies to
+    // every field, whether or not that field is on the allow-list. A stranger
+    // who tries the *most innocuous* update is refused the same way an
+    // attacker is refused a `phone` injection.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', IDS.donor), legalPublicDoc());
+    });
+    const strangerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+
+    await assertFails(updateDoc(doc(strangerDb, 'users', IDS.donor), { displayName: 'Hijacked' }));
+    await assertFails(setDoc(doc(strangerDb, 'users', IDS.donor), legalPublicDoc()));
+    await assertFails(deleteDoc(doc(strangerDb, 'users', IDS.donor)));
+  });
+
+  it('8. the owner can delete their own public profile', async () => {
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', IDS.donor), legalPublicDoc());
+    });
+    const ownerDb = testEnv.authenticatedContext(IDS.donor).firestore();
+
+    await assertSucceeds(deleteDoc(doc(ownerDb, 'users', IDS.donor)));
+  });
+
+  it('9. an unauthenticated client cannot create or update a public profile', async () => {
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+
+    await assertFails(setDoc(doc(anonDb, 'users', IDS.donor), legalPublicDoc()));
+    await assertFails(updateDoc(doc(anonDb, 'users', IDS.donor), { displayName: 'Ghost' }));
+  });
+
+  it('10. a legacy users/{uid} document carrying old keys can still be updated on allow-listed keys', async () => {
+    // Migration-friendly behaviour: `affectedKeys()` looks at what the write
+    // changes, not at what the stored document holds. A pre-Stage-9.5
+    // document that has, say, `fullName` and `uid` sitting on it is not
+    // forced through a data migration — a normal profile-save still touches
+    // only allow-listed keys, so it is accepted. Only writing the sensitive
+    // keys is refused.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      await setDoc(doc(adminCtx.firestore(), 'users', IDS.donor), {
+        fullName: 'Legacy Donor',
+        uid: IDS.donor,
+        role: 'donor',
+        bloodGroup: 'A+',
+        isAvailable: true,
+      });
+    });
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+
+    await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { displayName: 'Rafiq' }));
+    await assertFails(updateDoc(doc(db, 'users', IDS.donor), { phone: '+8801700000001' }));
+  });
+
+  it('11. the private subcollection still holds the sensitive fields for the owner', async () => {
+    // The rule that makes the whole M2 story coherent: the sensitive keys
+    // the public allow-list refuses are exactly the ones the private
+    // subcollection accepts. A phone number written here stays owner-only.
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+
+    await assertSucceeds(
+      setDoc(doc(db, 'users', IDS.donor, 'private', 'profile'), {
+        phone: '+8801700000001',
+        addressLine: 'House 12, Road 5',
+        dateOfBirth: new Date('1996-04-17'),
+        gender: 'male',
+        publishAreaInSearch: true,
+        allowDonorDiscovery: true,
+        area: 'Dhanmondi, Dhaka',
+      }),
+    );
+
+    const strangerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(getDoc(doc(strangerDb, 'users', IDS.donor, 'private', 'profile')));
+  });
+
+  // Sanity assertion for reviewers: the allow-list here matches the shape the
+  // profile layer writes. Any drift between the Dart and the rules would show
+  // up as one of these strings missing, so keeping the two side by side makes
+  // that drift visible.
+  it('12. the allow-list literal is exhaustive against what ProfileDocuments writes', async () => {
+    assert.deepEqual(
+      [...PUBLIC_FIELDS].sort(),
+      [
+        'allowDonorDiscovery',
+        'area',
+        'bloodGroup',
+        'displayName',
+        'isAvailable',
+        'photoUrl',
+        'role',
+        'updatedAt',
+      ],
+      'The Dart write side and the rules must agree on every public key',
+    );
+  });
+});
+
+describe('Stage 9.5 M3 — blood request private contact subcollection', () => {
+  // Stage 9.5 (M3), corrected in M3-C1 / M3-C2.
+  //
+  // M3-C1: the rules split the request document into a public projection and a
+  // `private/contact` subcollection. Everything that identifies, reaches or
+  // pinpoints the patient (`patientName`, `phoneNumber`, `hospitalAddress`) moves
+  // to the subcollection; the list row keeps only group, units, hospital name and
+  // the required-by text.
+  //
+  // M3-C2: the authoritative proof of a legitimate match is the immutable
+  // `response_claims` row, NOT the parent's client-writable `assignedDonorId` /
+  // `status`, which any matching, available donor can self-forge with a single
+  // public update (see the forgery tests at the end). That claim row, however, is
+  // addressed by a length-prefixed id, and Firestore security rules cannot cast
+  // an integer to a string, so the row is unreachable from a rule (see the
+  // M3-C2 BLOCKER note in firestore.rules). The minimum SAFE interim is therefore
+  // to make the private contact OWNER-ONLY: no donor read at all — legitimately
+  // matched or self-forged — until a rule-derivable authoritative anchor lands in
+  // a later stage. The tests below lock that posture: the owner reads succeed, and
+  // EVERY donor read is refused, including a donor whose real claim landed (which
+  // is a deliberate, reported narrowing, not a bug).
+  const contactPath = (requestId) =>
+    ['blood_requests', requestId, 'private', 'contact'];
+
+  const contactPayload = (overrides = {}) => ({
+    patientName: 'Ayesha Begum',
+    phoneNumber: '+8801700000009',
+    hospitalAddress: 'Road 12, Dhanmondi, Dhaka',
+    ...overrides,
+  });
+
+  // Public create shape as the app writes it (post-M3-C1, no contact PII), used
+  // as the parent for every contact-record test below. Rules-validated so a
+  // caller can only put their own userId on it.
+  const publicCreate = (db, requestId, overrides = {}) =>
+    setDoc(
+      doc(db, 'blood_requests', requestId),
+      productionRequestData({ userId: IDS.recipient, ...overrides }),
+    );
+
+  // Seed the base roles plus a request already at `status` and assigned to
+  // IDS.donor, and — when `withClaim` — the authoritative `response_claims` row
+  // (and its backing `request_responses` row) that a real booking transaction
+  // would have written. Everything is placed with the rules disabled so these
+  // tests isolate the subcollection's read rule from the transaction that
+  // normally produces the state.
+  const seedAssigned = async ({
+    status = 'accepted',
+    withClaim = true,
+    donorRole = 'donor',
+    seedDonorUser = true,
+  } = {}) => {
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      const db = adminCtx.firestore();
+      await db.collection('users').doc(IDS.recipient).set({
+        uid: IDS.recipient,
+        fullName: 'Recipient Owner',
+        role: 'recipient',
+        bloodGroup: 'O+',
+        isAvailable: false,
+      });
+      if (seedDonorUser) {
+        await db.collection('users').doc(IDS.donor).set({
+          uid: IDS.donor,
+          fullName: 'Donor One',
+          role: donorRole,
+          bloodGroup: 'A+',
+          isAvailable: true,
+        });
+      }
+      await db.collection('blood_requests').doc(IDS.request).set({
+        ...productionRequestData({ userId: IDS.recipient }),
+        status,
+        assignedDonorId: IDS.donor,
+      });
+      if (withClaim) {
+        await db.collection('request_responses').doc(IDS.response).set({
+          requestId: IDS.request,
+          donorId: IDS.donor,
+          donorName: 'Donor One',
+          donorPhone: '+8801700000001',
+          bloodGroup: 'A+',
+          status: 'accepted',
+          createdAt: new Date(),
+        });
+        await db
+          .collection('response_claims')
+          .doc(claimDocId(IDS.request, IDS.donor))
+          .set({
+            requestId: IDS.request,
+            donorId: IDS.donor,
+            responseId: IDS.response,
+          });
+      }
+    });
+  };
+
+  it('1. the public create rule refuses a client that adds patientName', async () => {
+    // The whole point of the M3 shape change: the fields the Dart reader
+    // already refused to render are now refused at the rules layer too. The
+    // rest of the payload is exactly the shape a legitimate create uses.
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'blood_requests', 'm3_req_withPatientName'),
+        productionRequestData({ patientName: 'Leak' }),
+      ),
+    );
+  });
+
+  it('2. the public create rule refuses a client that adds phoneNumber', async () => {
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'blood_requests', 'm3_req_withPhoneNumber'),
+        productionRequestData({ phoneNumber: '+8801700000000' }),
+      ),
+    );
+  });
+
+  it('2b. the public create rule refuses a client that adds hospitalAddress', async () => {
+    // M3-C1 moved the specific street line to private/contact too. The public
+    // projection keeps only `hospitalName`, so an attempt to carry an address on
+    // the list document is refused by the same `hasOnly`.
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'blood_requests', 'm3_req_withHospitalAddress'),
+        productionRequestData({ hospitalAddress: 'House 12, Road 5' }),
+      ),
+    );
+  });
+
+  it('3. the public create rule still accepts the eleven-key shape (no PII)', async () => {
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(publicCreate(db, 'm3_req_cleanPublic'));
+  });
+
+  it('4. the request owner can create the private/contact document', async () => {
+    // A contact record is a shape-checked set of the three private fields.
+    await seedBase({ withResponse: false });
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, ...contactPath(IDS.request)), contactPayload()),
+    );
+    const snap = await getDoc(doc(db, ...contactPath(IDS.request)));
+    assert.strictEqual(snap.data().patientName, 'Ayesha Begum');
+    assert.strictEqual(snap.data().hospitalAddress, 'Road 12, Dhanmondi, Dhaka');
+  });
+
+  it('5. the owner cannot create a contact record that carries an extra field', async () => {
+    // hasOnly([patientName, phoneNumber, hospitalAddress]) — no stray medical
+    // notes, no secondary phone, no id-number. The subcollection is deliberately
+    // narrow so the shape of "PII we hold" stays auditable.
+    await seedBase({ withResponse: false });
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, ...contactPath(IDS.request)),
+        contactPayload({ nationalId: '1234-5678' }),
+      ),
+    );
+  });
+
+  it('6. the owner cannot create a contact record that is missing a field', async () => {
+    // hasAll([patientName, phoneNumber, hospitalAddress]): all three are
+    // required to be present, so a partial record (even a real name + phone with
+    // the address simply omitted) is refused.
+    await seedBase({ withResponse: false });
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, ...contactPath(IDS.request)),
+        { patientName: 'Only Name' },
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(db, ...contactPath(IDS.request)),
+        { phoneNumber: '+8801700000099' },
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(db, ...contactPath(IDS.request)),
+        { patientName: 'Ayesha Begum', phoneNumber: '+8801700000009' },
+      ),
+    );
+  });
+
+  it('7. the owner cannot create a contact record with an empty patientName or phoneNumber', async () => {
+    // size() > 0 for the name and phone: an empty string is not a name, and an
+    // empty phone cannot be dialled. `hospitalAddress` is allowed to be an empty
+    // string (a patient with no street line is not blocked), so only the name and
+    // phone are checked for length.
+    await seedBase({ withResponse: false });
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, ...contactPath(IDS.request)),
+        contactPayload({ patientName: '' }),
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(db, ...contactPath(IDS.request)),
+        contactPayload({ phoneNumber: '' }),
+      ),
+    );
+    // A blank-but-present address is accepted.
+    await assertSucceeds(
+      setDoc(
+        doc(db, ...contactPath(IDS.request)),
+        contactPayload({ hospitalAddress: '' }),
+      ),
+    );
+  });
+
+  it('8. a stranger cannot create the contact record for someone else\'s request', async () => {
+    // The rule is `parent.userId == request.auth.uid`, so a caller who is not
+    // the request owner cannot write the contact even for a request that does
+    // not yet have one.
+    await seedBase({ withResponse: false });
+    const strangerDb = testEnv.authenticatedContext(IDS.otherDonor).firestore();
+    await assertFails(
+      setDoc(doc(strangerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+  });
+
+  it('9. the request owner can read their own contact record', async () => {
+    await seedBase({ withResponse: false });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    await assertSucceeds(getDoc(doc(ownerDb, ...contactPath(IDS.request))));
+  });
+
+  it('10. a donor whose real claim landed still cannot read the contact (owner-only interim)', async () => {
+    // M3-C2 interim: the read is owner-only until a rule-derivable authoritative
+    // anchor lands. Even a legitimately matched donor — the authoritative
+    // `response_claims` row present alongside the accepted assignment — is
+    // refused. This is the deliberate, reported narrowing that keeps the patient
+    // PII from leaking to a donor we cannot prove in a rule.
+    await seedAssigned({ status: 'accepted', withClaim: true });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    // The owner can still read it back.
+    await assertSucceeds(getDoc(doc(ownerDb, ...contactPath(IDS.request))));
+    const donorDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(getDoc(doc(donorDb, ...contactPath(IDS.request))));
+  });
+
+  it('11. an assigned donor cannot read the contact while the donation is being closed out', async () => {
+    // 'donation_completed' with a real claim: still owner-only under the interim.
+    await seedAssigned({ status: 'donation_completed', withClaim: true });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    const donorDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(getDoc(doc(donorDb, ...contactPath(IDS.request))));
+  });
+
+  it('12. an assigned donor cannot read the contact after the request reaches fulfilled', async () => {
+    // Refused under the owner-only interim (and, when a donor-read branch is
+    // added later, it must also close once the patient confirms fulfilment).
+    await seedAssigned({ status: 'fulfilled', withClaim: true });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    const donorDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(getDoc(doc(donorDb, ...contactPath(IDS.request))));
+  });
+
+  it('13. a donor read is refused while the request is still open (nobody has claimed it yet)', async () => {
+    // An open request has no assigned donor and no claim.
+    await seedBase({ requestStatus: 'open', withResponse: false });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    const donorDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(getDoc(doc(donorDb, ...contactPath(IDS.request))));
+  });
+
+  it('14. a signed-in stranger (not assigned, no claim) cannot read the contact', async () => {
+    await seedAssigned({ status: 'accepted', withClaim: true });
+    const strangerDb = testEnv.authenticatedContext(IDS.otherDonor).firestore();
+    await assertFails(getDoc(doc(strangerDb, ...contactPath(IDS.request))));
+  });
+
+  it('15. an unauthenticated caller cannot read the contact', async () => {
+    await seedAssigned({ status: 'accepted', withClaim: true });
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(anonDb, ...contactPath(IDS.request))));
+  });
+
+  it('16. a matched donor read stays refused regardless of the caller\'s role', async () => {
+    // Under the owner-only interim every donor read is refused; this case holds a
+    // real claim and a live assignment but the caller has since converted to a
+    // recipient, so it doubles as a guard that a future donor-read branch must
+    // still gate on role==donor. It fails today simply because the read is
+    // owner-only.
+    await seedAssigned({
+      status: 'accepted',
+      withClaim: true,
+      donorRole: 'recipient',
+    });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    const formerDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(getDoc(doc(formerDb, ...contactPath(IDS.request))));
+  });
+
+  it('17. a matched donor whose users document is missing is also refused', async () => {
+    // Another guard for a future donor-read branch (it must require the caller's
+    // users doc to exist). Under today's owner-only interim it fails simply
+    // because no donor can read the contact.
+    await seedAssigned({
+      status: 'accepted',
+      withClaim: true,
+      seedDonorUser: false,
+    });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    // IDS.donor is intentionally NOT seeded as a user document.
+    const ghostDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(getDoc(doc(ghostDb, ...contactPath(IDS.request))));
+  });
+
+  it('18. the contact subcollection refuses writes to any document id other than the pinned `contact`', async () => {
+    // The rules block matches `private/{contactDoc}` but every clause carries
+    // a `contactDoc == 'contact'` guard, so paths like `private/backup` or
+    // `private/profile` under `blood_requests` fall through to Firestore's
+    // default-deny. A caller cannot bury a copy of the patient's phone at an
+    // alternate id next to the legitimate record.
+    await seedBase({ withResponse: false });
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'blood_requests', IDS.request, 'private', 'backup'),
+        contactPayload(),
+      ),
+    );
+  });
+
+  it('19. the request owner can update and delete their contact record', async () => {
+    await seedBase({ withResponse: false });
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, ...contactPath(IDS.request)), contactPayload()),
+    );
+    await assertSucceeds(
+      updateDoc(doc(db, ...contactPath(IDS.request)), {
+        phoneNumber: '+8801799999999',
+      }),
+    );
+    await assertSucceeds(deleteDoc(doc(db, ...contactPath(IDS.request))));
+  });
+
+  it('20. a stranger cannot delete another user\'s contact record', async () => {
+    await seedBase({ withResponse: false });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    const strangerDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(deleteDoc(doc(strangerDb, ...contactPath(IDS.request))));
+  });
+
+  it('21. the patient-edits-details update branch no longer accepts a PII/hospitalAddress injection', async () => {
+    // Before M3 the affected-keys allow-set for the edit branch was named
+    // after every public field, including `patientName`/`phoneNumber`/
+    // `hospitalAddress`. After M3-C1 those three keys are gone, so an update that
+    // tries to CHANGE them on an existing open request is refused even though the
+    // caller is the owner. The values must differ from what seedBase wrote, or
+    // the diff would report an empty affected set and the rules would accept the
+    // write as a no-op — a legitimate Firestore behaviour unrelated to M3-C1.
+    await seedBase({ requestStatus: 'open', withResponse: false });
+    const db = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'blood_requests', IDS.request), {
+        patientName: 'Silently Re-Injected',
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(db, 'blood_requests', IDS.request), {
+        phoneNumber: '+8801799999999',
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(db, 'blood_requests', IDS.request), {
+        hospitalAddress: 'Secret New Address',
+      }),
+    );
+    // A legitimate edit through the same branch still succeeds.
+    await assertSucceeds(
+      updateDoc(doc(db, 'blood_requests', IDS.request), {
+        bloodBags: 2,
+      }),
+    );
+  });
+
+  it('22. the subcollection shape sanity: exactly three keys, all strings', async () => {
+    // A reviewer's sanity check: the rules require `patientName`, `phoneNumber`
+    // and `hospitalAddress` and refuse every other key. If a future stage wants
+    // to widen the shape this test has to change, and the reviewer of that PR is
+    // forced to look at the shape decision rather than accept it silently.
+    const required = ['patientName', 'phoneNumber', 'hospitalAddress'];
+    assert.deepEqual(
+      [...required].sort(),
+      ['hospitalAddress', 'patientName', 'phoneNumber'],
+      'The subcollection accepts exactly these three keys, nothing else',
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // M3-C2 — forged and legitimate donor reads alike are refused: the contact is
+  // owner-only, so neither a self-written `assignedDonorId` / `status` nor a real
+  // (but rule-unreachable) claim opens a donor read.
+  // ---------------------------------------------------------------------------
+
+  it('23. a matching donor CAN self-assign the public request, but that alone does NOT open the contact', async () => {
+    // This is the exact scenario the three-signal design used to trust: a real,
+    // available, blood-group-matching donor uses the legitimate
+    // `blood_requests` update branch to set `assignedDonorId = self` and
+    // `status = accepted` in one client write, WITHOUT running the booking
+    // transaction that would create a `response_claims` row. The public update is
+    // allowed (proving the fields are forgeable), yet the contact read stays shut
+    // because no claim exists at the deterministic lock key.
+    await seedBase({ requestStatus: 'open', withResponse: false });
+
+    // Owner raises the contact record while the request is still open.
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+
+    // The donor self-assigns on the public document (no response, no claim).
+    const donorDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertSucceeds(
+      updateDoc(doc(donorDb, 'blood_requests', IDS.request), {
+        status: 'accepted',
+        assignedDonorId: IDS.donor,
+        acceptedAt: serverTimestamp(),
+      }),
+    );
+
+    // ...and the forged assignment buys them nothing.
+    await assertFails(getDoc(doc(donorDb, ...contactPath(IDS.request))));
+  });
+
+  it('24. an unrelated donor cannot read the contact even if they forge the assignment fields', async () => {
+    // A donor who is NOT the one whose claim landed — here the request is a
+    // stranger's that the attacker cannot even self-assign (blood-group
+    // mismatch) — must be refused. Seeds a request that legitimately belongs to
+    // another patient and has no claim for the attacker.
+    await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
+      const db = adminCtx.firestore();
+      await db.collection('users').doc(IDS.recipient).set({
+        uid: IDS.recipient,
+        fullName: 'Recipient Owner',
+        role: 'recipient',
+        bloodGroup: 'O+',
+        isAvailable: false,
+      });
+      // The attacker is an available donor whose group does NOT match the
+      // request, so even the public self-assign branch is closed to them.
+      await db.collection('users').doc(IDS.otherDonor).set({
+        uid: IDS.otherDonor,
+        fullName: 'Donor Two',
+        role: 'donor',
+        bloodGroup: 'B+',
+        isAvailable: true,
+      });
+      await db.collection('blood_requests').doc(IDS.request).set({
+        ...productionRequestData({ userId: IDS.recipient, bloodGroup: 'A+' }),
+        status: 'accepted',
+        assignedDonorId: IDS.donor,
+      });
+    });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+    // The attacker cannot even forge: the update is refused...
+    const attackerDb = testEnv.authenticatedContext(IDS.otherDonor).firestore();
+    await assertFails(
+      updateDoc(doc(attackerDb, 'blood_requests', IDS.request), {
+        status: 'accepted',
+        assignedDonorId: IDS.otherDonor,
+        acceptedAt: serverTimestamp(),
+      }),
+    );
+    // ...and, with the assignment still pointing at the real donor, the attacker
+    // has no claim of their own so the contact read is refused.
+    await assertFails(getDoc(doc(attackerDb, ...contactPath(IDS.request))));
+  });
+
+  it('25. even the full booking transaction (response + claim + assignment) does NOT open a donor read yet', async () => {
+    // The negative control for tests 23/24: the legitimate path writes all three
+    // documents atomically and produces a real `response_claims` row, yet under
+    // the M3-C2 owner-only interim the donor read is STILL refused. This is the
+    // reported blocker, not a test gap — the rule cannot address the length-
+    // prefixed claim row (see firestore.rules), so it deliberately trusts no
+    // donor read at all. When a rule-derivable authoritative anchor lands, THIS
+    // is the test that should flip to assertSucceeds.
+    await seedBase({ requestStatus: 'open', withResponse: false });
+    const ownerDb = testEnv.authenticatedContext(IDS.recipient).firestore();
+    await assertSucceeds(
+      setDoc(doc(ownerDb, ...contactPath(IDS.request)), contactPayload()),
+    );
+
+    const db = testEnv.authenticatedContext(IDS.donor).firestore();
+    const requestRef = doc(db, 'blood_requests', IDS.request);
+    const responseRef = doc(db, 'request_responses', IDS.response);
+    const claimRef = doc(db, 'response_claims', claimDocId(IDS.request, IDS.donor));
+    await assertSucceeds(
+      runTransaction(db, async (tx) => {
+        const snap = await tx.get(requestRef);
+        assert.strictEqual(snap.data().status, 'open');
+        tx.set(responseRef, {
+          requestId: IDS.request,
+          donorId: IDS.donor,
+          donorName: 'Donor One',
+          donorPhone: '+8801700000001',
+          bloodGroup: 'A+',
+          status: 'accepted',
+          createdAt: serverTimestamp(),
+        });
+        tx.set(claimRef, {
+          requestId: IDS.request,
+          donorId: IDS.donor,
+          responseId: IDS.response,
+        });
+        tx.update(requestRef, {
+          status: 'accepted',
+          assignedDonorId: IDS.donor,
+          acceptedAt: serverTimestamp(),
+        });
+      }),
+    );
+
+    // The claim row is provably present (the owner/transaction wrote it), yet the
+    // donor contact read is refused — owner-only interim.
+    const donorDb = testEnv.authenticatedContext(IDS.donor).firestore();
+    await assertFails(getDoc(doc(donorDb, ...contactPath(IDS.request))));
+    // And the owner still reads their own contact intact.
+    const ownerRead = await assertSucceeds(getDoc(doc(ownerDb, ...contactPath(IDS.request))));
+    assert.strictEqual(ownerRead.data().patientName, 'Ayesha Begum');
+  });
+});

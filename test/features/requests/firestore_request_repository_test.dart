@@ -119,7 +119,9 @@ void main() {
       final BloodRequest soonest = window.requests.first;
       expect(soonest.bloodGroup, 'A+');
       expect(soonest.hospitalName, 'Dhaka Medical College');
-      expect(soonest.hospitalAddress, 'Dhaka');
+      // The private `hospitalAddress: 'Mirpur'` on the 'late' document never
+      // reaches the read model (Stage 9.5 M3-C1); `area` is the hospital name.
+      expect(window.requests.last.area, 'Sheikh Kamal');
       expect(window.truncated, isFalse);
       expect(window.skipped, 0);
     });

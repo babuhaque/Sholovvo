@@ -123,7 +123,6 @@ void main() {
           bloodGroup: 'B+',
           bloodBags: 3,
           hospitalName: 'Dhaka Medical College',
-          hospitalAddress: 'Dhaka',
         ),
       ).valueOrNull!;
 
@@ -131,11 +130,10 @@ void main() {
       expect(request.bloodGroup, 'B+');
       expect(request.units, 3);
       expect(request.hospitalName, 'Dhaka Medical College');
-      expect(request.hospitalAddress, 'Dhaka');
     });
 
     test('no patient name and no phone number, whatever the document holds', () {
-      // The seed carries both and the frozen rules let any signed-in user read
+      // The seed carries both and the pre-M3 rules let any signed-in user read
       // them, so the only thing standing between a stranger and a patient's
       // number is this read model not carrying it. `toString` is asserted too:
       // a log line is as leaky as a widget.
@@ -151,31 +149,29 @@ void main() {
       );
     });
 
-    test('a blank address as no address, not as a broken document', () {
-      // Degraded rather than refused: the row still names the hospital.
+    test('a legacy hospitalAddress on the document is not read into the model', () {
+      // Stage 9.5 (M3-C1) moved `hospitalAddress` to the private/contact
+      // subcollection. A production document that still carries the key (the
+      // migration has not run) must not leak it through the read model: the
+      // mapper ignores the field entirely, so `area` stays the hospital name.
       final BloodRequest request = _map(
-        fields: requestFields(hospitalAddress: '   '),
+        fields: requestFields(hospitalAddress: 'House 12, Road 5, Banani'),
       ).valueOrNull!;
 
-      expect(request.hospitalAddress, isEmpty);
       expect(request.area, 'Dhaka Medical College');
+      expect(request.toString().contains('Banani'), isFalse, reason: request.toString());
     });
 
-    test('a wrong-typed address as no address', () {
-      final BloodRequest request = _map(
-        fields: requestFields(hospitalAddress: 123),
-      ).valueOrNull!;
-
-      expect(request.hospitalAddress, isEmpty);
-      expect(request.area, request.hospitalName);
-    });
-
-    test('the area as the address when there is one', () {
-      final BloodRequest request = _map(
-        fields: requestFields(hospitalAddress: 'Mirpur'),
-      ).valueOrNull!;
-
-      expect(request.area, 'Mirpur');
+    test('the area is always the hospital name, blank address or not', () {
+      // There is no longer a "address when present, else hospital" branch: the
+      // address never reaches this model, so the row names the hospital either
+      // way. A blank or wrong-typed address is simply ignored.
+      for (final Object? address in <Object?>['', '   ', 'Mirpur', 123, null]) {
+        final BloodRequest request = _map(
+          fields: requestFields(hospitalAddress: address),
+        ).valueOrNull!;
+        expect(request.area, request.hospitalName, reason: 'address: $address');
+      }
     });
   });
 
