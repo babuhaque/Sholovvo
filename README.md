@@ -6,21 +6,22 @@ Blood donation and social networking platform for Android and iOS.
 
 ## Status
 
-Stage 8.3 **implemented — hardening in progress**. **Stage 8 is the social feed**,
-and the feed now both reads and writes: a paged `FeedScreen` over one Firestore
+Stage 8.3 **implemented — hardening in progress**, five hardening steps done. **Stage 8
+is the social feed**, and the feed now both reads and writes: a paged `FeedScreen` over
+one Firestore
 query on `posts`, and a composer that publishes a text-plus-photographs post
 through `FirestorePostRepository` and uploads its images to a `post-images`
 Supabase bucket. Nothing else can be done to a post — no like, comment, save,
 report, edit, delete or share — and no rule, index, bucket or backend setting was
 changed or deployed.
 
-Three things are true at once and belong in any resume-from-these-notes brief, so
+Four things are true at once and belong in any resume-from-these-notes brief, so
 they are stated here rather than only in `docs/PROJECT_STATE.md`:
 
 - **The stage is implemented and the suite is green, and neither of those means
-  signed off.** `flutter analyze` reports no issues and `flutter test` reports 712
-  passed, 58 skipped, **0 failed**, measured on the tree that carries the Step 3
-  and Step 4 hardening. The one red test the recovery audit found was a
+  signed off.** `flutter analyze` reports no issues and `flutter test` reports 733
+  passed, 58 skipped, **0 failed**, measured on the tree that carries the Step 3,
+  Step 4 and Step 5 hardening. The one red test the recovery audit found was a
   test-synchronisation defect in the composer's own suite, fixed test-side on
   2026-11-03 with no change to any production code: the test now waits until the
   storage upload has actually started before asserting the uploading state. By this
@@ -36,12 +37,23 @@ they are stated here rather than only in `docs/PROJECT_STATE.md`:
   past up to five such pages, and **Load more** stays on screen for as long as the
   collection has more in it. The composer sits behind that screen, so the read
   path, the composer and the upload can now all be opened.
-- **The composer is tested where it is used.** Alongside its 62 logic tests,
-  `ComposePostScreen` and `compose_image_grid` have 73 widget tests, and the
+- **The composer is tested where it is used.** Alongside its 64 logic tests,
+  `ComposePostScreen` and `compose_image_grid` have 74 widget tests, and the
   visual-review harness has a `compose` group of eleven captures. Those captures
   were taken and pass, but they are written to `build/review/`, which is
   gitignored: `docs/visuals/stage8/` still holds only the five read-path renders,
   so the composer has a review pass and no committed picture of itself.
+- **What a feed cannot read now says so, and a draft cannot be lost mid-upload.**
+  Step 5 (Stage 8.4) changed no data path and no rule. `FeedPage.skipped` — the count
+  of documents the mapper refused — reaches both screens: the feed draws one honest
+  line above its working **Load more**, and the dashboard's community section has a
+  fifth state that says the feed could not be fully read instead of claiming *"No
+  posts yet"* over a collection that is merely unreadable. `ComposeController.discard()`
+  now takes the same `_busy` guard `addImage` and `publish` take and returns whether it
+  actually discarded, so the form stays open while a photograph is still going up
+  instead of throwing away a draft its upload is about to orphan. Three photographs
+  that a screen reader announced as nothing now name whose they are, and
+  `FeedPostTile` has 13 tests that mount the tile itself rather than the whole feed.
 
 Stage 8.1 laid the foundations (`Post`, `Comment` and `Report` entities, a pure
 `Post` document mapper, shared photo primitives in `core/media`, one avatar and
@@ -141,9 +153,11 @@ not follow a theme switch. Stages 6, 7 and 8 have widget renders only
 photograph, and the temporary browser entrypoint used in Stage 3 was not recreated
 for any of them. The Stage 8 set covers the feed populated in light English and
 dark Bangla, at the wide measure with pictures, empty, and after a failed read.
-**The composer has no render at all** — `test/review/visual_review_test.dart` has a
-`feed` group and no `compose` group, which is part of the Stage 8.3 verification
-gap recorded in `docs/PROJECT_STATE.md`.
+**The composer has captures but no committed render:**
+`test/review/visual_review_test.dart` has `feed` and `compose` groups, and the
+eleven `compose` captures pass under `SOLOVVO_VISUAL_REVIEW=1` — but they land in
+gitignored `build/review/`, so `docs/visuals/stage8/` has no picture of the form.
+That is part of the Stage 8.3 verification gap recorded in `docs/PROJECT_STATE.md`.
 
 ## Home dashboard
 
@@ -324,7 +338,9 @@ testable without an app, in the same shape the read side earned:
   aimed at somebody else's photograph.
 - **Abandoning a draft deletes its objects.** Confirming the discard prompt calls
   `ComposeController.discard()`, because otherwise every abandoned compose leaves up
-  to four objects that nothing names.
+  to four objects that nothing names. It refuses — and says so by returning `false`, so
+  the screen keeps the form open — while anything is in flight, which is the same
+  `_busy` guard the other two mutators have always had.
 - **The published post is prepended to the feed** through `FeedController.prepend`
   rather than triggering a refresh the donor did not ask for; it is a no-op on a
   feed that has not loaded and dedupes by id.
@@ -333,12 +349,12 @@ testable without an app, in the same shape the read side earned:
 
 What the write path still does not have is **server-side enforcement** — see the
 rules paragraph below. Its presentation layer is no longer untested:
-`ComposePostScreen` and `compose_image_grid` have 73 widget tests over the same
-fake ports, on top of the 62 that cover `ComposeController`,
+`ComposePostScreen` and `compose_image_grid` have 74 widget tests over the same
+fake ports, on top of the 64 that cover `ComposeController`,
 `FirestorePostRepository` and `SupabasePostImageStorage`, and the visual-review
-harness has a `compose` group. All 135 pass. Neither the bucket nor its policies
+harness has a `compose` group. All 138 pass. Neither the bucket nor its policies
 has been applied, so no photograph has ever been uploaded for real. See
-`docs/PROJECT_STATE.md` (Stage 8.3) and `docs/ARCHITECTURE.md` §14.3.
+`docs/PROJECT_STATE.md` (Stage 8.3) and `docs/ARCHITECTURE.md` §14.3 and §14.4.
 
 One distinction the tests now pin, because it was ambiguous enough to break a test:
 waiting for the donor to choose a file is **not** uploading. `ComposeState.isUploading`

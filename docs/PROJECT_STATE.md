@@ -16,7 +16,7 @@ not what was attempted. A stage is only marked done when `flutter analyze` and
 | 5 | User profile system | **Complete — approved** |
 | 6 | Profile photo upload (Supabase Storage) | **Complete — approved** |
 | 7 | Navigation & settings | **Complete — awaiting approval** |
-| 8 | Social feed | **In progress — 8.1 and 8.1.1 complete (awaiting approval), 8.2 complete (awaiting approval), 8.3 IMPLEMENTED — HARDENING IN PROGRESS (recovery steps 1–4 done; not approved, not deployed, not live-verified)** |
+| 8 | Social feed | **In progress — 8.1 and 8.1.1 complete (awaiting approval), 8.2 complete (awaiting approval), 8.3 IMPLEMENTED — HARDENING IN PROGRESS (steps 1–5 done; defects 10, 13, 14 and 15 closed; not approved, not deployed, not live-verified)** |
 | 9 | Normal blood search & maps | Not started |
 | 10 | Emergency blood request | Not started |
 | 11 | Donor matching & notifications | Not started |
@@ -2244,25 +2244,30 @@ stage brief; there is no original Stage 8.3 completion report.
 Three things have happened since that entry was written: the owner committed the
 reconciliation documentation (`bbf1543`), the **Step 2 test fix** (`68f9ee8`)
 resolved the one failing test below, and the **Step 3 and Step 4** hardening was
-committed by the owner as `a1e102f`. That makes the suite green; it does not make
-the stage complete. Defects 2, 3 and 4 below are **closed** by those two steps;
-defects 5–15 are open (5–9 as recorded at the reconciliation, 10–15 newly
-recorded by Steps 3 and 4), as are outstanding tasks 2 and 6–12. The
-gate at the top of this file is met *today*, not *once and for all* — every later
-hardening step has to re-run it.
+committed by the owner as `a1e102f`. **Step 5** then closed defects 10, 13, 14 and
+15, and found and closed a sixteenth (a `README.md` claim that contradicted this file).
+That makes the suite green; it does not make the stage complete. Defects 2, 3, 4,
+10, 13, 14, 15 and 16 below are **closed** — 14 only as far as a client can close it — and
+defects 5–9 remain open exactly as recorded at the reconciliation. Outstanding tasks 8,
+9, 10 and 12 are done; tasks 6, 7 and 11 and the standing gate (task 2) are what is
+left. The gate at the top of this file is met *today*, not *once and for all* — every
+later hardening step has to re-run it.
 
-**Four hardening steps have now run, and the Stage 8.3 entry below records all of
+**Five hardening steps have now run, and the Stage 8.3 entry below records all of
 them.** Step 1 was the documentation reconciliation this file is written in; Step 2
 closed the one failing test, test-side; Step 3 put the composer's presentation layer
 under test — 73 widget tests, a `compose` capture group in the visual-review
 harness, and one accessibility fix in `SolovvoButton`; Step 4 made the feed and the
 composer reachable from the dashboard, projected the dashboard's community preview
 onto the feed's own controller, and closed the malformed-document pagination dead end
-with a bounded empty-page walk. Steps 3 and 4 changed Dart source under `lib/` — the
-first such change since `d27aee3` — and changed **no** `domain` or `data` file, no
-Firestore rule, no index, no bucket, no Supabase file and no dependency. Nothing has
-been deployed and nothing has been verified against a live backend; the suite is
-**712 passed, 58 skipped, 0 failed** and `flutter analyze` is clean.
+with a bounded empty-page walk; Step 5 hardened the presentation of what Step 4 had
+made reachable — the refusal count on both screens, the `discard()` guard, direct
+coverage for a post tile, three missing image labels, and one false documentation
+claim. Steps 3, 4 and 5 changed Dart source under `lib/` and changed **no** `domain`
+or `data` file, no Firestore rule, no index, no bucket, no Supabase file and no
+dependency. Nothing has been deployed and nothing has been verified against a live
+backend; the suite is **733 passed, 58 skipped, 0 failed** and `flutter analyze` is
+clean.
 
 ### What "implemented" means here, and what it does not
 
@@ -2272,7 +2277,7 @@ and second of them:
 | State | Stage 8.3 | Evidence |
 | --- | --- | --- |
 | **Implemented** | Yes | Every file below exists in the committed tree and is wired: `FeedScreen`'s `FloatingActionButton.extended` pushes `ComposePostScreen.route()`, a publish calls `FeedController.prepend`, and the dashboard's community section now opens `FeedScreen` whether or not it has posts to preview |
-| **Unit-tested** | Widely, and still not live | 62 composer logic tests **plus 73 widget tests** over `ComposePostScreen` and `compose_image_grid` (Step 3), 17 pagination tests and the dashboard preview/navigation coverage (Step 4) — all passing. Whole suite: **712 passed, 58 skipped, 0 failed**. What no test covers: a real device, a real Firestore read, a real upload, or a real screen reader |
+| **Unit-tested** | Widely, and still not live | 64 composer logic tests **plus 74 widget tests** over `ComposePostScreen` and `compose_image_grid` (Step 3, with Step 5's discard refusal), 21 pagination tests and the dashboard preview/navigation coverage (Steps 4 and 5), and **13 direct `FeedPostTile` / `ExpandablePostText` tests** (Step 5) — all passing. Whole suite: **733 passed, 58 skipped, 0 failed**. What no test covers: a real device, a real Firestore read, a real upload, or a real screen reader |
 | **Approved** | **No** | No approval record exists for 8.3, and neither Stage 8.2 nor Stage 7 has been approved — 8.3 was built on top of an unapproved stage |
 | **Deployed** | **No** | `firestore.rules`, `firebase.json` and `docs/storage/*.sql` were not applied by this stage and nothing was deployed |
 | **Live-verified** | **No** | No post has ever been written to a real Firestore project, and no post photograph has ever been uploaded to real storage |
@@ -2530,18 +2535,29 @@ items 10–15 were recorded, not fixed.
 9. **Orphans on abandoned drafts are only best-effort cleaned.** `discard()` deletes
    every uploaded object, but a failed delete is logged and not shown, and a
    process killed mid-compose leaves the objects behind. There is no sweep job.
-10. **`ComposeController.discard()` is not under the `_busy` guard** — carried
-    forward from Step 2 and deliberately **not** fixed by Step 3 or Step 4.
-    `addImage` and `publish` both take the guard; `discard()` checks
-    `state.isPublishing` only. Confirm the discard prompt while a photograph is still
-    going up and the list `discard()` deletes was taken before that upload finished,
-    so the object that lands afterwards is named by nothing — an orphan in the
-    bucket, under a form the donor believes they threw away. Both hardening steps
-    were told to leave the compose upload-state contract and its guard alone, so
-    this is recorded rather than silently repaired. The fix belongs in
-    `ComposeController`, with a test that holds the picker or the upload open on the
-    deterministic gates `fake_compose.dart` and `fake_photo_services.dart` already
-    expose.
+10. **RESOLVED IN STEP 5 (2026-11-03) — `ComposeController.discard()` was not under
+    the `_busy` guard.** It had been carried forward from Step 2 and deliberately not
+    fixed by Step 3 or Step 4, because both were briefed to leave the compose
+    upload-state contract alone. As it stood: `addImage` and `publish` both took the
+    guard and `discard()` checked `state.isPublishing` only, so confirming the discard
+    prompt while a photograph was still going up deleted a snapshot of the draft taken
+    before that upload landed, and the object that arrived afterwards was named by
+    nothing — an orphan in the bucket, under a form the donor believed they had thrown
+    away.
+
+    **What closed it.** `discard()` returns `Future<bool>`, takes the same `_busy`
+    guard as its two siblings, and answers `false` when it refuses. `ComposePostScreen`
+    pops only on `true`, so a refused discard leaves the form open rather than looking
+    like it worked — the control-that-does-nothing §9 forbids. Widening the return type
+    rather than re-checking the flags in the screen matters: the screen would otherwise
+    have had to re-derive the controller's busy state to decide whether to close, giving
+    one fact two owners. No new localisation key was added, because the grid already
+    paints *"Uploading your photo…"* in the slot the donor is looking at, and a snackbar
+    on top of that would name the rule instead of the reason. Three tests pin it — two on
+    the controller (upload in flight, publish in flight) and one on the screen asserting
+    the form is still open after the confirmation — and the three pre-existing `discard()`
+    calls in `compose_controller_test.dart` now assert `isTrue` instead of ignoring a
+    value that did not exist before. See `docs/ARCHITECTURE.md` §14.4.
 11. **The empty-page walk is bounded, and a bound is not free.** One operation can
     spend five reads — fifty-five documents, because the repository over-fetches one
     per page — before it gives up and shows the donor an empty list with **Load
@@ -2559,40 +2575,83 @@ items 10–15 were recorded, not fixed.
     the same list. Adding a Home refresh would mean a second refresh path against
     one controller, which is the duplication the projection exists to prevent, and
     realtime is the stage that owns this properly. Deliberate, not overlooked.
-13. **"Malformed" and "genuinely empty" are one claim on the feed and a different
-    one on the dashboard.** `FeedScreen` can tell them apart, because
-    `isEmptyResult` now requires `!hasMore`: exhausted-and-empty draws "No posts
-    yet", refused-and-more-coming keeps the list and its footer. The dashboard's
-    section picks its card by fallthrough — no posts, not fatal, not loading — so
-    after a walk that reached its cap the dashboard reads **"No posts yet"** over a
-    collection whose newest fifty documents are unreadable. That overstates it: the
-    honest sentence there is "the community could not be read". Fixing it means the
-    preview consulting `hasMore`, which is a small change and needs its own step
-    with a test on each side of it. Nobody has hit it, because nobody has a
-    malformed collection — which is exactly the situation in which an unreported
-    discrepancy survives.
-14. **No operator-facing signal for skipped documents.** `FeedPage.skipped` exists,
-    is computed, and is asserted by tests — and nothing in the app reads it. No
-    counter, no log line, no diagnostic screen, no admin surface. Schema drift
-    therefore shows itself only as a feed with fewer posts than the collection
-    contains, and after the Step 4 walk it can show itself as a blank page with a
-    **Load more** button (item 13). This is the number that would tell the owner to
-    run the rules reconciliation before it tells a donor anything.
-15. **One documentation claim is now false and was out of reach of this pass.**
-    `docs/storage/README.md` still states, under step 6, that "**The Feed is not
-    currently reachable through normal navigation.** `feedPreviewProvider` returns
-    an empty list and the dashboard hides its *See all* action". Step 4 made that
-    untrue, and the file is not in the set this step was permitted to edit. It needs
-    a short correction in the next documentation pass: the feed *is* reachable, so
-    the post-photo verification step is followable in principle — but still only
-    after the bucket and policies in this directory have actually been applied, which
-    remains nobody's verified fact.
+13. **RESOLVED IN STEP 5 (2026-11-03) — "malformed" and "genuinely empty" were one claim on the dashboard.**
+    `FeedScreen` could tell them apart, because `isEmptyResult` requires `!hasMore`:
+    exhausted-and-empty draws "No posts yet", refused-and-more-coming keeps the list and
+    its footer. The dashboard's section picked its card by fallthrough — no posts, not
+    fatal, not loading — so after a walk that reached its cap it read **"No posts yet"**
+    over a collection whose newest fifty documents are unreadable. That overstates it:
+    "nobody has posted" is a fact about the community and "this app could not read what
+    it posted" is a fact about the app, and saying the first when the second is true is a
+    false report about other people.
+
+    **What closed it.** `FeedState.isUnreadableResult` — empty, loaded, `hasMore`, and
+    not in the middle of a read — and `_FeedSection` now has five states instead of four,
+    with the new one sitting between the refused read and the spinner. It says the feed
+    could not be fully read, gives the count, and offers **Open the community** rather
+    than *Try again*: `loadFirstPage()` re-asks the same window and earns the same
+    answer, so a retry button there would be the §9 failure mode again, and the way past
+    an unreadable document is paging forward, which is what the feed screen lets a donor
+    do. Pinned by one new dashboard test that asserts *"No posts yet"* is absent, the
+    count is present, and the control lands on `FeedScreen`. See §14.4.
+14. **CLOSED FOR THE DONOR IN STEP 5, STILL OPEN FOR THE OPERATOR — `FeedPage.skipped` now reaches a screen.**
+    It used to exist, be computed and be asserted by tests while nothing in the app read
+    it: schema drift showed itself only as a feed with fewer posts than the collection
+    contained.
+
+    **What closed the visible half.** The refusals accumulate across the bounded walk
+    into `FeedState.skipped`, and both screens say it: the feed draws one line above its
+    footer ("*N posts could not be shown*") with the working **Load more** left as the
+    primary affordance, and the dashboard names the count inside its unreadable card
+    (defect 13). `FeedController` also logs
+    `_logger.warning('Feed read skipped N unreadable post document(s)')` on the
+    `feed.read` tag — warnings survive a release build, so that line reaches `adb logcat`
+    or the browser console. Four tests in `feed_pagination_test.dart` pin the arithmetic:
+    that a full walk reports the total rather than the last page's number, that a later
+    page adds to what is already on screen, that a failure which keeps the list on screen
+    does not rewrite the count, and that the rendered string is the one the state carries.
+
+    **What is still open.** There is no counter a remote operator can query without a
+    device in hand, and there is no admin surface. That is a monitoring and backend
+    question, not a client one, and it stays on the list as outstanding task 10's second
+    half. See §14.4.
+15. **RESOLVED IN STEP 5 (2026-11-03) — the `docs/storage/README.md` claim was false.**
+    It still stated, under step 5 item 6, that "**The Feed is not currently reachable
+    through normal navigation.** `feedPreviewProvider` returns an empty list and the
+    dashboard hides its *See all* action", and told the reviewer the post-photo check
+    was therefore not executable on a stock build without a temporary route. Step 4 made
+    both halves untrue and the file was out of that step's permitted set.
+
+    **What closed it.** Step 5 rewrote the item to name the real path — dashboard
+    **From the community** → **FeedScreen** → **Share an update** → `ComposePostScreen`
+    — recorded that the gap was closed by navigation rather than worked around, and kept
+    the limitation that is actually true: the step is reachable now, but still not
+    followable until the buckets and policies in that directory have been applied, which
+    remains nobody's verified fact. There is still no per-post destination and nearby
+    requests are still unwired, which is Stage 9 work rather than storage work.
+16. **FOUND AND FIXED IN STEP 5'S DOCUMENTATION PASS — the root `README.md` contradicted
+    `docs/PROJECT_STATE.md` about the composer's visual review.** Its *Getting started*
+    visual-review paragraph said "**The composer has no render at all** —
+    `test/review/visual_review_test.dart` has a `feed` group and no `compose` group",
+    while the same file's own Status section said the harness "has a `compose` group of
+    eleven captures" and Step 3's record said the same. The grep is decisive: the
+    harness has `profile`, `feed` **and** `compose` groups. The sentence was a leftover
+    from before Step 3 and survived the Step 4.1 synchronisation, which is what §12
+    exists to catch. **Corrected** to the true shape — the captures exist and pass, and
+    what is missing is a committed render under `docs/visuals/stage8/`, because
+    `build/review/` is gitignored. No behaviour changed and no test moved; the claim was
+    wrong, not the code. This is the kind of defect a documentation pass is expected to
+    find rather than only to propagate, and it is recorded here rather than quietly
+    edited, because a doc that has contradicted itself once can do it again.
 
 ### Outstanding tasks — hardening, in order
 
-Tasks 1, 3, 4 and 5 have been completed — 1 by Step 2, 3 by Step 3 and 4 and 5 by
-Step 4. Task 2 is a gate that has to be re-met, not a task that stays met. **Tasks
-6–12 below are what still stands between Stage 8.3 and "complete".**
+Tasks 1, 3, 4, 5, 8, 9, 10 and 12 have been completed — 1 by Step 2, 3 by Step 3, 4
+and 5 by Step 4, and 8, 9 and 12 by Step 5, with 10 done as far as a client can do it.
+Task 2 is a gate that has to be re-met, not a task that stays met. **Tasks 6, 7 and 11
+below are what still stands between Stage 8.3 and "complete"** — and after Step 5 none
+of the three is client code: the rules reconciliation, a live session only the owner can
+authorise, and committing review art.
 
 1. ~~Disposition defect 1: the failing test — test-side or controller-side, an owner
    decision.~~ **Done in Step 2 (2026-11-03, `68f9ee8`)**: it was a test
@@ -2601,8 +2660,9 @@ Step 4. Task 2 is a gate that has to be re-met, not a task that stays met. **Tas
    test.
 2. **A standing gate, not a one-off task.** `flutter test` green and `flutter analyze`
    clean on the committed tree, re-measured at the end of every hardening step. Met
-   today (712 / 58 / 0 and no analyzer issues, measured on the tree at `a1e102f`),
-   which satisfies the gate at the top of this file for the current tree and nothing
+   again after Step 5 (733 / 58 / 0 and no analyzer issues, measured on the working tree
+   that holds this step's documentation), which satisfies the gate at the top of this
+   file for the current tree and nothing
    more: meeting it does not approve the stage, and tasks 6–12 below are what still
    stand between 8.3 and "complete".
 3. ~~Widget tests for `ComposePostScreen` and `compose_image_grid`, and a `compose`
@@ -2629,22 +2689,29 @@ Step 4. Task 2 is a gate that has to be re-met, not a task that stays met. **Tas
    `supabase-post-images.sql`, confirm the Firebase third-party-auth setting, then
    one real publish with two photographs. Step 4 removed the excuse that the feed
    could not be opened to check it; the bucket still has to exist first.
-8. **Fix defect 10, the `discard()` / `_busy` race**, in `ComposeController`, with a
-   test that holds the picker or the upload open. Deferred twice by brief, not by
-   oversight; it needs its own step because it touches the upload-state contract.
-9. **Give the dashboard preview the same honesty the feed screen got** (defect 13):
-   consult `hasMore` before saying "No posts yet" over a collection that is merely
-   unreadable.
-10. **Surface `FeedPage.skipped`** somewhere an operator can see it (defect 14) — most
-    plausibly a count on the feed's own diagnostics, or the rules stage's first use
-    of it. It is currently a number only tests read.
+8. ~~Fix defect 10, the `discard()` / `_busy` race, in `ComposeController`, with a
+   test that holds the picker or the upload open.~~ **Done in Step 5 (2026-11-03)**: the
+   deferred step arrived, the guard was taken, `discard()` became `Future<bool>`, and the
+   hold-open tests are on both halves — two on the controller, one on the screen.
+9. ~~Give the dashboard preview the same honesty the feed screen got (defect 13): consult
+   `hasMore` before saying "No posts yet" over a collection that is merely unreadable.~~
+   **Done in Step 5**, by `FeedState.isUnreadableResult` and a fifth section state, with
+   the affordance being **Open the community** rather than a retry that cannot change the
+   answer.
+10. ~~Surface `FeedPage.skipped` somewhere an operator can see it (defect 14)~~ —
+    **done in Step 5 as far as a client can**: the count reaches the feed's own line, the
+    dashboard's card and a release-surviving warning on the `feed.read` tag. **The half
+    that stays open is a counter a remote operator can query without a device**, which
+    belongs with the monitoring or backend stage rather than this one.
 11. **Commit the composer's visual review** (remainder of task 3), and give Stage 8 a
     real browser pass — Stages 3, 4 and 5 have one and 6, 7 and 8 have widget renders
-    only.
-12. **Correct `docs/storage/README.md`** (defect 15), and then re-verify the approval
-    record: Stages 7, 8.1, 8.1.1, 8.2 and 8.3 are all still unapproved, so the
-    tracker at the top of this file cannot move past "hardening in progress" on the
-    strength of a green suite.
+    only. Step 5 added no captures, so this stands exactly where Step 3 left it.
+12. ~~Correct `docs/storage/README.md` (defect 15)~~ — **done in Step 5**, and the step
+    now names the real navigation path. **The second half of this task is not a code task
+    and is not done:** re-verify the approval record. Stages 7, 8.1, 8.1.1, 8.2 and 8.3
+    are all still unapproved, so the tracker at the top of this file cannot move past
+    "hardening in progress" on the strength of a green suite — and a fifth hardening step
+    being green changes that in no way.
 
 ### Verification
 
@@ -2681,7 +2748,8 @@ audit found; the rows about test status are superseded by the next table.
 | Rules tests | `npm test` in `firestore-rules-tests/` | **Not run** — needs the Firestore emulator, and no rules changed |
 | Live Firebase / Supabase | — | **Not run.** No emulator session, no device build, no browser pass, no network write |
 
-**After hardening Steps 3 and 4, on `a1e102f`.** This is the current state. The
+**After hardening Steps 3 and 4, on `a1e102f`.** This was the state until Step 5; the
+next table supersedes its counts. The
 arithmetic reconciles exactly: 612 passed + 75 (Step 3: 40 + 33 widget tests, 2
 semantics tests) + 25 (Step 4: 17 pagination, 7 dashboard, 1 shell) = **712**; and
 47 skips + 11 `compose` captures = **58**.
@@ -2703,6 +2771,39 @@ semantics tests) + 25 (Step 4: 17 pagination, 7 dashboard, 1 shell) = **712**; a
 | Rules tests | `npm test` in `firestore-rules-tests/` | **Not run** — needs the Firestore emulator, and no rule changed in either step |
 | Live Firebase / Supabase | — | **Not run.** No emulator session, no device build, no browser pass, no network write, no bucket, no policy |
 
+**After hardening Step 5 (Stage 8.4).** This is the current state, measured on the
+tree that carries this step — Step 5's Dart and localisation changes are in `9298fb5`
+and `ee8aba0`, and its documentation, the two formatted test files and the removal of
+two scratch logs are in `5d18d4d`, so **no Dart or test file differs between the tree
+measured below and `5d18d4d`**; only this file was still being written when the last
+`flutter test` finished. The arithmetic reconciles exactly: 712 + 21 = **733**, and the 21
+are Step 5's 13 tile tests + 4 pagination tests + 2 controller discard tests + 1
+composer-screen discard test + 1 dashboard test. Skips are unchanged at **58**, because
+Step 5 added no visual-review capture.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Static analysis | `flutter analyze` | **No issues found** (19.1 s; 20.5 s on the first run of the step) |
+| Full suite | `flutter test` | **733 passed, 58 skipped, 0 failed** — twice, before and after the two files `dart format` wrote |
+| Post tile | `flutter test test/features/feed/feed_post_tile_test.dart` | **13 passed, 0 failed** (new file) |
+| Pagination | `flutter test test/features/feed/feed_pagination_test.dart` | **21 passed, 0 failed** (was 17) |
+| Composer controller and screen | `flutter test test/features/feed/compose_controller_test.dart test/features/feed/compose_post_screen_test.dart` | **75 passed, 0 failed** (was 72: 32 → 34 and 40 → 41) |
+| All feed tests | `flutter test test/features/feed` | **294 passed, 0 failed** (was 274 after Step 4) |
+| Dashboard, shell | `flutter test test/features/home`, `flutter test test/app` | **39** and **37 passed, 0 failed** |
+| Localisation parity | `flutter gen-l10n`, then `test/l10n/arb_parity_test.dart` inside the suite, plus `lib/l10n/untranslated.json` | gen-l10n exits 0 and regenerates the three tracked files; parity passes; the file is **`{}`** — four new keys (`feedUnreadableTitle`, `feedUnreadableBody`, `feedSkippedNotice`, `feedPostPhotoLabel`) in both catalogues, the plural routed through `decimalPattern` so a Bangla count is written in Bengali digits, and no ASCII digit anywhere in `app_bn.arb` |
+| Format | `dart format --output=none --set-exit-if-changed lib test` | **79 of 184 files** not format-clean — Step 4's 79-of-183 count with one more file in the denominator, so **no pre-existing file changed state**. Two files of this step's own were dirty and *were* formatted **with** a write (`test/features/feed/feed_pagination_test.dart`, `test/features/feed/feed_post_tile_test.dart`), after which both the two files and the whole suite were re-run; no repo-wide formatting was run |
+| Trailing whitespace | `git diff --check` | **no output** |
+| Toolchain | `flutter --version` | Flutter 3.47.9 stable, Dart 3.13.7 — unchanged |
+| Rules tests | `npm test` in `firestore-rules-tests/` | **Not run** — needs the Firestore emulator, and `firestore.rules` was not touched by this step or by any hardening step |
+| Screen reader | — | **Not run.** No TalkBack or VoiceOver pass has been made on any stage; the three new `semanticLabel`s and the copy control's tooltip are asserted by widget test, which proves the node carries a string, not that the string reads well out loud |
+| Live Firebase / Supabase | — | **Not run.** No emulator session, no device build, no browser pass, no network write, no bucket, no policy, no SQL |
+
+**Step 5 also removed two files from the repository root** — `analyze_baseline.txt`
+and `test_baseline.txt`, scratch logs of this step's first `flutter analyze` and
+`flutter test` runs, which had been swept into `9298fb5` by an `add -A` (Git stores them
+as binary blobs). They are command output, not project material, and the numbers they
+held are recorded in this table instead. The owner committed the deletion in `5d18d4d`.
+
 **Documentation-only pass, Step 4.1.** This synchronisation edited `README.md`,
 `docs/ARCHITECTURE.md` and this file and nothing else. It ran `flutter test`,
 `flutter analyze`, the opt-in review harness and `dart format` in inspection mode
@@ -2716,22 +2817,33 @@ rule and no Supabase file, and it staged and committed nothing.
 was `d27aee3`; the owner then committed the Step 1 reconciliation documentation as
 `bbf1543`, the Step 2 test fix as `68f9ee8`, and the **Step 3 and Step 4 hardening,
 together with the Step 2.1 documentation, as `a1e102f`** on 2026-11-03 — 24 files,
-+3 164/−118. So **HEAD is `a1e102f`**, and the owner then pushed it:
-`refs/remotes/origin/main` is **also `a1e102f`** as of 21:38 the same day, so the
-local branch and the remote are level (0 ahead, 0 behind) and **the Step 3 and Step
-4 work is on `origin/main`**. That was the owner's action, not this pass's: Step
-4.1 staged, committed and pushed nothing, and its own three-file documentation
-edit is the only thing in the working tree, uncommitted on top.
++3 164/−118 — and pushed it, so `refs/remotes/origin/main` was **also `a1e102f`** as of
+21:38 the same day. **Step 5 was committed in three pieces while it was still being
+written**: `9298fb5` (22:50) took the feed-state foundation, the four localisation keys
+and their generated output, and the Step 4.1 documentation, together with the two
+scratch logs named above; `ee8aba0` (23:04) took the eight `lib/` files and the six test
+files; `5d18d4d` (23:29) took this step's documentation, the two formatted test files
+and the deletion of those logs. So **HEAD is `5d18d4d`** and `origin/main` is
+**`5d18d4d`** — level, 0 ahead and 0 behind — which means the whole of Stage 8.4 is on
+the remote except this file's final edits.
+That was the owner's action throughout, not this pass's: **Step 5 staged, committed and
+pushed nothing**, and it ran no Git command that writes. It did not discard anything
+either — the pre-existing uncommitted documentation edits it inherited from Step 4.1 are
+all present in `9298fb5`.
 Pushing the branch is not deploying anything: no rule has been released with
 `firebase deploy`, no build has reached a device, a store or a browser, and no
 Supabase migration or bucket policy has been applied — so *deployed* and
-*live-verified* stay **No** for the whole of Stage 8.3, `a1e102f` included.
+*live-verified* stay **No** for the whole of Stage 8.3, `a1e102f` and Step 5's three
+commits included.
 Stage boundaries are still not separable in Git: `d27aee3` squashes Stages 7 → 8.3
 into one commit, so **8.3 cannot be separated from 8.2 by Git alone**, which
 matters if Stage 8.2's approval is later withheld. Steps 3 and 4 are separable from
 that only by this file's account, since `a1e102f` carries both: the feed's own
 `lib/` diff is Step 4's, and `solovvo_button.dart` plus the two compose test files
-are Step 3's. No remote state has been re-verified against the network.
+are Step 3's. Step 5 is the harder case, because its own work is split across three
+commits that each also carry something else: `feed_state.dart` is patched in **both**
+`9298fb5` and `ee8aba0`, and `9298fb5` carries Step 4.1's documentation as well. No
+remote state has been re-verified against the network.
 
 ### Next stage
 
@@ -2739,14 +2851,17 @@ Stage 8.3 must be hardened and approved before Stage 9 (normal blood search &
 maps) or any feed write is treated as shipped. The rules reconciliation is the
 blocking dependency for deployment, not for code.
 
-**What the hardening steps changed about that sentence.** Four of the seven
-outstanding tasks are done, and the two that blocked a donor using the feature at
-all — reachability and the pagination dead-end — are closed, so there is now a
-working path from the dashboard to the feed to the composer and back. What still
-blocks *shipping* is unchanged and was made more pointed: the write path is
-reachable and still has no rule behind it (defect 5), no live verification of any
-kind (defects 6 and 7), and one known controller race waiting in the composer
-(defect 10). The next step is therefore either the rules reconciliation — the only
-one of these that gates deployment — or the small, cheap client items (defects 10,
-13 and 14), which do not.
+**What the hardening steps changed about that sentence.** Five of the seven
+outstanding tasks are done, the two that blocked a donor using the feature at all —
+reachability and the pagination dead-end — are closed, and the three client items that
+Step 4 left recorded (defects 10, 13 and 14) are closed too, so there is a working path
+from the dashboard to the feed to the composer and back, a composer that cannot be
+thrown away underneath its own upload, and a feed that says when it could not read what
+is there. What still blocks *shipping* is one item and it is not code: the write path is
+reachable and still has no rule behind it (defect 5), and nothing in Stage 8 has ever
+been verified against a live backend (defects 6 and 7). The next step is therefore the
+rules reconciliation with §14.1 plus the first feed-collection rules tests — the only
+remaining task that gates deployment, and one that needs the owner's security approval
+before `firestore.rules` moves. Stage 9 (normal blood search and maps) should not start
+on top of an unapproved, unenforced write path that a donor can now actually reach.
 

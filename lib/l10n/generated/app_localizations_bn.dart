@@ -214,14 +214,14 @@ class AppLocalizationsBn extends AppLocalizations {
   String get homeFindDonors => 'ডোনার খুঁজুন';
 
   @override
-  String get homeNearbyTitle => 'আপনার কাছের অনুরোধ';
+  String get homeRequestsTitle => 'খোলা অনুরোধ';
 
   @override
-  String get homeNearbyEmptyTitle => 'কাছাকাছি কোনো অনুরোধ নেই';
+  String get homeRequestsEmptyTitle => 'কোনো খোলা অনুরোধ নেই';
 
   @override
-  String get homeNearbyEmptyBody =>
-      'আপনার কাছের কেউ রক্তের প্রয়োজন হলে তার অনুরোধ সবার আগে এখানে দেখা যাবে।';
+  String get homeRequestsEmptyBody =>
+      'কারো রক্ত প্রয়োজন হলে তার অনুরোধ সবার আগে এখানে দেখা যাবে।';
 
   @override
   String homeUnitsNeeded(num count) {
@@ -236,6 +236,9 @@ class AppLocalizationsBn extends AppLocalizations {
   String homeNeededBy(String date) {
     return 'শেষ তারিখ: $date';
   }
+
+  @override
+  String get homeNeededByUnknown => 'তারিখ দেওয়া হয়নি';
 
   @override
   String get homeFeedTitle => 'কমিউনিটি থেকে';
@@ -884,6 +887,51 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get feedComposeKeepEditing => 'লেখা চালিয়ে যান';
+
+  @override
+  String get requestsTitle => 'খোলা অনুরোধ';
+
+  @override
+  String get requestsEmptyTitle => 'এখন কোনো খোলা অনুরোধ নেই';
+
+  @override
+  String get requestsEmptyBody =>
+      'এই মুহূর্তে কোনো অনুরোধ খোলা হিসেবে চিহ্নিত নেই। আবার দেখতে নিচের দিকে টানুন।';
+
+  @override
+  String get requestsErrorTitle => 'অনুরোধগুলো আনা যায়নি';
+
+  @override
+  String get requestsRetry => 'আবার চেষ্টা করুন';
+
+  @override
+  String get requestsUnreadableTitle => 'অনুরোধগুলো সম্পূর্ণভাবে পড়া যায়নি';
+
+  @override
+  String get requestsUnreadableBody =>
+      'এর পেছনে খোলা অনুরোধ আছে, তবে সেগুলো পড়া যায়নি।';
+
+  @override
+  String requestsSkippedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return '$countStringটি অনুরোধ দেখানো যায়নি';
+  }
+
+  @override
+  String requestsTruncatedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'এখানে প্রথম $countStringটি খোলা অনুরোধ দেখানো হচ্ছে। এর পেছনে আরও আছে।';
+  }
+
+  @override
+  String get requestsNoActionNote =>
+      'এখানে দেখা যাচ্ছে কী এবং কোথায় দরকার। অনুরোধ গ্রহণ করার সুযোগ এই বিল্ডে এখনো নেই।';
 
   @override
   String get errorPostTextRequired => 'পোস্ট করার আগে কিছু লিখুন';

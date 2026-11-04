@@ -32,31 +32,6 @@ class DonorSnapshot {
   final int? donationCount;
 }
 
-/// A blood request as the dashboard row shows it.
-///
-/// A view model, not a Firestore document: only the fields this row renders are
-/// here. Stage 9 (search) and Stage 10 (requests) map `blood_requests` into it.
-@immutable
-class NearbyRequestSummary {
-  const NearbyRequestSummary({
-    required this.id,
-    required this.bloodGroup,
-    required this.area,
-    required this.neededBy,
-    required this.units,
-  });
-
-  final String id;
-  final String bloodGroup;
-
-  /// Human-readable place ("Dhanmondi, Dhaka"). Deliberately not coordinates:
-  /// the dashboard row does not show a map or a distance it cannot compute.
-  final String area;
-
-  final DateTime neededBy;
-  final int units;
-}
-
 /// A community post as the dashboard preview shows it.
 ///
 /// A view model, not a Firestore document. Stage 6 (feed) maps `posts` into it.

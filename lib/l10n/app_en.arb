@@ -100,9 +100,9 @@
   },
   "homeRequestBlood": "Request blood",
   "homeFindDonors": "Find donors",
-  "homeNearbyTitle": "Requests near you",
-  "homeNearbyEmptyTitle": "No open requests nearby",
-  "homeNearbyEmptyBody": "When someone near you needs blood, their request appears here first.",
+  "homeRequestsTitle": "Open requests",
+  "homeRequestsEmptyTitle": "No open requests",
+  "homeRequestsEmptyBody": "When someone needs blood, their request appears here first.",
   "homeUnitsNeeded": "{count, plural, one{{count} unit needed} other{{count} units needed}}",
   "@homeUnitsNeeded": {
     "placeholders": {
@@ -121,6 +121,7 @@
       }
     }
   },
+  "homeNeededByUnknown": "No date given",
   "homeFeedTitle": "From the community",
   "homeFeedEmptyTitle": "No posts yet",
   "homeFeedEmptyBody": "Stories and updates from donors will appear here.",
@@ -448,6 +449,33 @@
   "feedComposeDiscardBody": "Your text and photos will be deleted.",
   "feedComposeDiscardConfirm": "Discard",
   "feedComposeKeepEditing": "Keep editing",
+
+  "requestsTitle": "Open requests",
+  "requestsEmptyTitle": "No open requests right now",
+  "requestsEmptyBody": "Nothing is marked open at the moment. Pull down to check again.",
+  "requestsErrorTitle": "The requests could not be loaded",
+  "requestsRetry": "Try again",
+  "requestsUnreadableTitle": "The requests could not be fully read",
+  "requestsUnreadableBody": "There are open requests behind this, but they could not be read.",
+  "requestsSkippedNotice": "{count, plural, one{{count} request could not be shown} other{{count} requests could not be shown}}",
+  "@requestsSkippedNotice": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "requestsTruncatedNotice": "Only the first {count} open requests are shown here. More are still behind them.",
+  "@requestsTruncatedNotice": {
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "requestsNoActionNote": "This list shows what is needed and where. Accepting a request is not available in this build yet.",
 
   "errorPostTextRequired": "Write something before publishing",
   "errorPostTextTooLong": "Keep your post under {count} characters",

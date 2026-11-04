@@ -6,17 +6,19 @@ import 'package:sholovvo_app/features/home/domain/home_dashboard.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/donation_record.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
+import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
+import 'package:sholovvo_app/features/requests/application/requests_state.dart';
+import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
 
 /// The three seams between the dashboard's layout and the data behind it.
 ///
 /// The donor strip is filled in from Stage 5: it reads the same documents the
 /// profile screen edits (`users/{uid}` and `users/{uid}/private/profile`) and the
-/// donor's own `donation_history`. The feed is filled in from Stage 8, as a
-/// projection of the feed's own controller (see [feedPreviewProvider]).
-/// Nearby requests stay empty until the stage that owns them (`blood_requests`
-/// in Stage 9). Nothing here is a placeholder number — a dashboard that shows
-/// "12 requests nearby" before anything has been queried is lying to someone who
-/// may act on it.
+/// donor's own `donation_history`. The feed is filled in from Stage 8, and the
+/// nearby requests from Stage 9, both as projections of the controller that owns
+/// the read (see [feedPreviewProvider] and [nearbyRequestsProvider]). Nothing here
+/// is a placeholder number — a dashboard that shows "12 requests nearby" before
+/// anything has been queried is lying to someone who may act on it.
 ///
 /// The projection from profile data into [DonorSnapshot] lives here rather than
 /// in the profile feature because the adapter belongs to its consumer: the
@@ -46,10 +48,32 @@ final Provider<DonorSnapshot?> donorSnapshotProvider =
       );
     });
 
-final Provider<List<NearbyRequestSummary>> nearbyRequestsProvider =
-    Provider<List<NearbyRequestSummary>>(
-      (Ref ref) => const <NearbyRequestSummary>[],
-    );
+/// How many requests the dashboard previews.
+///
+/// Three, matching the feed preview below it: the two sections share a column on a
+/// phone, and a fourth card would push the community off the screen. "See all" is
+/// what the rest of the window is for.
+const int nearbyRequestLimit = 3;
+
+/// The most urgent open requests, as the dashboard shows them.
+///
+/// A projection of [requestsControllerProvider] rather than a second read, for the
+/// same reason the feed preview is one: the controller already owns the window, the
+/// refusal count, the truncation and the one-read-at-a-time rule, and a dashboard
+/// that queried `blood_requests` for itself would have two answers to "is anything
+/// needed right now". Because the window is ordered soonest-needed first, these
+/// three are the three most urgent requests this read saw.
+///
+/// It is still a `Provider` over a plain list, so a test that wants a preview
+/// without a read can override it with one — which is what the dashboard's own
+/// layout tests do.
+final Provider<List<BloodRequest>> nearbyRequestsProvider =
+    Provider<List<BloodRequest>>((Ref ref) {
+      final RequestsState requests = ref.watch(requestsControllerProvider);
+      return requests.requests.take(nearbyRequestLimit).toList(
+        growable: false,
+      );
+    });
 
 /// How many posts the dashboard previews.
 ///

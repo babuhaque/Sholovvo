@@ -220,14 +220,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeFindDonors => 'Find donors';
 
   @override
-  String get homeNearbyTitle => 'Requests near you';
+  String get homeRequestsTitle => 'Open requests';
 
   @override
-  String get homeNearbyEmptyTitle => 'No open requests nearby';
+  String get homeRequestsEmptyTitle => 'No open requests';
 
   @override
-  String get homeNearbyEmptyBody =>
-      'When someone near you needs blood, their request appears here first.';
+  String get homeRequestsEmptyBody =>
+      'When someone needs blood, their request appears here first.';
 
   @override
   String homeUnitsNeeded(num count) {
@@ -248,6 +248,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String homeNeededBy(String date) {
     return 'Needed by $date';
   }
+
+  @override
+  String get homeNeededByUnknown => 'No date given';
 
   @override
   String get homeFeedTitle => 'From the community';
@@ -934,6 +937,57 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get feedComposeKeepEditing => 'Keep editing';
+
+  @override
+  String get requestsTitle => 'Open requests';
+
+  @override
+  String get requestsEmptyTitle => 'No open requests right now';
+
+  @override
+  String get requestsEmptyBody =>
+      'Nothing is marked open at the moment. Pull down to check again.';
+
+  @override
+  String get requestsErrorTitle => 'The requests could not be loaded';
+
+  @override
+  String get requestsRetry => 'Try again';
+
+  @override
+  String get requestsUnreadableTitle => 'The requests could not be fully read';
+
+  @override
+  String get requestsUnreadableBody =>
+      'There are open requests behind this, but they could not be read.';
+
+  @override
+  String requestsSkippedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countString requests could not be shown',
+      one: '$countString request could not be shown',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String requestsTruncatedNotice(num count) {
+    final intl.NumberFormat countNumberFormat =
+        intl.NumberFormat.decimalPattern(localeName);
+    final String countString = countNumberFormat.format(count);
+
+    return 'Only the first $countString open requests are shown here. More are still behind them.';
+  }
+
+  @override
+  String get requestsNoActionNote =>
+      'This list shows what is needed and where. Accepting a request is not available in this build yet.';
 
   @override
   String get errorPostTextRequired => 'Write something before publishing';

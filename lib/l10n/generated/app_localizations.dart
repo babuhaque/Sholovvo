@@ -464,23 +464,23 @@ abstract class AppLocalizations {
   /// **'Find donors'**
   String get homeFindDonors;
 
-  /// No description provided for @homeNearbyTitle.
+  /// No description provided for @homeRequestsTitle.
   ///
   /// In en, this message translates to:
-  /// **'Requests near you'**
-  String get homeNearbyTitle;
+  /// **'Open requests'**
+  String get homeRequestsTitle;
 
-  /// No description provided for @homeNearbyEmptyTitle.
+  /// No description provided for @homeRequestsEmptyTitle.
   ///
   /// In en, this message translates to:
-  /// **'No open requests nearby'**
-  String get homeNearbyEmptyTitle;
+  /// **'No open requests'**
+  String get homeRequestsEmptyTitle;
 
-  /// No description provided for @homeNearbyEmptyBody.
+  /// No description provided for @homeRequestsEmptyBody.
   ///
   /// In en, this message translates to:
-  /// **'When someone near you needs blood, their request appears here first.'**
-  String get homeNearbyEmptyBody;
+  /// **'When someone needs blood, their request appears here first.'**
+  String get homeRequestsEmptyBody;
 
   /// No description provided for @homeUnitsNeeded.
   ///
@@ -493,6 +493,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Needed by {date}'**
   String homeNeededBy(String date);
+
+  /// No description provided for @homeNeededByUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'No date given'**
+  String get homeNeededByUnknown;
 
   /// No description provided for @homeFeedTitle.
   ///
@@ -1531,6 +1537,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Keep editing'**
   String get feedComposeKeepEditing;
+
+  /// No description provided for @requestsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Open requests'**
+  String get requestsTitle;
+
+  /// No description provided for @requestsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No open requests right now'**
+  String get requestsEmptyTitle;
+
+  /// No description provided for @requestsEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is marked open at the moment. Pull down to check again.'**
+  String get requestsEmptyBody;
+
+  /// No description provided for @requestsErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The requests could not be loaded'**
+  String get requestsErrorTitle;
+
+  /// No description provided for @requestsRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get requestsRetry;
+
+  /// No description provided for @requestsUnreadableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The requests could not be fully read'**
+  String get requestsUnreadableTitle;
+
+  /// No description provided for @requestsUnreadableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'There are open requests behind this, but they could not be read.'**
+  String get requestsUnreadableBody;
+
+  /// No description provided for @requestsSkippedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} request could not be shown} other{{count} requests could not be shown}}'**
+  String requestsSkippedNotice(num count);
+
+  /// No description provided for @requestsTruncatedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the first {count} open requests are shown here. More are still behind them.'**
+  String requestsTruncatedNotice(num count);
+
+  /// No description provided for @requestsNoActionNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This list shows what is needed and where. Accepting a request is not available in this build yet.'**
+  String get requestsNoActionNote;
 
   /// No description provided for @errorPostTextRequired.
   ///

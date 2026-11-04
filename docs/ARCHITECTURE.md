@@ -863,8 +863,9 @@ still never asks for more than fifty documents in one go.
 Each document goes through `PostDocument.fromMap`. One that fails validation is
 dropped and counted into `FeedPage.skipped` rather than replacing the page with
 an error: one post written by a future version of the app, or by a console user,
-should not empty a donor's feed. The count is asserted by tests and is the
-number that tells a debugger whether the schema has drifted. No document's
+should not empty a donor's feed. The count is asserted by tests, is surfaced on both
+screens and in a warning log line (§14.4), and is the number that tells a debugger
+whether the schema has drifted. No document's
 content reaches a debug message.
 
 **An empty page is not an empty feed.** The two facts above combine into a page
@@ -895,17 +896,18 @@ contract was already right:
 
 The bound is a cost, and it is stated rather than hidden. A donor whose newest
 fifty documents are unreadable spends five reads and sees a list with nothing in it
-and a button under it: honest about there being more, silent about why this page is
-blank, and no closer to the readable posts than five more taps. That is the intended
-trade against an empty card that lies. Two limits stay open with it, and neither is
-cheap to answer from here: "malformed" and "genuinely empty" are distinguishable
-only because `hasMore` happens to say so — the query cannot express the difference,
-so anything that wanted to explain it would have to read, and only the controller
-knows which of the two it is holding — and `FeedPage.skipped` is **not surfaced to
-anyone**: no operator view, no diagnostic screen, no log line carries it, so schema
-drift today shows itself only as a feed with fewer posts than the collection
-contains. A home for that count belongs with the rules stage, which is the only
-other place that reads these documents.
+and a button under it: honest about there being more, and no closer to the readable
+posts than five more taps. That is the intended trade against an empty card that lies.
+Since §14.4 it is **no longer silent about why**: the refusals accumulate onto
+`FeedState.skipped`, the feed prints that number in one line above its footer, the
+dashboard's community section has a fifth state that names it instead of saying "No
+posts yet", and `FeedController` logs a warning on the `feed.read` tag that survives a
+release build. What still stays open is the *remote* half — no counter an operator can
+query without a device in hand, and no admin surface — and that belongs with the
+monitoring or backend stage, not with a client that can only report what it itself
+failed to read. "Malformed" and "genuinely empty" remain distinguishable only because
+`hasMore` happens to say so: the query cannot express the difference, and only the
+controller knows which of the two it is holding.
 
 ### The controller: one read at a time
 
@@ -1007,7 +1009,8 @@ available rather than conditional on data existing:
 | The preview shows | The control | Copy |
 | --- | --- | --- |
 | posts | **See all** in the section header, and a tap on any preview card | `homeSeeAll` — "See all" |
-| nothing, because the collection is empty or the read walked to its cap | **Open the community** on the empty card | `homeFeedOpenAction` — "Open the community" |
+| nothing, because the collection is exhausted and empty | **Open the community** on the empty card | `homeFeedOpenAction` — "Open the community" |
+| nothing, because every document the walk read was refused and more are behind them | **Open the community** on a card that says the feed could not be fully read and names how many were skipped (§14.4) | `feedUnreadableTitle`, `feedSkippedNotice`, `homeFeedOpenAction` |
 | nothing, because the first read failed | **Try again** on the error card, which re-runs the read | `feedRetry` — "Try again" |
 | nothing, because the read is in flight | a 22 dp spinner, the mark the feed's own footer uses | — |
 
@@ -1019,6 +1022,15 @@ assert it in the negative. What changed is that an empty community section is no
 longer a dead end: it offers the *page* rather than a list to see, which is where a
 first post would be written. "See all" promises a list; "Open the community"
 promises the screen, and both are true of what they open.
+
+The third row is the one §14.4 added, and it is separated from the second on
+purpose: "nobody has posted" is a claim about the community and "this app could not
+read what it posted" is a claim about the app, and the dashboard used to say the first
+when the second was true. It carries **Open the community** rather than **Try again**,
+which is a deliberate break from the error card's pattern — `loadFirstPage()` re-asks
+the same window and would earn the same refusal, so a retry button there is a control
+that cannot do the thing it appears to offer. Paging forward is what gets past a bad
+document, and the feed screen is where paging lives.
 
 **The preview is a projection, not a second read.** `feedPreviewProvider` watches
 `feedControllerProvider` and maps `state.posts.take(feedPreviewLimit)` — three, not
