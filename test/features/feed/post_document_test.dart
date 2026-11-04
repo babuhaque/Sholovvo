@@ -467,4 +467,51 @@ void main() {
       expect(failure.debugMessage, isNot(contains('private detail')));
     });
   });
+
+  group('PostDocument.fromMap: legacy singular imageUrl', () {
+    test('folds a pre-Stage-8 imageUrl into imageUrls when there is no array', () {
+      // 19 live posts were written before the array schema existed; reading the
+      // modern array alone would render them with a photograph the author
+      // attached silently missing.
+      final Map<String, dynamic> data = _document()
+        ..remove('imageUrls')
+        ..['imageUrl'] = 'https://cdn.test/legacy.jpg';
+
+      final Post post = PostDocument.fromMap(
+        id: 'post-1',
+        data: data,
+      ).valueOrNull!;
+
+      expect(post.imageUrls, <String>['https://cdn.test/legacy.jpg']);
+    });
+
+    test('the modern array wins over a stray legacy key', () {
+      final Map<String, dynamic> data = _document()
+        ..['imageUrls'] = <String>['https://cdn.test/1.jpg']
+        ..['imageUrl'] = 'https://cdn.test/legacy.jpg';
+
+      final Post post = PostDocument.fromMap(
+        id: 'post-1',
+        data: data,
+      ).valueOrNull!;
+
+      expect(post.imageUrls, <String>['https://cdn.test/1.jpg']);
+    });
+
+    test('a blank or absent legacy url is not folded in', () {
+      final Map<String, dynamic> blank = _document()
+        ..remove('imageUrls')
+        ..['imageUrl'] = '   ';
+      final Map<String, dynamic> absent = _document()..remove('imageUrls');
+
+      expect(
+        PostDocument.fromMap(id: 'post-1', data: blank).valueOrNull!.imageUrls,
+        isEmpty,
+      );
+      expect(
+        PostDocument.fromMap(id: 'post-1', data: absent).valueOrNull!.imageUrls,
+        isEmpty,
+      );
+    });
+  });
 }

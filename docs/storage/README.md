@@ -14,7 +14,15 @@ build yet."*, the compose screen says the same about photographs, and neither
 offers a control that could only fail.
 
 - `supabase-avatars.sql` — the `avatars` bucket and its two storage policies (Stage 6).
-- `supabase-post-images.sql` — the `post-images` bucket and its two storage policies (Stage 8.3).
+- `supabase-community-posts.sql` — the **`community-posts`** bucket and its two storage
+  policies (Stage 6 / feed image upload). This is the owner-authoritative feed
+  bucket; `SupabaseConfig.defaultPostImagesBucket` now targets it, and the app
+  must not be pointed back at `post-images`, which would orphan the images
+  already uploaded there.
+- `supabase-post-images.sql` — the earlier `post-images` design (Stage 8.3).
+  **Superseded for new uploads** by `supabase-community-posts.sql`; retained for
+  history and for the case where a build overrides the bucket via
+  `SUPABASE_POST_IMAGES_BUCKET`.
 - This file — the order of operations, how to verify, and what is still unproven.
 
 Both buckets belong in **one** Supabase project, because both depend on the same
@@ -45,7 +53,7 @@ Two ordering rules are the whole design and are covered by tests:
 | --- | --- | --- |
 | Pick | `ImagePickerPhotoPicker` | The same adapter and the same 1024 px / quality 85 downscale as the avatar sheet |
 | Check | `PhotoValidator` | Same 5 MB cap, same magic-byte format sniffing, plus `PostValidator`'s four-image ceiling for the draft as a whole |
-| Upload | `SupabasePostImageStorage.upload` | `POST` to `post-images/{firebaseUid}/post-{millis}-{n}.{ext}` with the donor's **Firebase ID token** as the bearer |
+| Upload | `SupabasePostImageStorage.upload` | `POST` to `community-posts/{firebaseUid}/post-{millis}-{n}.{ext}` with the donor's **Firebase ID token** as the bearer |
 | Remove one | `ComposeController.removeImage` | The image leaves the draft immediately, then the object is deleted best-effort by **path** (`Post.imagePaths` is stored beside the URLs so nothing has to parse a URL) |
 | Publish | `FirestorePostRepository.publish` | One `posts` document create, after the text and the images have already been validated |
 | Abandon | `ComposeController.discard` | Every object the draft uploaded is deleted, because no document will ever own them |

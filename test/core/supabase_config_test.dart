@@ -169,4 +169,34 @@ void main() {
       expect(text, isNot(contains('do_not_log_me')));
     });
   });
+
+  group('SupabaseConfig.postImagesBucket', () {
+    test('defaults to the authoritative community-posts bucket', () {
+      const SupabaseConfig config = SupabaseConfig();
+
+      // The owner decision is that community-posts is authoritative and must not
+      // be switched back to the earlier post-images name.
+      expect(SupabaseConfig.defaultPostImagesBucket, 'community-posts');
+      expect(config.postImagesBucket, 'community-posts');
+    });
+
+    test('honours an explicit bucket for a build that overrides it', () {
+      const SupabaseConfig config = SupabaseConfig(
+        postImagesBucket: 'some-other-bucket',
+      );
+
+      expect(config.postImagesBucket, 'some-other-bucket');
+    });
+
+    test('fromEnvironment falls back to the default when no define is present', () {
+      // The test runner passes no `--dart-define`, so the bucket define is empty
+      // and the authoritative default must hold rather than an empty string.
+      final SupabaseConfig config = SupabaseConfig.fromEnvironment();
+
+      expect(
+        config.postImagesBucket,
+        SupabaseConfig.defaultPostImagesBucket,
+      );
+    });
+  });
 }

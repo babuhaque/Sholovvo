@@ -231,7 +231,20 @@ abstract final class PostDocument {
       return FailureResult<Post>(editedAt.failureOrNull!);
     }
 
-    final List<String> urls = imageUrls.valueOrNull!;
+    List<String> urls = imageUrls.valueOrNull!;
+    // Legacy read compatibility. A pre-Stage-8 post stored a single `imageUrl`
+    // and has no `imageUrls` array, so reading the modern array alone would drop
+    // a photograph its author really attached. When the modern array is absent or
+    // empty and a non-blank legacy url is present, it folds into the one-element
+    // list. This is read-only — [toMap] never writes `imageUrl` — and it fires
+    // only when the modern array is empty, so a modern post is never second-guessed
+    // by a stray legacy key.
+    if (urls.isEmpty) {
+      final Object? legacyUrl = data['imageUrl'];
+      if (legacyUrl is String && legacyUrl.trim().isNotEmpty) {
+        urls = <String>[legacyUrl.trim()];
+      }
+    }
     final List<String> paths = imagePaths.valueOrNull!;
 
     final PostIssue? issue = PostValidator.validate(

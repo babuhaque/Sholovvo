@@ -34,6 +34,11 @@ enum SupabaseKeyRejection {
 ///             --dart-define=SUPABASE_ANON_KEY=<publishable key>
 /// ```
 ///
+/// A third, optional define retargets the feed bucket for a build that must
+/// write somewhere other than [defaultPostImagesBucket]:
+/// `--dart-define=SUPABASE_POST_IMAGES_BUCKET=<bucket>`. It is left unset in the
+/// normal case, so the authoritative `community-posts` default holds.
+///
 /// With neither define present the app is simply *not configured* for photo
 /// storage: the profile still works, and the photo sheet says so instead of
 /// showing a control that cannot succeed.
@@ -53,10 +58,13 @@ final class SupabaseConfig {
   factory SupabaseConfig.fromEnvironment() {
     const String rawUrl = String.fromEnvironment('SUPABASE_URL');
     const String rawKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    const String rawBucket = String.fromEnvironment('SUPABASE_POST_IMAGES_BUCKET');
     final SupabaseKeyRejection? rejection = rejectPrivilegedKey(rawKey);
+    final String bucket = rawBucket.trim();
     return SupabaseConfig(
       url: rawUrl.trim(),
       publishableKey: rejection == null ? rawKey.trim() : '',
+      postImagesBucket: bucket.isEmpty ? defaultPostImagesBucket : bucket,
       rejection: rejection,
     );
   }
@@ -75,7 +83,14 @@ final class SupabaseConfig {
   /// replaced in place and at most one exists per account, while post photos
   /// accumulate four per post and outlive the screen that uploaded them. Keeping
   /// them apart also means a policy mistake on one cannot expose the other.
-  static const String defaultPostImagesBucket = 'post-images';
+  ///
+  /// `community-posts` is the owner-authoritative feed bucket and already holds
+  /// photographs uploaded by an earlier build, so it must not be switched back to
+  /// the earlier `post-images` name: doing so would orphan the objects that are
+  /// already there and the absolute URLs that reference them. A build can still
+  /// target another bucket at run time with `SUPABASE_POST_IMAGES_BUCKET` without
+  /// touching this default.
+  static const String defaultPostImagesBucket = 'community-posts';
 
   /// Project URL, e.g. `https://abcdefgh.supabase.co`. Empty when unset.
   final String url;
