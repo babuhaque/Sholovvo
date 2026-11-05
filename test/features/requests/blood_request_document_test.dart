@@ -34,6 +34,36 @@ void main() {
       expect(_issueOf(_map(id: '  ')), RequestIssue.idMissing.name);
     });
 
+    test('a document whose userId is missing, non-String, or empty', () {
+      // The create rule's `hasAll(['userId', …])` plus
+      // `request.resource.data.userId == request.auth.uid` guarantees every
+      // document written by this app carries a non-empty String `userId`.
+      // A document that does not is either legacy (pre-M3-C1) or hand-edited;
+      // the mapper refuses rather than defaulting, because the detail screen's
+      // owner-only cancel affordance trusts this field to answer "is this
+      // mine". A wrong answer there is a permission leak at the UI layer
+      // (rules still catch the write, but the button's presence is a claim).
+      expect(
+        _issueOf(_map(fields: requestFields(userId: ''))),
+        RequestIssue.userIdMissing.name,
+      );
+      // `requestFields` types the param `String`, so a wrong-typed userId has
+      // to be injected by editing the returned map. This is exactly the shape
+      // the mapper has to defend against — a legacy document with a number or
+      // null where a String belongs.
+      final Map<String, Object?> numberUid = requestFields()..['userId'] = 42;
+      expect(
+        _issueOf(_map(fields: numberUid)),
+        RequestIssue.userIdMissing.name,
+      );
+      final Map<String, Object?> absentUid = requestFields()
+        ..remove('userId');
+      expect(
+        _issueOf(_map(fields: absentUid)),
+        RequestIssue.userIdMissing.name,
+      );
+    });
+
     test('a request that is not open, in each of the ways it might not be', () {
       for (final String status in <String>[
         'accepted',
@@ -120,6 +150,7 @@ void main() {
     test('the fields a donor decides on, and only those', () {
       final BloodRequest request = _map(
         fields: requestFields(
+          userId: 'uid-owner-1',
           bloodGroup: 'B+',
           bloodBags: 3,
           hospitalName: 'Dhaka Medical College',
@@ -127,6 +158,7 @@ void main() {
       ).valueOrNull!;
 
       expect(request.id, 'req-1');
+      expect(request.userId, 'uid-owner-1');
       expect(request.bloodGroup, 'B+');
       expect(request.units, 3);
       expect(request.hospitalName, 'Dhaka Medical College');

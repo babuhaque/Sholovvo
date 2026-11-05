@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/design/widgets/error_banner.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
+import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
 import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
 import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
@@ -143,10 +144,11 @@ void main() {
     ) async {
       await _pumpRequests(tester, requests: _requests(1));
 
-      // The footer is the honest answer to "where do I say yes?": a sentence, not
-      // a button. §9 asks for no controls that look functional and are not.
+      // The footer points the donor at the place where accepting happens — the
+      // detail screen — and promises no control here. §9 asks for no controls that
+      // look functional and are not.
       expect(
-        find.textContaining('Accepting a request is not available'),
+        find.textContaining('Open a request to accept it if you are eligible'),
         findsOneWidget,
       );
       expect(find.text('Load more'), findsNothing);
@@ -502,6 +504,155 @@ void main() {
 
       expect(find.byType(RequestTile), findsNWidgets(2));
       expect(find.text('No open requests right now'), findsNothing);
+    });
+  });
+
+  group('RequestsScreen blood-group filter', () {
+    // Three requests with three distinct groups, created in a helper so
+    // tests reference the exact string that drives the filter branch.
+    final List<BloodRequest> mixed = <BloodRequest>[
+      fakeRequest(id: 'r1', bloodGroup: 'A+', hospitalName: 'A Hospital'),
+      fakeRequest(id: 'r2', bloodGroup: 'O+', hospitalName: 'O Hospital'),
+      fakeRequest(id: 'r3', bloodGroup: 'AB-', hospitalName: 'AB Hospital'),
+    ];
+
+    testWidgets('shows eight filter chips when the list is ready', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRequests(tester, requests: mixed);
+
+      // Exactly the eight groups the rules accept, and nothing else.
+      for (final String group in BloodGroups.all) {
+        expect(
+          find.widgetWithText(ChoiceChip, group),
+          findsOneWidget,
+          reason: 'chip for $group should render once',
+        );
+      }
+      expect(find.byType(ChoiceChip), findsNWidgets(8));
+    });
+
+    testWidgets('all requests show when no filter is active', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRequests(tester, requests: mixed);
+
+      expect(find.byType(RequestTile), findsNWidgets(3));
+    });
+
+    testWidgets('tapping a chip filters the list to that group', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRequests(tester, requests: mixed);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'O+'));
+      await tester.pump();
+
+      // Only the O+ request survives. The other two are absent, not hidden
+      // behind overflow.
+      expect(find.byType(RequestTile), findsOneWidget);
+      expect(find.text('O Hospital'), findsOneWidget);
+      expect(find.text('A Hospital'), findsNothing);
+      expect(find.text('AB Hospital'), findsNothing);
+    });
+
+    testWidgets('tapping the selected chip clears the filter', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRequests(tester, requests: mixed);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'A+'));
+      await tester.pump();
+      expect(find.byType(RequestTile), findsOneWidget);
+
+      // Re-tap the same chip — `onSelected(false)` fires and the filter
+      // clears, showing all three again.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'A+'));
+      await tester.pump();
+      expect(find.byType(RequestTile), findsNWidgets(3));
+    });
+
+    testWidgets('switching from one filter to another is a single tap', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRequests(tester, requests: mixed);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'A+'));
+      await tester.pump();
+      expect(find.byType(RequestTile), findsOneWidget);
+
+      // Selecting a different chip replaces the filter (does not compound
+      // to two selected at once).
+      await tester.tap(find.widgetWithText(ChoiceChip, 'AB-'));
+      await tester.pump();
+      expect(find.byType(RequestTile), findsOneWidget);
+      expect(find.text('AB Hospital'), findsOneWidget);
+      expect(find.text('A Hospital'), findsNothing);
+    });
+
+    testWidgets('a filter that matches nothing shows the filter-empty message',
+        (WidgetTester tester) async {
+      final List<BloodRequest> onlyA = <BloodRequest>[
+        fakeRequest(id: 'only-a', bloodGroup: 'A+', hospitalName: 'Alpha'),
+      ];
+      await _pumpRequests(tester, requests: onlyA);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'B-'));
+      await tester.pump();
+
+      // The filter-empty text appears, the list is gone, and the chips
+      // remain so the donor can clear.
+      expect(find.text('No open requests need this group right now.'),
+          findsOneWidget);
+      expect(find.byType(RequestTile), findsNothing);
+      expect(find.byType(ChoiceChip), findsNWidgets(8));
+    });
+
+    testWidgets('the filter chip row does not show while loading', (
+      WidgetTester tester,
+    ) async {
+      // A gate that never resolves keeps the screen in `isInitialLoading`.
+      // There is nothing to filter yet, so the chips must not render.
+      final FakeRequestRepository repository = await _pumpRequests(
+        tester,
+        requests: <BloodRequest>[],
+        gate: Completer<void>(),
+      );
+
+      expect(find.byType(ChoiceChip), findsNothing);
+
+      repository.gate!.complete();
+      await _settle(tester);
+      // Once the gate resolves and shows an empty collection, the empty
+      // card renders instead of the chips — there is no list to narrow.
+      expect(find.byType(ChoiceChip), findsNothing);
+    });
+
+    testWidgets('filter label is localised in Bangla', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRequests(tester, requests: mixed, locale: const Locale('bn'));
+
+      expect(
+        find.text(bangla.requestsFilterLabel.toUpperCase()),
+        findsOneWidget,
+      );
+      // The chips still render (group strings are locale-invariant).
+      expect(find.byType(ChoiceChip), findsNWidgets(8));
+    });
+
+    testWidgets('filter chips fit a narrow screen (320x600) without overflow', (
+      WidgetTester tester,
+    ) async {
+      await _pumpRequests(
+        tester,
+        requests: mixed,
+        size: const Size(320, 600),
+      );
+
+      expect(tester.takeException(), isNull);
+      // All eight are present and at least partially visible.
+      expect(find.byType(ChoiceChip), findsNWidgets(8));
     });
   });
 }

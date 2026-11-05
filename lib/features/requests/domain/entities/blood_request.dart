@@ -37,6 +37,7 @@ import 'package:flutter/foundation.dart';
 final class BloodRequest {
   const BloodRequest({
     required this.id,
+    required this.userId,
     required this.bloodGroup,
     required this.hospitalName,
     required this.units,
@@ -47,6 +48,20 @@ final class BloodRequest {
   /// The document id. Also the key the list deduplicates on, and the address a
   /// later stage hands to a response write.
   final String id;
+
+  /// The Firebase uid of the account that raised this request.
+  ///
+  /// Public by design. The create rule requires `userId` in `hasAll`, and it
+  /// pins the write to the caller (`request.resource.data.userId ==
+  /// request.auth.uid`); the collection's `allow read: if request.auth !=
+  /// null` does not hide it. Not a secret, and not PII: a Firebase uid is a
+  /// stable identifier this app never displays. It is here because the detail
+  /// screen has to know whether the caller is the owner, and that answer is
+  /// only safe to derive from a value the rules already guarantee to be on
+  /// the document. A cancelled request cannot be lifted from the list by
+  /// any other party, and a per-row "this is mine" affordance needs this
+  /// field to exist without opening a second read.
+  final String userId;
 
   /// One of the eight groups [firestore.rules] accepts. Anything else is refused
   /// by the mapper rather than rendered: a ninth spelling on a badge next to a

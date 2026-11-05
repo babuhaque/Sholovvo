@@ -16,6 +16,10 @@ class PreferencesStore {
 
   final SharedPreferences _prefs;
 
+  /// Exposes the underlying store so feature-level services (saved posts,
+  /// drafts) can persist without adding new bootstrap gates.
+  SharedPreferences get raw => _prefs;
+
   static const String _themeModeKey = 'solovvo.themeMode';
   static const String _localeCodeKey = 'solovvo.localeCode';
 

@@ -10,9 +10,14 @@ import 'package:sholovvo_app/design/widgets/empty_state_card.dart';
 import 'package:sholovvo_app/design/widgets/error_banner.dart';
 import 'package:sholovvo_app/design/widgets/soft_glow_background.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
+import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
 import 'package:sholovvo_app/features/requests/application/requests_state.dart';
+import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
 import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
+import 'package:sholovvo_app/features/requests/presentation/create_request_screen.dart';
+import 'package:sholovvo_app/features/requests/presentation/my_requests_screen.dart';
+import 'package:sholovvo_app/features/requests/presentation/request_detail_screen.dart';
 import 'package:sholovvo_app/features/requests/presentation/requests_messages.dart';
 import 'package:sholovvo_app/features/requests/presentation/widgets/request_tile.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
@@ -63,6 +68,15 @@ class RequestsScreen extends ConsumerStatefulWidget {
 }
 
 class _RequestsScreenState extends ConsumerState<RequestsScreen> {
+  /// Active blood-group filter, or null for "show all".
+  ///
+  /// Local widget state rather than a provider because the filter is
+  /// ephemeral by design: it is lost when the screen pops, which is what
+  /// a donor expects from a page-level narrowing tool. A provider would
+  /// persist across navigation, making "I filtered to O+ and then backed
+  /// out to home and the dashboard showed only O+ requests" — a bug.
+  String? _bloodGroupFilter;
+
   @override
   void initState() {
     super.initState();
@@ -86,7 +100,37 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     );
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.requestsTitle)),
+      appBar: AppBar(
+        title: Text(l10n.requestsTitle),
+        actions: <Widget>[
+          // The owner's view. Same underlying window, different question: the
+          // list answers "who needs blood", this one answers "what did I
+          // raise". Kept as an app-bar action rather than a bottom nav
+          // because the shell owns two destinations (Home, Profile) and
+          // neither is a request surface; the two request screens are
+          // siblings inside the requests push, not tabs.
+          IconButton(
+            tooltip: l10n.requestsMyAction,
+            icon: const Icon(Icons.person_outline_rounded),
+            onPressed: () => unawaited(
+              Navigator.of(context).push<void>(MyRequestsScreen.route()),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final String? newId = await Navigator.of(context)
+              .push<String>(CreateRequestScreen.route());
+          if (newId != null && mounted) {
+            unawaited(ref.read(requestsControllerProvider.notifier).refresh());
+          }
+        },
+        backgroundColor: context.palette.brandInk,
+        foregroundColor: context.palette.onBrand,
+        icon: const Icon(Icons.add_rounded),
+        label: Text(l10n.requestsCreateAction),
+      ),
       body: SoftGlowBackground(
         child: SafeArea(
           child: LayoutBuilder(
@@ -208,6 +252,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       );
     }
 
+    // The visible subset after applying the blood-group filter. When no
+    // filter is active, this is the full window.
+    final List<BloodRequest> visible = _bloodGroupFilter == null
+        ? state.requests
+        : state.requests
+            .where((BloodRequest r) => r.bloodGroup == _bloodGroupFilter)
+            .toList(growable: false);
+
     return SliverMainAxisGroup(
       slivers: <Widget>[
         // A refresh that failed leaves the requests above it on screen and says so
@@ -221,13 +273,78 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               ),
             ),
           ),
-        SliverList.builder(
-          itemCount: state.requests.length,
-          itemBuilder: (BuildContext context, int index) => Padding(
+        // The filter chip row. Always present once there is a list to
+        // filter — hiding it when the current filter produces a zero-result
+        // view would trap the donor in a dead end (no way to clear the
+        // filter except by pull-to-refresh, which does not clear state).
+        SliverToBoxAdapter(
+          child: Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: RequestTile(request: state.requests[index]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  l10n.requestsFilterLabel.toUpperCase(),
+                  style: text.labelSmall?.copyWith(letterSpacing: 1.1),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xxs,
+                  children: <Widget>[
+                    for (final String group in BloodGroups.all)
+                      ChoiceChip(
+                        label: Text(group),
+                        selected: _bloodGroupFilter == group,
+                        showCheckmark: false,
+                        onSelected: (bool isSelected) => setState(
+                          () => _bloodGroupFilter = isSelected ? group : null,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
+        // The list, or a one-line message when the active filter produces
+        // zero results. The filter-empty message is deliberately smaller
+        // than the full `EmptyStateCard` the unfiltered empty list gets:
+        // the requests exist, they just do not match this group, and a
+        // full-card layout would imply the whole collection is empty.
+        if (visible.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+              child: Text(
+                l10n.requestsFilterEmpty,
+                textAlign: TextAlign.center,
+                style: text.bodyMedium,
+              ),
+            ),
+          )
+        else
+          SliverList.builder(
+            itemCount: visible.length,
+            itemBuilder: (BuildContext context, int index) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: RequestTile(
+                request: visible[index],
+                onTap: () async {
+                  final String? cancelledId = await Navigator.of(
+                    context,
+                  ).push<String?>(
+                    RequestDetailScreen.route(visible[index]),
+                  );
+                  if (cancelledId != null && mounted) {
+                    unawaited(
+                      ref.read(requestsControllerProvider.notifier).refresh(),
+                    );
+                  }
+                },
+              ),
+            ),
+          ),
         // The two things this list is not, said separately because they are
         // different sentences: documents the app could not read, and documents it
         // never looked at. Neither is a failure — the list above is real — and

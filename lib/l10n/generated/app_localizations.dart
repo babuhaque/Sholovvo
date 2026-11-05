@@ -1364,6 +1364,432 @@ abstract class AppLocalizations {
   /// **'Copy text'**
   String get feedCopy;
 
+  /// No description provided for @feedShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get feedShare;
+
+  /// No description provided for @feedSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get feedSave;
+
+  /// No description provided for @feedEditAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get feedEditAction;
+
+  /// No description provided for @feedEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit post'**
+  String get feedEditTitle;
+
+  /// No description provided for @feedEditHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the text of your post.'**
+  String get feedEditHint;
+
+  /// No description provided for @feedEditSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get feedEditSave;
+
+  /// No description provided for @feedEditSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get feedEditSaving;
+
+  /// No description provided for @feedEditError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save your changes.'**
+  String get feedEditError;
+
+  /// No description provided for @feedDeleteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete post'**
+  String get feedDeleteAction;
+
+  /// No description provided for @feedDeleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this post?'**
+  String get feedDeleteConfirmTitle;
+
+  /// No description provided for @feedDeleteConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This cannot be undone. The post and its comments will be permanently removed.'**
+  String get feedDeleteConfirmBody;
+
+  /// No description provided for @feedDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get feedDeleteConfirm;
+
+  /// No description provided for @feedDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Post deleted.'**
+  String get feedDeleted;
+
+  /// No description provided for @feedDeleteError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not delete the post.'**
+  String get feedDeleteError;
+
+  /// No description provided for @feedSavedFilterOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing saved'**
+  String get feedSavedFilterOn;
+
+  /// No description provided for @feedSavedFilterOff.
+  ///
+  /// In en, this message translates to:
+  /// **'All posts'**
+  String get feedSavedFilterOff;
+
+  /// No description provided for @feedSavedEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No saved posts yet.'**
+  String get feedSavedEmpty;
+
+  /// No description provided for @requestsCreateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New blood request'**
+  String get requestsCreateTitle;
+
+  /// No description provided for @requestsCreateAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Create request'**
+  String get requestsCreateAction;
+
+  /// No description provided for @requestsBloodGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Blood group'**
+  String get requestsBloodGroup;
+
+  /// No description provided for @requestsBags.
+  ///
+  /// In en, this message translates to:
+  /// **'Bags needed'**
+  String get requestsBags;
+
+  /// No description provided for @requestsHospital.
+  ///
+  /// In en, this message translates to:
+  /// **'Hospital name'**
+  String get requestsHospital;
+
+  /// No description provided for @requestsDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date needed'**
+  String get requestsDate;
+
+  /// No description provided for @requestsTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Time needed'**
+  String get requestsTime;
+
+  /// No description provided for @requestsNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes (optional)'**
+  String get requestsNotes;
+
+  /// No description provided for @requestsNotesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Any additional details…'**
+  String get requestsNotesHint;
+
+  /// No description provided for @requestsCreateSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit request'**
+  String get requestsCreateSubmit;
+
+  /// No description provided for @requestsCreating.
+  ///
+  /// In en, this message translates to:
+  /// **'Creating…'**
+  String get requestsCreating;
+
+  /// No description provided for @requestsCreateSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Request posted.'**
+  String get requestsCreateSuccess;
+
+  /// No description provided for @requestsCreateError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create the request.'**
+  String get requestsCreateError;
+
+  /// No description provided for @requestsRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'This field is required'**
+  String get requestsRequired;
+
+  /// No description provided for @requestsDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Request detail'**
+  String get requestsDetailTitle;
+
+  /// No description provided for @requestsDetailNoActionNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This screen shows what is needed and where. Contacting the requester is not available in this build yet.'**
+  String get requestsDetailNoActionNote;
+
+  /// No description provided for @requestsAcceptAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept request'**
+  String get requestsAcceptAction;
+
+  /// No description provided for @requestsAcceptConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept this request?'**
+  String get requestsAcceptConfirmTitle;
+
+  /// No description provided for @requestsAcceptConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You are committing to donate for this patient. The requester will see that you have accepted.'**
+  String get requestsAcceptConfirmBody;
+
+  /// No description provided for @requestsAcceptConfirmYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, I will donate'**
+  String get requestsAcceptConfirmYes;
+
+  /// No description provided for @requestsAcceptConfirmNo.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get requestsAcceptConfirmNo;
+
+  /// No description provided for @requestsAcceptError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not accept the request.'**
+  String get requestsAcceptError;
+
+  /// No description provided for @requestsCancelAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel request'**
+  String get requestsCancelAction;
+
+  /// No description provided for @requestsCancelConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel this request?'**
+  String get requestsCancelConfirmTitle;
+
+  /// No description provided for @requestsCancelConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This withdraws your request from the open list. Donors who saw it will no longer be notified.'**
+  String get requestsCancelConfirmBody;
+
+  /// No description provided for @requestsCancelConfirmYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, cancel it'**
+  String get requestsCancelConfirmYes;
+
+  /// No description provided for @requestsCancelConfirmNo.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep it'**
+  String get requestsCancelConfirmNo;
+
+  /// No description provided for @requestsCancelSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Request cancelled.'**
+  String get requestsCancelSuccess;
+
+  /// No description provided for @requestsCancelError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not cancel the request.'**
+  String get requestsCancelError;
+
+  /// No description provided for @requestsEditAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit request'**
+  String get requestsEditAction;
+
+  /// No description provided for @requestsEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit request'**
+  String get requestsEditTitle;
+
+  /// No description provided for @requestsEditSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get requestsEditSubmit;
+
+  /// No description provided for @requestsEditSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get requestsEditSaving;
+
+  /// No description provided for @requestsEditSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Request updated.'**
+  String get requestsEditSuccess;
+
+  /// No description provided for @requestsEditError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update the request.'**
+  String get requestsEditError;
+
+  /// No description provided for @requestsContactAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact details'**
+  String get requestsContactAction;
+
+  /// No description provided for @requestsContactTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Requester contact details'**
+  String get requestsContactTitle;
+
+  /// No description provided for @requestsContactIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Stored privately with this request. Not shown to donors in this build.'**
+  String get requestsContactIntro;
+
+  /// No description provided for @requestsPatientName.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient name'**
+  String get requestsPatientName;
+
+  /// No description provided for @requestsPhoneNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone number'**
+  String get requestsPhoneNumber;
+
+  /// No description provided for @requestsHospitalAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Hospital address'**
+  String get requestsHospitalAddress;
+
+  /// No description provided for @requestsContactSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Save contact details'**
+  String get requestsContactSubmit;
+
+  /// No description provided for @requestsContactSaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get requestsContactSaving;
+
+  /// No description provided for @requestsContactLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get requestsContactLoading;
+
+  /// No description provided for @requestsContactSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact details saved.'**
+  String get requestsContactSuccess;
+
+  /// No description provided for @requestsContactError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the contact details.'**
+  String get requestsContactError;
+
+  /// No description provided for @requestsContactLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your saved contact details.'**
+  String get requestsContactLoadError;
+
+  /// No description provided for @requestsContactRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get requestsContactRetry;
+
+  /// No description provided for @requestsMyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'My requests'**
+  String get requestsMyAction;
+
+  /// No description provided for @requestsMyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My requests'**
+  String get requestsMyTitle;
+
+  /// No description provided for @requestsMyEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You have no open requests'**
+  String get requestsMyEmptyTitle;
+
+  /// No description provided for @requestsMyEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests you create appear here until they are filled or cancelled.'**
+  String get requestsMyEmptyBody;
+
+  /// No description provided for @requestsFilterLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by group'**
+  String get requestsFilterLabel;
+
+  /// No description provided for @requestsFilterEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No open requests need this group right now.'**
+  String get requestsFilterEmpty;
+
   /// No description provided for @feedCopied.
   ///
   /// In en, this message translates to:
@@ -1417,6 +1843,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, one{{count} comment} other{{count} comments}}'**
   String feedCommentCount(num count);
+
+  /// No description provided for @commentsSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments'**
+  String get commentsSheetTitle;
+
+  /// No description provided for @commentsEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'No comments yet. Be the first.'**
+  String get commentsEmptyBody;
+
+  /// No description provided for @commentsLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading comments…'**
+  String get commentsLoading;
+
+  /// No description provided for @commentsHintText.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a comment…'**
+  String get commentsHintText;
+
+  /// No description provided for @commentsSendTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get commentsSendTooltip;
+
+  /// No description provided for @commentsErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load comments'**
+  String get commentsErrorTitle;
+
+  /// No description provided for @commentsReplyPrefix.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply to {name}'**
+  String commentsReplyPrefix(String name);
+
+  /// No description provided for @commentsReplyingTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Replying to {name}'**
+  String commentsReplyingTo(String name);
+
+  /// No description provided for @commentsReplyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a reply…'**
+  String get commentsReplyHint;
+
+  /// No description provided for @commentsReplyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get commentsReplyAction;
+
+  /// No description provided for @commentsDeleteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get commentsDeleteAction;
+
+  /// No description provided for @reportTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Report'**
+  String get reportTooltip;
+
+  /// No description provided for @reportSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Report this post'**
+  String get reportSheetTitle;
+
+  /// No description provided for @reportCommentSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Report this comment'**
+  String get reportCommentSheetTitle;
+
+  /// No description provided for @reportReasonLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason'**
+  String get reportReasonLabel;
+
+  /// No description provided for @reportReasonSpam.
+  ///
+  /// In en, this message translates to:
+  /// **'Spam'**
+  String get reportReasonSpam;
+
+  /// No description provided for @reportReasonHarassment.
+  ///
+  /// In en, this message translates to:
+  /// **'Harassment'**
+  String get reportReasonHarassment;
+
+  /// No description provided for @reportReasonHateSpeech.
+  ///
+  /// In en, this message translates to:
+  /// **'Hate speech'**
+  String get reportReasonHateSpeech;
+
+  /// No description provided for @reportReasonMisinformation.
+  ///
+  /// In en, this message translates to:
+  /// **'Misinformation'**
+  String get reportReasonMisinformation;
+
+  /// No description provided for @reportReasonOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get reportReasonOther;
+
+  /// No description provided for @reportNoteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Additional details (optional)'**
+  String get reportNoteHint;
+
+  /// No description provided for @reportSubmitButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit report'**
+  String get reportSubmitButton;
+
+  /// No description provided for @reportSubmitting.
+  ///
+  /// In en, this message translates to:
+  /// **'Submitting…'**
+  String get reportSubmitting;
+
+  /// No description provided for @reportSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Report submitted. Thank you.'**
+  String get reportSuccess;
+
+  /// No description provided for @reportError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not submit report.'**
+  String get reportError;
 
   /// No description provided for @feedUnreadableTitle.
   ///
@@ -1607,7 +2183,7 @@ abstract class AppLocalizations {
   /// No description provided for @requestsNoActionNote.
   ///
   /// In en, this message translates to:
-  /// **'This list shows what is needed and where. Accepting a request is not available in this build yet.'**
+  /// **'This list shows what is needed and where. Open a request to accept it if you are eligible.'**
   String get requestsNoActionNote;
 
   /// No description provided for @donorSearchTitle.

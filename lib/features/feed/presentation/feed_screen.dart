@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/design/motion/fade_slide_route.dart';
@@ -12,9 +13,13 @@ import 'package:sholovvo_app/design/widgets/soft_glow_background.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
 import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/features/feed/application/feed_state.dart';
+import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/domain/feed_repository.dart';
+import 'package:sholovvo_app/features/feed/presentation/comment_sheet.dart';
 import 'package:sholovvo_app/features/feed/presentation/compose_post_screen.dart';
+import 'package:sholovvo_app/features/feed/presentation/edit_post_sheet.dart';
 import 'package:sholovvo_app/features/feed/presentation/feed_messages.dart';
+import 'package:sholovvo_app/features/feed/presentation/report_sheet.dart';
 import 'package:sholovvo_app/features/feed/presentation/widgets/feed_post_tile.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
@@ -26,11 +31,11 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// starts from the first page every time it is opened, rather than resuming a
 /// scroll position inside a tab the donor may have left hours ago.
 ///
-/// **The feed itself writes nothing.** The one write in the feature belongs to
-/// `ComposePostScreen`, pushed from the button below; the controller inserts the
-/// published post into the list so the donor sees it without waiting for a
-/// refresh. No like, no comment and no report: each is a rules decision this
-/// stage does not take.
+/// **The feed writes: likes, comments, and reports.** A tap on a post tile's
+/// heart toggles the viewer's like (optimistic, local-first). A tap on the
+/// comment bubble opens a modal thread; a tap on the flag opens a report sheet.
+/// Each write is handled by its own service and controller.
+/// Share pushes the text through the platform sheet; Save remains a future stage.
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -61,9 +66,16 @@ class FeedScreen extends ConsumerStatefulWidget {
 }
 
 class _FeedScreenState extends ConsumerState<FeedScreen> {
+  late final ScrollController _scrollController;
+
+  /// Distance from the bottom that triggers an automatic page load.
+  static const double _paginationThreshold = 300;
+
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController()
+      ..addListener(_onScroll);
     // Deferred to after the first frame: starting a read during build would
     // mutate a provider while the tree is being built. The controller's own
     // in-flight flag makes a remount harmless rather than a second paid read.
@@ -76,13 +88,49 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final double maxExtent = _scrollController.position.maxScrollExtent;
+    if (_scrollController.position.pixels >= maxExtent - _paginationThreshold) {
+      final FeedState feedState = ref.read(feedControllerProvider);
+      if (feedState.hasMore &&
+          feedState.status != FeedStatus.loadingMore &&
+          feedState.status != FeedStatus.loading) {
+        unawaited(ref.read(feedControllerProvider.notifier).loadMore());
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = context.l10n;
     final FeedState state = ref.watch(feedControllerProvider);
     final FeedController controller = ref.read(feedControllerProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.feedTitle)),
+      appBar: AppBar(
+        title: Text(l10n.feedTitle),
+        actions: <Widget>[
+          IconButton(
+            icon: Icon(
+              state.showOnlySaved
+                  ? Icons.bookmark
+                  : Icons.bookmark_border,
+            ),
+            tooltip: state.showOnlySaved
+                ? l10n.feedSavedFilterOff
+                : l10n.feedSavedFilterOn,
+            onPressed: controller.toggleSavedFilter,
+          ),
+        ],
+      ),
       // Labelled rather than a bare pencil: "Share an update" is the one thing a
       // donor comes to this screen to do besides reading, and an icon alone
       // would have to be guessed at.
@@ -117,6 +165,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 color: context.palette.brandInk,
                 backgroundColor: context.palette.surface,
                 child: CustomScrollView(
+                  controller: _scrollController,
                   // Everything except the list is short enough not to scroll,
                   // and a failed first load has to remain pullable.
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -163,6 +212,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   ) {
     final AppLocalizations l10n = context.l10n;
     final TextTheme text = Theme.of(context).textTheme;
+    final String? currentUid = ref.read(authUidProvider);
 
     if (state.isInitialLoading) {
       return const SliverFillRemaining(
@@ -205,6 +255,26 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       );
     }
 
+    // Apply the "Saved only" filter when active.
+    final List<Post> visible = state.showOnlySaved
+        ? state.posts
+            .where((Post p) => state.savedPostIds.contains(p.id))
+            .toList()
+        : state.posts;
+
+    if (visible.isEmpty && state.showOnlySaved) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: EmptyStateCard(
+            icon: Icons.bookmark_border,
+            title: l10n.feedSavedFilterOn,
+            body: l10n.feedSavedEmpty,
+          ),
+        ),
+      );
+    }
+
     return SliverMainAxisGroup(
       slivers: <Widget>[
         // A refresh that failed leaves the posts above it on screen and says so
@@ -219,11 +289,57 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ),
           ),
         SliverList.builder(
-          itemCount: state.posts.length,
-          itemBuilder: (BuildContext context, int index) => Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: FeedPostTile(post: state.posts[index]),
-          ),
+          itemCount: visible.length,
+          itemBuilder: (BuildContext context, int index) {
+            final Post post = visible[index];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: FeedPostTile(
+                post: post,
+                isLiked: state.likedPostIds.contains(post.id),
+                onLikeToggle: () {
+                  final String? uid =
+                      FirebaseAuth.instance.currentUser?.uid;
+                  if (uid != null) {
+                    unawaited(controller.toggleLike(post.id, uid));
+                  }
+                },
+                onCommentTap: () =>
+                    unawaited(CommentSheet.show(context, post.id)),
+                onReportTap: () => unawaited(
+                  ReportSheet.show(
+                    context,
+                    targetId: post.id,
+                    targetAuthorUid: post.authorUid,
+                  ),
+                ),
+                isSaved: state.savedPostIds.contains(post.id),
+                onSaveToggle: () => controller.toggleSave(post.id),
+                onEditTap: post.authorUid == currentUid
+                    ? () async {
+                        final String deletedMsg = context.l10n.feedDeleted;
+                        final ScaffoldMessengerState? messenger =
+                            ScaffoldMessenger.maybeOf(context);
+                        final Object? result = await EditPostSheet.show(
+                          context,
+                          post: post,
+                        );
+                        if (!mounted) return;
+                        if (result == 'deleted') {
+                          messenger
+                            ?..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              SnackBar(content: Text(deletedMsg)),
+                            );
+                        }
+                        if (result != null) {
+                          await controller.refresh();
+                        }
+                      }
+                    : null,
+              ),
+            );
+          },
         ),
         // The count of what this list is missing, in the same quiet register as
         // "end of feed" below it. Deliberately not an [ErrorBanner]: nothing

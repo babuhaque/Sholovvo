@@ -4,8 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/features/requests/data/models/blood_request_document.dart';
+import 'package:sholovvo_app/features/requests/data/request_accept_service.dart';
+import 'package:sholovvo_app/features/requests/data/request_cancel_service.dart';
+import 'package:sholovvo_app/features/requests/data/request_contact_service.dart';
 import 'package:sholovvo_app/features/requests/data/request_documents.dart';
+import 'package:sholovvo_app/features/requests/data/request_edit_service.dart';
 import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
+import 'package:sholovvo_app/features/requests/domain/entities/request_contact.dart';
 import 'package:sholovvo_app/features/requests/domain/open_requests.dart';
 import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
 
@@ -67,8 +72,14 @@ RequestDocument requestDocument(String id, {Map<String, Object?>? fields}) {
 ///
 /// [neededBy] and [neededByText] are set together the way the mapper sets them: an
 /// instant arrives with no verbatim text, and text alone means the instant is null.
+///
+/// [userId] defaults to `'uid-recipient'` — the same uid [requestFields] uses —
+/// so a caller that overrides [requestsAuthUidProvider] to the same string gets
+/// the owner branch of the detail screen without needing to know about either
+/// default.
 BloodRequest fakeRequest({
   String id = 'req-1',
+  String userId = 'uid-recipient',
   String bloodGroup = 'A+',
   String hospitalName = 'Dhaka Medical College',
   int units = 1,
@@ -77,6 +88,7 @@ BloodRequest fakeRequest({
 }) {
   return BloodRequest(
     id: id,
+    userId: userId,
     bloodGroup: bloodGroup,
     hospitalName: hospitalName,
     units: units,
@@ -177,5 +189,193 @@ class FakeRequestRepository implements RequestRepository {
         skipped: skipped,
       ),
     );
+  }
+}
+
+/// An in-memory [RequestAcceptService].
+///
+/// Records every call as a `(requestId, donorUid)` pair, so a widget test
+/// can assert the detail screen passed the right donor id. Also drives the
+/// error branch (a race that another donor won) for the accept-affordance
+/// tests.
+class FakeRequestAcceptService implements RequestAcceptService {
+  /// Each entry is `(requestId, donorUid)` in call order.
+  final List<(String, String)> calls = <(String, String)>[];
+
+  /// Holds every call open until completed.
+  Completer<void>? gate;
+
+  /// Returned instead of a success when set.
+  Failure? failure;
+
+  @override
+  Future<Result<void>> acceptRequest({
+    required String requestId,
+    required String donorUid,
+  }) async {
+    calls.add((requestId, donorUid));
+
+    final Completer<void>? pending = gate;
+    if (pending != null) {
+      await pending.future;
+    }
+
+    final Failure? f = failure;
+    if (f != null) {
+      return FailureResult<void>(f);
+    }
+    return const Success<void>(null);
+  }
+}
+
+/// An in-memory [RequestCancelService].
+///
+/// Records every call, so a widget test can assert that a cancel-tap actually
+/// reached the service (rather than only that a dialog dismissed), and can drive
+/// both the success and the failure branch of the detail screen's write flow.
+class FakeRequestCancelService implements RequestCancelService {
+  /// Called with every [requestId] passed to [cancelRequest], in call order.
+  final List<String> calls = <String>[];
+
+  /// When set, [cancelRequest] awaits this future before doing anything else.
+  /// Tests use it to keep a write in flight long enough to observe the loading
+  /// state and to double-tap-guard against a second call.
+  Completer<void>? gate;
+
+  /// Returned instead of a success when set.
+  Failure? failure;
+
+  @override
+  Future<Result<void>> cancelRequest({required String requestId}) async {
+    calls.add(requestId);
+
+    final Completer<void>? pending = gate;
+    if (pending != null) {
+      await pending.future;
+    }
+
+    final Failure? f = failure;
+    if (f != null) {
+      return FailureResult<void>(f);
+    }
+    return const Success<void>(null);
+  }
+}
+
+/// An in-memory [RequestEditService].
+///
+/// Records every call as a `(requestId, fields)` pair, so a widget test can
+/// assert not only that the edit-tap reached the service but what the form
+/// actually sent — the two facts a bug in the field whitelist could easily
+/// separate (a call happens, but it carries a key the rules will refuse).
+class FakeRequestEditService implements RequestEditService {
+  /// Each entry is `(requestId, fields)` in call order. Kept as a record so a
+  /// test can destructure rather than index into parallel lists.
+  final List<(String, Map<String, Object?>)> calls =
+      <(String, Map<String, Object?>)>[];
+
+  /// Holds every call open until completed, for the loading / double-tap
+  /// guard tests.
+  Completer<void>? gate;
+
+  /// Returned instead of a success when set.
+  Failure? failure;
+
+  @override
+  Future<Result<void>> editRequest({
+    required String requestId,
+    required Map<String, Object?> fields,
+  }) async {
+    // Copy the map before storing — a later mutation in the form's controller
+    // would otherwise edit the recorded call and the test's assertion would
+    // describe a shape the service never actually saw.
+    calls.add((requestId, Map<String, Object?>.of(fields)));
+
+    final Completer<void>? pending = gate;
+    if (pending != null) {
+      await pending.future;
+    }
+
+    final Failure? f = failure;
+    if (f != null) {
+      return FailureResult<void>(f);
+    }
+    return const Success<void>(null);
+  }
+}
+
+/// An in-memory [RequestContactService].
+///
+/// Records every call as a `(requestId, patientName, phoneNumber,
+/// hospitalAddress)` tuple, so a widget test can assert both that the
+/// contact-tap reached the service and what the form actually sent — including
+/// that an empty hospital address still reaches the service (the one field the
+/// rule allows to be blank). Holds the values rather than reading them back,
+/// because this fake (like the app) never reads a contact document.
+class FakeRequestContactService implements RequestContactService {
+  /// Each entry is `(requestId, patientName, phoneNumber, hospitalAddress)` in
+  /// call order.
+  final List<(String, String, String, String)> calls =
+      <(String, String, String, String)>[];
+
+  /// Holds every [saveContact] call open until completed, for the loading /
+  /// double-tap guard tests.
+  Completer<void>? gate;
+
+  /// Returned instead of a success on [saveContact] when set.
+  Failure? failure;
+
+  /// The contact [loadContact] returns. `null` (the default) means "no contact
+  /// saved yet" — the first-capture case.
+  RequestContact? nextContact;
+
+  /// Returned instead of [nextContact] on [loadContact] when set, to drive the
+  /// form's load-failure / retry branch.
+  Failure? loadFailure;
+
+  /// Holds every [loadContact] call open until completed, so the loading state is
+  /// observable in a test.
+  Completer<void>? loadGate;
+
+  /// Called with every [requestId] passed to [loadContact], in call order.
+  final List<String> loadCalls = <String>[];
+
+  @override
+  Future<Result<RequestContact?>> loadContact({
+    required String requestId,
+  }) async {
+    loadCalls.add(requestId);
+
+    final Completer<void>? pending = loadGate;
+    if (pending != null) {
+      await pending.future;
+    }
+
+    final Failure? f = loadFailure;
+    if (f != null) {
+      return FailureResult<RequestContact?>(f);
+    }
+    return Success<RequestContact?>(nextContact);
+  }
+
+  @override
+  Future<Result<void>> saveContact({
+    required String requestId,
+    required String patientName,
+    required String phoneNumber,
+    required String hospitalAddress,
+  }) async {
+    calls.add((requestId, patientName, phoneNumber, hospitalAddress));
+
+    final Completer<void>? pending = gate;
+    if (pending != null) {
+      await pending.future;
+    }
+
+    final Failure? f = failure;
+    if (f != null) {
+      return FailureResult<void>(f);
+    }
+    return const Success<void>(null);
   }
 }

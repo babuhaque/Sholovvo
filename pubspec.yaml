@@ -51,6 +51,7 @@ dependencies:
   cloud_firestore: ^7.1.0
   storage_client: ^2.8.1
   image_picker: ^1.2.4
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

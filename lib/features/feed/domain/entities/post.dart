@@ -213,6 +213,43 @@ final class Post {
 
   bool get isEdited => editedAt != null;
 
+  /// Returns a copy of this post with a different [likeCount].
+  ///
+  /// Used by the controller for optimistic like/unlike feedback: the cached
+  /// count on the visible post updates immediately, and a failed server write
+  /// reverts it. Every other field is preserved; the post identity ([id]) is
+  /// unchanged.
+  Post withLikeCount(int count) => Post(
+    id: id,
+    authorUid: authorUid,
+    authorName: authorName,
+    authorPhotoUrl: authorPhotoUrl,
+    text: text,
+    imageUrls: imageUrls,
+    imagePaths: imagePaths,
+    likeCount: count,
+    commentCount: commentCount,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    editedAt: editedAt,
+  );
+
+  /// Returns a copy of this post with a different [commentCount].
+  Post withCommentCount(int count) => Post(
+    id: id,
+    authorUid: authorUid,
+    authorName: authorName,
+    authorPhotoUrl: authorPhotoUrl,
+    text: text,
+    imageUrls: imageUrls,
+    imagePaths: imagePaths,
+    likeCount: likeCount,
+    commentCount: count,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    editedAt: editedAt,
+  );
+
   @override
   bool operator ==(Object other) =>
       other is Post &&

@@ -768,6 +768,227 @@ class AppLocalizationsEn extends AppLocalizations {
   String get feedCopy => 'Copy text';
 
   @override
+  String get feedShare => 'Share';
+
+  @override
+  String get feedSave => 'Save';
+
+  @override
+  String get feedEditAction => 'Edit';
+
+  @override
+  String get feedEditTitle => 'Edit post';
+
+  @override
+  String get feedEditHint => 'Update the text of your post.';
+
+  @override
+  String get feedEditSave => 'Save changes';
+
+  @override
+  String get feedEditSaving => 'Saving…';
+
+  @override
+  String get feedEditError => 'Could not save your changes.';
+
+  @override
+  String get feedDeleteAction => 'Delete post';
+
+  @override
+  String get feedDeleteConfirmTitle => 'Delete this post?';
+
+  @override
+  String get feedDeleteConfirmBody =>
+      'This cannot be undone. The post and its comments will be permanently removed.';
+
+  @override
+  String get feedDeleteConfirm => 'Delete';
+
+  @override
+  String get feedDeleted => 'Post deleted.';
+
+  @override
+  String get feedDeleteError => 'Could not delete the post.';
+
+  @override
+  String get feedSavedFilterOn => 'Showing saved';
+
+  @override
+  String get feedSavedFilterOff => 'All posts';
+
+  @override
+  String get feedSavedEmpty => 'No saved posts yet.';
+
+  @override
+  String get requestsCreateTitle => 'New blood request';
+
+  @override
+  String get requestsCreateAction => 'Create request';
+
+  @override
+  String get requestsBloodGroup => 'Blood group';
+
+  @override
+  String get requestsBags => 'Bags needed';
+
+  @override
+  String get requestsHospital => 'Hospital name';
+
+  @override
+  String get requestsDate => 'Date needed';
+
+  @override
+  String get requestsTime => 'Time needed';
+
+  @override
+  String get requestsNotes => 'Notes (optional)';
+
+  @override
+  String get requestsNotesHint => 'Any additional details…';
+
+  @override
+  String get requestsCreateSubmit => 'Submit request';
+
+  @override
+  String get requestsCreating => 'Creating…';
+
+  @override
+  String get requestsCreateSuccess => 'Request posted.';
+
+  @override
+  String get requestsCreateError => 'Could not create the request.';
+
+  @override
+  String get requestsRequired => 'This field is required';
+
+  @override
+  String get requestsDetailTitle => 'Request detail';
+
+  @override
+  String get requestsDetailNoActionNote =>
+      'This screen shows what is needed and where. Contacting the requester is not available in this build yet.';
+
+  @override
+  String get requestsAcceptAction => 'Accept request';
+
+  @override
+  String get requestsAcceptConfirmTitle => 'Accept this request?';
+
+  @override
+  String get requestsAcceptConfirmBody =>
+      'You are committing to donate for this patient. The requester will see that you have accepted.';
+
+  @override
+  String get requestsAcceptConfirmYes => 'Yes, I will donate';
+
+  @override
+  String get requestsAcceptConfirmNo => 'Not now';
+
+  @override
+  String get requestsAcceptError => 'Could not accept the request.';
+
+  @override
+  String get requestsCancelAction => 'Cancel request';
+
+  @override
+  String get requestsCancelConfirmTitle => 'Cancel this request?';
+
+  @override
+  String get requestsCancelConfirmBody =>
+      'This withdraws your request from the open list. Donors who saw it will no longer be notified.';
+
+  @override
+  String get requestsCancelConfirmYes => 'Yes, cancel it';
+
+  @override
+  String get requestsCancelConfirmNo => 'Keep it';
+
+  @override
+  String get requestsCancelSuccess => 'Request cancelled.';
+
+  @override
+  String get requestsCancelError => 'Could not cancel the request.';
+
+  @override
+  String get requestsEditAction => 'Edit request';
+
+  @override
+  String get requestsEditTitle => 'Edit request';
+
+  @override
+  String get requestsEditSubmit => 'Save changes';
+
+  @override
+  String get requestsEditSaving => 'Saving…';
+
+  @override
+  String get requestsEditSuccess => 'Request updated.';
+
+  @override
+  String get requestsEditError => 'Could not update the request.';
+
+  @override
+  String get requestsContactAction => 'Contact details';
+
+  @override
+  String get requestsContactTitle => 'Requester contact details';
+
+  @override
+  String get requestsContactIntro =>
+      'Stored privately with this request. Not shown to donors in this build.';
+
+  @override
+  String get requestsPatientName => 'Patient name';
+
+  @override
+  String get requestsPhoneNumber => 'Phone number';
+
+  @override
+  String get requestsHospitalAddress => 'Hospital address';
+
+  @override
+  String get requestsContactSubmit => 'Save contact details';
+
+  @override
+  String get requestsContactSaving => 'Saving…';
+
+  @override
+  String get requestsContactLoading => 'Loading…';
+
+  @override
+  String get requestsContactSuccess => 'Contact details saved.';
+
+  @override
+  String get requestsContactError => 'Could not save the contact details.';
+
+  @override
+  String get requestsContactLoadError =>
+      'Could not load your saved contact details.';
+
+  @override
+  String get requestsContactRetry => 'Try again';
+
+  @override
+  String get requestsMyAction => 'My requests';
+
+  @override
+  String get requestsMyTitle => 'My requests';
+
+  @override
+  String get requestsMyEmptyTitle => 'You have no open requests';
+
+  @override
+  String get requestsMyEmptyBody =>
+      'Requests you create appear here until they are filled or cancelled.';
+
+  @override
+  String get requestsFilterLabel => 'Filter by group';
+
+  @override
+  String get requestsFilterEmpty =>
+      'No open requests need this group right now.';
+
+  @override
   String get feedCopied => 'Post text copied.';
 
   @override
@@ -855,6 +1076,85 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get commentsSheetTitle => 'Comments';
+
+  @override
+  String get commentsEmptyBody => 'No comments yet. Be the first.';
+
+  @override
+  String get commentsLoading => 'Loading comments…';
+
+  @override
+  String get commentsHintText => 'Write a comment…';
+
+  @override
+  String get commentsSendTooltip => 'Send';
+
+  @override
+  String get commentsErrorTitle => 'Could not load comments';
+
+  @override
+  String commentsReplyPrefix(String name) {
+    return 'Reply to $name';
+  }
+
+  @override
+  String commentsReplyingTo(String name) {
+    return 'Replying to $name';
+  }
+
+  @override
+  String get commentsReplyHint => 'Write a reply…';
+
+  @override
+  String get commentsReplyAction => 'Reply';
+
+  @override
+  String get commentsDeleteAction => 'Delete';
+
+  @override
+  String get reportTooltip => 'Report';
+
+  @override
+  String get reportSheetTitle => 'Report this post';
+
+  @override
+  String get reportCommentSheetTitle => 'Report this comment';
+
+  @override
+  String get reportReasonLabel => 'Reason';
+
+  @override
+  String get reportReasonSpam => 'Spam';
+
+  @override
+  String get reportReasonHarassment => 'Harassment';
+
+  @override
+  String get reportReasonHateSpeech => 'Hate speech';
+
+  @override
+  String get reportReasonMisinformation => 'Misinformation';
+
+  @override
+  String get reportReasonOther => 'Other';
+
+  @override
+  String get reportNoteHint => 'Additional details (optional)';
+
+  @override
+  String get reportSubmitButton => 'Submit report';
+
+  @override
+  String get reportSubmitting => 'Submitting…';
+
+  @override
+  String get reportSuccess => 'Report submitted. Thank you.';
+
+  @override
+  String get reportError => 'Could not submit report.';
 
   @override
   String get feedUnreadableTitle => 'The feed could not be fully read';
@@ -994,7 +1294,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get requestsNoActionNote =>
-      'This list shows what is needed and where. Accepting a request is not available in this build yet.';
+      'This list shows what is needed and where. Open a request to accept it if you are eligible.';
 
   @override
   String get donorSearchTitle => 'Find donors';

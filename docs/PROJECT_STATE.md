@@ -49,6 +49,27 @@ hardening is outstanding. Nothing about the 8.3 implementation was rebuilt,
 replaced or reverted by this reconciliation, and the Step 2 fix changed no Dart
 source.
 
+**Continuation (2026-11-04) — feed image upload recovery, reconciled to the new
+roadmap's Stage 6.** Owner decisions this session: the post image limit stays at
+**4** (unchanged — `PostValidator.maxImages` and the rules already enforce it, so
+the "up to 5" target spec was reported as a conflict, not silently applied), and
+**`community-posts` is the authoritative feed bucket**. In the tree now:
+`SupabaseConfig.defaultPostImagesBucket` is repointed to `community-posts` with an
+optional `SUPABASE_POST_IMAGES_BUCKET` build override; `PostDocument.fromMap` folds
+a legacy singular `imageUrl` into `imageUrls` on read so the 19 pre-Stage-8 posts
+render their photograph without a write-migration; and
+`docs/storage/supabase-community-posts.sql` is prepared (public-read bucket,
+ownership insert/delete policies, an `on conflict do nothing` create so an existing
+bucket is never dropped, and a read-only layout-verification query). `firestore.rules`
+was **not** edited or deployed, no policy was applied, and no image was uploaded —
+the picker remains gated on `SupabaseConfig.isConfigured`, so enabling real uploads
+still needs the owner to supply the `SUPABASE_*` defines, enable Firebase
+third-party-auth, verify the existing `community-posts` object layout, and apply the
+SQL. **M3-C2 is deferred, not abandoned:** its widened matched-donor contact read has
+no consumer until the Stage 10 booking write path exists, and the current rules suite
+(204/204) intentionally pins contact read to owner-only in the interim (M3 tests 10
+and 25). Dart tests: 968 pass / 63 skip / 0 fail; `flutter analyze` clean.
+
 **Stage 9.1 — open blood requests, read path — is implemented, and is the first
 work on top of Stage 8 that the 8.3 reconciliation did not gate.** That needs
 reading carefully, because the paragraph above it says Stage 9 "should not start
@@ -4134,3 +4155,212 @@ chooses, then to complete the historical-PII cleanup the owner authorises alongs
    `private/contact` write path is legitimately raised by the app for the first time; paired
    counter rules; `post_likes` → `posts/{id}/likes/{uid}` like migration; donor-search
    pagination beyond the single 30-window.
+
+---
+
+## Owner contact capture — `blood_requests/{id}/private/contact` write path
+
+**Status: IMPLEMENTED against fakes and green on the Dart suite. Not approved, not
+deployed, not emulator-verified for this increment, not committed.** This entry closes
+the *owner* half of the one Stage-10 sub-item the entry above named — "the
+`private/contact` write path … legitimately raised by the app for the first time." The
+donor *read* half (the M3-C2 matching anchor) and the booking transaction remain open
+and are owner-architecture decisions, not code gaps this pass could take.
+
+### What it does, and the one rule it lands against
+
+A request **owner** can now capture (create or replace) their own contact PII onto
+`blood_requests/{requestId}/private/contact`. The write hits exactly the three keys
+`firestore.rules` L219-228 demands — `patientName`, `phoneNumber`, `hospitalAddress`
+(`patientName`/`phoneNumber` non-empty; `hospitalAddress` a string, empty allowed) — and
+no other key. It uses **`set` (create-or-replace)** on the fixed document id `contact`,
+so the stored shape is always exactly those three keys whether this is a first capture
+or a re-capture, and no leftover field a partial merge could strand. `firestore.rules`
+was **not edited** — the owner create/update (`allow create, update`) the rules already
+grant is what this path uses; the owner-only read (L234-236) and delete (L241-243) are
+untouched.
+
+**Scope correction to the Stage 9.5 entry above.** That dated snapshot said "Nothing in
+this stage writes `blood_requests` from Dart — the requests screen is still read-only."
+That was true of Stage 9.5 and is no longer true of the current tree: the requests
+create/cancel/edit/accept services and screens, and this capture path, all write from
+Dart now. Those siblings are recorded in no earlier entry here (they are part of the
+uncommitted working tree described under Git state below), so this entry documents only
+the contact-capture increment it was written for and does not retrospectively edit the
+9.5 history.
+
+### The deliberate design choices a reviewer should see
+
+- **The form starts blank, not pre-populated.** `BloodRequest` carries no PII by
+  design (M3-C1), and the app still **reads no contact document** — the invariant the
+  rules' owner-only interim rests on ("the app reads no contact today … owner-only is
+  strictly safe"). Pre-filling would require the app's first-ever contact read; an
+  owner read/edit increment is the natural next step but is a posture change deliberately
+  *not* taken here.
+- **The owner branch grew from two buttons to three** — Edit, Contact, Cancel. Two
+  existing detail-screen tests pinned "exactly two SolovvoButtons, a third would be
+  Stage 10 creeping in." That guard catches *unintended* creep; owner contact capture is
+  a rules-*permitted* prerequisite (L219-228), not a donor transaction, so the guard was
+  consciously moved to three and reworded to still reject a fourth (the donor accept/claim
+  path). No affordance leaked to a non-owner: the two stranger tests still assert zero
+  buttons.
+- **No PII into logs.** Failure `debugMessage`s name keys only, never values — the
+  capture writes a patient's name and phone number, which is the exact leak the private
+  subcollection exists to prevent.
+
+### Verification evidence (this increment)
+
+Measured on the current working tree, not copied forward.
+
+| Gate | Command | Result |
+|---|---|---|
+| Static analysis (repo-wide) | `flutter analyze` | ✅ No issues found (31.6 s) |
+| Full Dart suite | `flutter test` | ✅ **1146 passed, 63 skipped, 0 failed** |
+| Requests + parity | `flutter test test/features/requests test/l10n/arb_parity_test.dart` | ✅ 227 passed |
+| New capture form + detail affordance | `flutter test test/features/requests/request_contact_screen_test.dart test/features/requests/request_detail_screen_test.dart` | ✅ 51 passed |
+| Localisation | `flutter gen-l10n` then parity test + `lib/l10n/untranslated.json` | gen-l10n exits 0; parity passes; **`{}`** — ten `requests*` contact keys in both catalogues, Bengali script throughout, no ASCII digit in `app_bn.arb` |
+| Firestore rules emulator | `npm test` in `firestore-rules-tests/` | ⬜ **Not run this pass** — `firestore.rules` was not touched; the owner create/update/blank-address shape the Dart `set` relies on is already covered by the M3 tests (4, 19, 5-7) that ran green in Stage 9.5 |
+| Screen reader / TalkBack | — | ⬜ **Not run.** The new field labels and intro are asserted to render, not to read aloud |
+| Live Firebase / deploy / Git write | — | ⬜ **Not run.** No emulator session, no device/browser build, no `firebase deploy`, no commit/stash/push |
+
+### Files (this increment)
+
+| File | Change |
+|---|---|
+| `lib/features/requests/data/request_contact_service.dart` | New `RequestContactService` + `FirestoreRequestContactService`: `set`-replace of the three-key contact doc, rule-mirroring validation, exception→`Failure` mapping (keys named, values never) |
+| `lib/features/requests/application/requests_providers.dart` | `requestContactServiceProvider` + import |
+| `lib/features/requests/presentation/request_contact_screen.dart` | New three-field owner form; starts blank; validation; `set`-semantics note |
+| `lib/features/requests/presentation/request_detail_screen.dart` | Third owner affordance (Contact) + `_onContactPressed` bubbling the id sentinel; audience/branch doc updated to Edit+Contact+Cancel |
+| `lib/l10n/app_en.arb`, `lib/l10n/app_bn.arb` | Ten `requests*` contact keys (action, title, intro, three field labels, submit, saving, success, error) in both locales |
+| `lib/l10n/generated/*` | Regenerated accessors |
+| `test/support/fake_requests.dart` | `FakeRequestContactService` (records `(requestId, name, phone, address)`, gate + failure injection) |
+| `test/features/requests/request_contact_screen_test.dart` | New form test: blank start, empty-address-still-sent, per-field validation, failure/stay-open, pop sentinel, in-flight double-tap guard, Bangla, three sizes |
+| `test/features/requests/request_detail_screen_test.dart` | New "contact affordance" group (owner push + stranger hides it); two prior two-button guards moved to three with reworded rationale |
+
+### Next stage
+
+The owner write-half of the contact story is landed and green. What remains is unchanged
+from the Stage-10 list and gated on owner decisions, not code:
+
+1. **M3-C2 donor contact read** — still blocked; needs the owner to pick the
+   matching-anchor design, then new rules + emulator tests (and the M3 test 25 flip).
+2. **Owner contact *read/edit*** — the natural immediate follow-on, now that the write
+   exists: a rule-permitted owner read (L234-236) to review and correct a saved contact,
+   which is the first time the app reads a contact document.
+3. The rest of Stage 10: booking transaction, `post_likes` migration, donor-search
+   pagination.
+
+Deployment-gating items (rules release, live backend pass, historical-PII migration) all
+stand as recorded in Stage 9.5.
+
+### Git state (this increment)
+
+**HEAD is `69cd97b` (`origin/main` level).** The entire requests write path —
+create/cancel/edit/accept and detail screens, and this contact capture — sits in the
+**working tree as staged-for-nothing untracked/modified files**; none of it is committed,
+and this documentation pass **staged, committed and pushed nothing** and ran no
+write-Git command. The tree also carries a large tranche of unrecorded feed social work
+(comments, likes, reports, saved posts). The consequence the reviewer must not miss:
+PROJECT_STATE above (through Stage 9.5) is a **stale checkpoint** relative to this
+working tree — a real commit is needed to make Stage boundaries separable in Git.
+
+---
+
+## Owner contact read/edit — pre-filling the capture form from the owner's saved contact
+
+**Status: IMPLEMENTED against fakes and green on the Dart suite. Not approved, not
+deployed, not emulator-verified for this increment, not committed.** This entry takes
+the *read*-half of the owner contact story that the capture entry above named as its
+own natural follow-on and deliberately left undone: "an owner read/edit increment is
+the natural next step but is a posture change deliberately not taken here." That step
+is now taken, against the one rule that already permits it — `firestore.rules`
+L234-236 grants `read` of `blood_requests/{id}/private/contact` to the parent
+document's `userId` and nobody else.
+
+### What it does, and the invariant it knowingly changes
+
+Opening the owner Contact form now **reads the saved contact back and pre-fills the
+three fields**, so the owner can review and correct what they stored rather than only
+overwrite it. The write path is unchanged: the same `set` (replace) of the three keys.
+What is new is the read, and with it the app's posture — the capture entry leaned on
+"the app reads no contact today, so owner-only read is strictly safe." This increment
+ends that: the app now reads a contact document, but only ever the caller's own, and
+only through the owner branch of the detail screen. It is an owner round-trip (edit
+what I saved), **not** a disclosure. The M3-C2 blocker still keeps the *matched-donor*
+read closed, so no donor obtains this value; the intro sentence still tells the owner
+so plainly.
+
+### The deliberate design choices a reviewer should see
+
+- **A failed read cannot fall through to a blank form.** `saveContact` is `set`
+  (replace) of all three keys, so submitting a blank form over a contact the read
+  merely *failed to fetch* would silently erase real PII the owner never saw. The form
+  is therefore a three-state machine (`loading → ready | loadFailure`); on a read
+  failure it shows a message and a **Try again** and disables the save until the read
+  succeeds. The owner is never offered a way to write over what the app could not
+  first confirm is empty.
+- **The first read model allowed to carry PII.** `RequestContact` is a new value type
+  holding `patientName`/`phoneNumber`/`hospitalAddress` — the only model in the app
+  permitted to, and it exists solely for this owner round-trip. `BloodRequest` (the
+  public projection) still carries none of them (M3-C1). Its `toString` names nothing
+  (`RequestContact(private)`) so a test dump or log line can never leak the values,
+  matching the "no PII into logs" rule the capture path already followed.
+- **A missing document is a success, not an error; a bad document is coerced, never
+  thrown.** `loadContact` returns `Success(null)` when the contact doc does not exist
+  (the first-capture case — the form opens blank), and coerces any missing/non-string
+  stored value to an empty string rather than throwing, so an owner is never locked out
+  of correcting their own older or hand-written data. Only a genuine read refusal or
+  network failure is a `Failure`, mapped to `PermissionFailure`/`NetworkFailure`.
+- **The read is wired through the same provider the write uses**
+  (`requestContactServiceProvider`), so no new provider was added; only the interface
+  gained `loadContact`. Because `initState` now reads it, every contact-screen test
+  must override that provider — an un-overridden one resolves the real Firestore-backed
+  default and throws "No Firebase App", which is the correct fail-loud signal.
+
+### Verification evidence (this increment)
+
+Measured on the current working tree, not copied forward.
+
+| Gate | Command | Result |
+|---|---|---|
+| Static analysis (repo-wide) | `flutter analyze` | ✅ No issues found (12.3 s) |
+| Full Dart suite | `flutter test` | ✅ **1151 passed, 63 skipped, 0 failed** (was 1146 — this increment added 5) |
+| Requests + parity | `flutter test test/features/requests test/l10n/arb_parity_test.dart` | ✅ 232 passed (was 227) |
+| Contact form (read + write) | `flutter test test/features/requests/request_contact_screen_test.dart` | ✅ 19 passed — pre-fill-from-load, blank-when-none, load-failure shows retry and blocks save, retry reloads, coerce-partial, plus the prior write/validation/Bangla/size cases |
+| Localisation | `flutter gen-l10n` then parity test + `lib/l10n/untranslated.json` | gen-l10n exits 0; parity passes; **`{}`** — three new `requests*` keys (`requestsContactLoading`, `requestsContactLoadError`, `requestsContactRetry`) in both catalogues, Bengali script throughout, no ASCII digit in `app_bn.arb` |
+| Firestore rules emulator | `npm test` in `firestore-rules-tests/` | ⬜ **Not run this pass** — `firestore.rules` was not touched; the owner read this path uses is already gated by the L234-236 rule tested green in Stage 9.5 |
+| Screen reader / TalkBack | — | ⬜ **Not run.** The loading semantics label and retry affordance are asserted to render, not to read aloud |
+| Live Firebase / deploy / Git write | — | ⬜ **Not run.** No emulator session, no device/browser build, no `firebase deploy`, no commit/stash/push |
+
+### Files (this increment)
+
+| File | Change |
+|---|---|
+| `lib/features/requests/domain/entities/request_contact.dart` | New `RequestContact` — the one PII-carrying read model; value-equality; `toString` names nothing |
+| `lib/features/requests/data/request_contact_service.dart` | Interface gains `loadContact`; `FirestoreRequestContactService.loadContact` reads the `contact` doc (absent→`Success(null)`, coerce-never-throw, exception→typed `Failure`); write path unchanged |
+| `lib/features/requests/presentation/request_contact_screen.dart` | Rewritten as a read-then-write form: `_FormStatus` machine, `initState` load, controllers pre-filled, load-failure `_LoadFailure` (retry, save disabled); blank-with-no-doc and pre-fill-with-doc both land in `ready` |
+| `lib/l10n/app_en.arb`, `lib/l10n/app_bn.arb` | Three new keys (loading, load-error, retry) in both locales |
+| `lib/l10n/generated/*` | Regenerated accessors |
+| `test/support/fake_requests.dart` | `FakeRequestContactService` gains `loadContact` (`nextContact` value, `loadGate`/`loadFailure` injection) |
+| `test/features/requests/request_contact_screen_test.dart` | Added read/pre-fill/retry cases; `_pumpForm` now always overrides the provider (initState reads it) and supports a non-settling mode for the loading-state test |
+
+### Next stage
+
+The whole owner side of the contact story — write *and* read/edit — is landed and green.
+What remains is unchanged from the Stage-10 list and gated on owner decisions, not code:
+
+1. **M3-C2 donor contact read** — still blocked; needs the owner to pick the
+   matching-anchor design, then new rules + emulator tests (and the M3 test 25 flip).
+   This is now the *only* contact path left, and it is an owner architecture decision.
+2. The rest of Stage 10: booking transaction, `post_likes` migration, donor-search
+   pagination.
+3. **Commit the working tree** so Stage boundaries are separable in Git — see below.
+
+### Git state (this increment)
+
+**HEAD is still `69cd97b` (`origin/main` level).** The read/edit files above sit in the
+same large uncommitted working tree as the capture path and the feed social tranche;
+this pass **staged, committed and pushed nothing** and ran no write-Git command. The
+stale-checkpoint consequence recorded under the capture entry still holds and now
+covers two unrecorded contact increments at once — a real commit is the next
+hygiene action regardless of which Stage-10 item is picked up after it.

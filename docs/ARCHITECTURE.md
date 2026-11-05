@@ -457,15 +457,24 @@ Carried deliberately, not forgotten:
     something this feed would refuse. §14.1 records the proposed canonical schema
     and every Rules change it will need.
 12. **Post images have a bucket, a policy and a client, and none of them has
-    been applied** (Stage 8.3). `docs/storage/supabase-post-images.sql` creates
-    `post-images` and its two policies; `SupabasePostImageStorage` uploads into it
-    and deletes by path. Like the `avatars` bucket, it is delivery material: no
-    bucket, policy or Firebase third-party-auth setting has been applied **from
-    this repository**, nothing has been exercised against real storage, and the app
-    reports itself as unconfigured when the `SUPABASE_*` defines are absent. One
-    caveat on the older wording here: local, gitignored Supabase CLI state exists on
-    the development machine (`supabase/.temp/`, ignored by `.gitignore`), so a
-    project may have been linked by hand. Whether it carries either bucket is not
+    been applied.** The owner-authoritative feed bucket is now **`community-posts`**
+    (decision 2026-11-04), which already holds images from an earlier build and must
+    not be switched back to `post-images`. `SupabaseConfig.defaultPostImagesBucket`
+    targets `community-posts` (overridable at build time with
+    `SUPABASE_POST_IMAGES_BUCKET`), and `docs/storage/supabase-community-posts.sql`
+    is the prepared, **not-applied** policy for it (`supabase-post-images.sql` is
+    retained but superseded for new uploads). `SupabasePostImageStorage` uploads into
+    the configured bucket and deletes by path. The reader is now backward-compatible:
+    `PostDocument.fromMap` folds a pre-Stage-8 singular `imageUrl` into `imageUrls`
+    when the modern array is absent, so the 19 legacy posts render their photograph
+    without the (still unapplied) write-migration. Like the `avatars` bucket, all of
+    this is delivery material: no bucket, policy or Firebase third-party-auth setting
+    has been applied **from this repository**, nothing has been exercised against real
+    storage, and the app reports itself as unconfigured when the `SUPABASE_*` defines
+    are absent. One caveat on the older wording here: local, gitignored Supabase CLI
+    state exists on the development machine (`supabase/.temp/`, ignored by
+    `.gitignore`), so a project may have been linked by hand. Whether it carries
+    either bucket, and the existing object layout of `community-posts`, is not
     establishable from the repository and needs an owner check — see
     `docs/storage/README.md`.
 13. **Stage 8.3 is implemented, and hardened in steps — and is still not signed

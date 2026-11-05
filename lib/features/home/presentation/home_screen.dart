@@ -25,6 +25,8 @@ import 'package:sholovvo_app/features/requests/application/requests_providers.da
 import 'package:sholovvo_app/features/requests/application/requests_state.dart';
 import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
 import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
+import 'package:sholovvo_app/features/requests/presentation/create_request_screen.dart';
+import 'package:sholovvo_app/features/requests/presentation/request_detail_screen.dart';
 import 'package:sholovvo_app/features/requests/presentation/requests_messages.dart';
 import 'package:sholovvo_app/features/requests/presentation/requests_screen.dart';
 import 'package:sholovvo_app/features/requests/presentation/widgets/request_tile.dart';
@@ -138,14 +140,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     unawaited(Navigator.of(context).push(DonorSearchScreen.route()));
   }
 
-  /// The honest response for an action whose screen does not exist yet.
+  /// Opens the blood-request form.
   ///
-  /// A disabled button would read as a bug and a fake screen would be a lie, so
-  /// the tap confirms it registered and says the feature is still coming.
-  void _comingSoon() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(context.l10n.homeComingSoon)));
+  /// The last headline action on the dashboard that used to answer with
+  /// "Coming soon", and the reason for that answer — no create rule, no create
+  /// path — has since closed from both ends: `firestore.rules` permits the
+  /// create, and `RequestCreateService` reaches it. Now that the tap has a real
+  /// destination, the button goes there. When the form pops back with a new
+  /// request id, the dashboard's nearby-requests section refreshes so the
+  /// donor who just posted can see their own request without leaving the
+  /// screen.
+  Future<void> _openRequestBlood() async {
+    final String? newId = await Navigator.of(context)
+        .push<String>(CreateRequestScreen.route());
+    if (newId != null && mounted) {
+      unawaited(ref.read(requestsControllerProvider.notifier).refresh());
+    }
   }
 
   @override
@@ -172,6 +182,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onOpenRequests: _openRequests,
       onRetry: () =>
           unawaited(ref.read(requestsControllerProvider.notifier).load()),
+      // Called when a previewed row's detail screen pops with a cancelled-id
+      // sentinel. The section is stateless, so the mounted/ref check lives
+      // here rather than inside the row's onTap closure.
+      onRefreshList: () {
+        if (mounted) {
+          unawaited(
+            ref.read(requestsControllerProvider.notifier).refresh(),
+          );
+        }
+      },
     );
     final Widget feedSection = _FeedSection(
       posts: feed,
@@ -235,7 +255,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         DonorStatusCard(donor: donor),
                         const SizedBox(height: AppSpacing.lg),
                         HomeQuickActions(
-                          onRequestBlood: _comingSoon,
+                          onRequestBlood: _openRequestBlood,
                           onFindDonors: _openDonorSearch,
                           isWide: wide,
                         ),
@@ -287,6 +307,7 @@ class _RequestsSection extends StatelessWidget {
     required this.window,
     required this.onOpenRequests,
     required this.onRetry,
+    required this.onRefreshList,
   });
 
   /// The three rows the dashboard previews, projected from [window].
@@ -301,6 +322,12 @@ class _RequestsSection extends StatelessWidget {
 
   /// Asks for the window again after a refused read.
   final VoidCallback onRetry;
+
+  /// Asks for the window again after a previewed row's detail screen returned
+  /// from a cancel. Same shape as [onRetry] but reached from a different
+  /// gesture, so a caller can log or animate the two differently; today they
+  /// do the same thing.
+  final VoidCallback onRefreshList;
 
   @override
   Widget build(BuildContext context) {
@@ -343,7 +370,19 @@ class _RequestsSection extends StatelessWidget {
         for (final BloodRequest request in requests)
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-            child: RequestTile(request: request),
+            child: RequestTile(
+              request: request,
+              onTap: () async {
+                final String? cancelledId = await Navigator.of(
+                  context,
+                ).push<String?>(
+                  RequestDetailScreen.route(request),
+                );
+                if (cancelledId != null) {
+                  onRefreshList();
+                }
+              },
+            ),
           ),
         // The preview is three of a window that may be full, and the donor cannot
         // tell from three rows that more stayed behind them. The two notices are the

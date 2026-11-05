@@ -16,11 +16,15 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// tell which one is the truth. So the same widget renders the same entity, and
 /// the only difference is how many are on screen.
 ///
-/// **No tap, no chevron.** This row goes nowhere, and it does not look as though
-/// it goes anywhere. A destination for one request — the hospital, the contact,
-/// the way to say yes — is Stage 10's, and until it exists a chevron would be a
-/// promise the app cannot keep. The dashboard's "See all" is the one control here,
-/// because that one leads somewhere real.
+/// **Tappable only when the caller says so.** [onTap] is optional and defaults
+/// to null, and [SolovvoCard] renders no `InkWell` when it is null. Stage 9.1
+/// pinned that behaviour in a widget test to keep the row honest while there was
+/// nowhere to go; Stage 10's per-request destination ([RequestDetailScreen],
+/// built as the read-half of that destination) is now the somewhere, so callers
+/// that want to open it pass the callback. The dashboard preview and the
+/// requests screen pass the same callback, so a tap reads identically from both
+/// places. A caller that genuinely has no destination can still leave [onTap]
+/// null and the row stays inert.
 ///
 /// **What it does not show.** No patient name, no phone number and no street
 /// address. As of Stage 9.5 (M3-C1) those fields live in
@@ -29,9 +33,14 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// row names the hospital (and only the hospital) and the date. No distance: the
 /// app does not know where the donor is.
 class RequestTile extends StatelessWidget {
-  const RequestTile({super.key, required this.request});
+  const RequestTile({super.key, required this.request, this.onTap});
 
   final BloodRequest request;
+
+  /// Where a tap goes. See the class docblock: null means "this row is inert",
+  /// and callers that mean to open [RequestDetailScreen] pass a callback that
+  /// pushes it.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +48,7 @@ class RequestTile extends StatelessWidget {
     final TextTheme text = Theme.of(context).textTheme;
 
     return SolovvoCard(
+      onTap: onTap,
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

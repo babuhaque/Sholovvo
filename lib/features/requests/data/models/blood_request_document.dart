@@ -7,6 +7,7 @@ import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dar
 /// Why a `blood_requests` document was not turned into a [BloodRequest].
 enum RequestIssue {
   idMissing,
+  userIdMissing,
   statusNotOpen,
   bloodGroupMissing,
   bloodGroupUnknown,
@@ -80,6 +81,19 @@ abstract final class BloodRequestDocument {
       );
     }
 
+    // The create rule (`hasAll` + `userId == request.auth.uid`) means every
+    // document written by this app carries a non-empty `userId`. A doc without
+    // one is either pre-create-rule legacy or a hand-edited row; refusing
+    // rather than defaulting is the same rule the rest of the mapper follows
+    // — the field a downstream affordance trusts ("is this mine, may I
+    // cancel") has to be one the rules already guarantee.
+    final Object? uid = data['userId'];
+    if (uid is! String || uid.isEmpty) {
+      return FailureResult<BloodRequest>(
+        _reject(RequestIssue.userIdMissing, 'userId: ${_describe(uid)}'),
+      );
+    }
+
     // Re-checked here even though the query filters on it: the seam that feeds
     // this mapper in a test hands over literal maps, and a repository that showed
     // a cancelled request as open would be lying about a person's emergency.
@@ -134,6 +148,7 @@ abstract final class BloodRequestDocument {
     return Success<BloodRequest>(
       BloodRequest(
         id: requestId,
+        userId: uid,
         bloodGroup: group,
         hospitalName: hospitalName,
         units: bags,

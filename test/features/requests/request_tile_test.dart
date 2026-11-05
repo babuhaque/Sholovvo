@@ -32,6 +32,7 @@ Future<void> _pumpTile(
   Locale locale = const Locale('en'),
   ThemeMode themeMode = ThemeMode.light,
   Size size = _phone,
+  VoidCallback? onTap,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -41,7 +42,9 @@ Future<void> _pumpTile(
     testApp(
       locale: locale,
       themeMode: themeMode,
-      home: Scaffold(body: Center(child: RequestTile(request: request))),
+      home: Scaffold(
+        body: Center(child: RequestTile(request: request, onTap: onTap)),
+      ),
     ),
   );
   await tester.pump();
@@ -133,13 +136,15 @@ void main() {
       expect(find.textContaining(english.homeNeededByUnknown), findsOneWidget);
     });
 
-    testWidgets('offers nothing to tap, because there is nowhere to go', (
+    testWidgets('is inert when the caller passes no onTap', (
       WidgetTester tester,
     ) async {
-      // Stage 9.1 reads requests; Stage 10 answers them. Until a row has a
-      // destination, it must not look tappable — no ripple, no chevron, no button.
-      // This is the assertion that fails the moment somebody adds an `onTap` to a
-      // card that goes nowhere.
+      // Stage 9.1 pinned this shape because there was nowhere to go. Stage 10
+      // kept the invariant and moved the choice to the caller: with `onTap`
+      // omitted, the row still carries no ripple, no chevron and no button, so
+      // a hypothetical future caller without a destination cannot accidentally
+      // look actionable. A caller that DOES have a destination passes a
+      // callback, and the next test verifies the row becomes tappable.
       await _pumpTile(tester, fakeRequest());
 
       expect(find.byType(SolovvoCard), findsOneWidget);
@@ -152,6 +157,28 @@ void main() {
       await tester.tap(find.byType(RequestTile));
       await tester.pump();
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('becomes tappable when the caller passes onTap', (
+      WidgetTester tester,
+    ) async {
+      // The row's one affordance is a callback the caller supplies. SolovvoCard
+      // wraps the content in an InkWell when (and only when) `onTap` is not
+      // null, so the same widget can look inert on a hypothetical future caller
+      // that has no destination and actionable on the two callers that do
+      // (the dashboard preview and the requests screen).
+      int taps = 0;
+      await _pumpTile(
+        tester,
+        fakeRequest(),
+        onTap: () => taps++,
+      );
+
+      expect(find.byType(InkWell), findsOneWidget);
+
+      await tester.tap(find.byType(RequestTile));
+      await tester.pump();
+      expect(taps, 1);
     });
 
     testWidgets('survives a hospital name nobody designed for', (

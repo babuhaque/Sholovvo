@@ -353,4 +353,178 @@ void main() {
       expect(find.text(_long), findsOneWidget);
     });
   });
+
+  group('FeedPostTile, like interaction', () {
+    testWidgets('outlined heart when not liked', (WidgetTester tester) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(likeCount: 3), now: _stamp, isLiked: false),
+      );
+      expect(
+        find.byIcon(Icons.favorite_border_rounded),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.favorite_rounded), findsNothing);
+    });
+
+    testWidgets('filled heart when liked', (WidgetTester tester) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(likeCount: 3), now: _stamp, isLiked: true),
+      );
+      expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.favorite_border_rounded), findsNothing);
+    });
+
+    testWidgets('tapping the like area calls onLikeToggle', (
+      WidgetTester tester,
+    ) async {
+      int taps = 0;
+      await _pumpTile(
+        tester,
+        FeedPostTile(
+          post: _post(),
+          now: _stamp,
+          onLikeToggle: () => taps++,
+        ),
+      );
+      await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    testWidgets('no callback: tap is inert', (WidgetTester tester) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(), now: _stamp),
+      );
+      // Should not throw: onTap == null → GestureDetector is inert.
+      await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+      await tester.pump();
+      // No crash, no assertion — just verifies the null path.
+    });
+
+    testWidgets('tapping comment area calls onCommentTap', (
+      WidgetTester tester,
+    ) async {
+      int taps = 0;
+      await _pumpTile(
+        tester,
+        FeedPostTile(
+          post: _post(commentCount: 5),
+          now: _stamp,
+          onCommentTap: () => taps++,
+        ),
+      );
+      await tester.tap(find.byIcon(Icons.chat_bubble_outline_rounded));
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    testWidgets('no comment callback: tap is inert', (
+      WidgetTester tester,
+    ) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(commentCount: 2), now: _stamp),
+      );
+      await tester.tap(find.byIcon(Icons.chat_bubble_outline_rounded));
+      await tester.pump();
+      // Verifies the null path does not crash.
+    });
+  });
+
+  group('report', () {
+    testWidgets('flag icon is visible', (WidgetTester tester) async {
+      await _pumpTile(tester, FeedPostTile(post: _post(), now: _stamp));
+      expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
+    });
+
+    testWidgets('tapping flag invokes onReportTap', (
+      WidgetTester tester,
+    ) async {
+      int taps = 0;
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(), now: _stamp, onReportTap: () => taps++),
+      );
+      await tester.tap(find.byIcon(Icons.flag_outlined));
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    testWidgets('no report callback: tap is inert', (
+      WidgetTester tester,
+    ) async {
+      await _pumpTile(tester, FeedPostTile(post: _post(), now: _stamp));
+      await tester.tap(find.byIcon(Icons.flag_outlined));
+      await tester.pump();
+      // Null callback must not throw.
+    });
+  });
+
+  group('share', () {
+    testWidgets('share icon is visible', (WidgetTester tester) async {
+      await _pumpTile(tester, FeedPostTile(post: _post(), now: _stamp));
+      expect(find.byIcon(Icons.share_outlined), findsOneWidget);
+    });
+  });
+
+  group('bookmark', () {
+    testWidgets('outline icon when not saved', (WidgetTester tester) async {
+      await _pumpTile(tester, FeedPostTile(post: _post(), now: _stamp));
+      expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.bookmark_rounded), findsNothing);
+    });
+
+    testWidgets('filled icon when saved', (WidgetTester tester) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(), now: _stamp, isSaved: true),
+      );
+      expect(find.byIcon(Icons.bookmark_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.bookmark_border_rounded), findsNothing);
+    });
+
+    testWidgets('tap invokes onSaveToggle', (WidgetTester tester) async {
+      int taps = 0;
+      await _pumpTile(
+        tester,
+        FeedPostTile(
+          post: _post(),
+          now: _stamp,
+          onSaveToggle: () => taps++,
+        ),
+      );
+      await tester.tap(find.byIcon(Icons.bookmark_border_rounded));
+      await tester.pump();
+      expect(taps, 1);
+    });
+  });
+
+  group('edit icon', () {
+    testWidgets('hidden when onEditTap is null', (WidgetTester tester) async {
+      await _pumpTile(tester, FeedPostTile(post: _post(), now: _stamp));
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    });
+
+    testWidgets('visible when onEditTap is provided', (WidgetTester tester) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(), now: _stamp, onEditTap: () {}),
+      );
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+    });
+
+    testWidgets('tap invokes onEditTap', (WidgetTester tester) async {
+      int taps = 0;
+      await _pumpTile(
+        tester,
+        FeedPostTile(post: _post(), now: _stamp, onEditTap: () => taps++),
+      );
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pump();
+      expect(taps, 1);
+    });
+  });
 }

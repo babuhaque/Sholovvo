@@ -117,11 +117,22 @@ bucket.
 
 ### 3b. Apply the post images SQL
 
-Paste `supabase-post-images.sql` into the same project and run it. It creates:
+Paste `supabase-community-posts.sql` into the same project and run it. It creates:
 
-- bucket `post-images`: public read, 5 MB, `image/jpeg`, `image/png`, `image/webp`
-- the same two policies with `bucket_id = 'post-images'` in place of `'avatars'`
+- bucket `community-posts` if absent (public read, 5 MB, `image/jpeg`,
+  `image/png`, `image/webp`) — the `insert` is `on conflict do nothing`, so an
+  existing bucket is left alone rather than dropped
+- the same two ownership policies with `bucket_id = 'community-posts'` in place
+  of `'avatars'`
 - no update policy (a photograph is never overwritten), no select policy
+
+**Verify the existing layout first, read-only.** `community-posts` already holds
+images from an earlier build. Those are served over the public route and keep
+rendering regardless of these policies (reads do not touch RLS), but the file
+includes a `split_part` query to confirm the current folder shape so the insert
+predicate matches the app's `{uid}/post-...` writes. Do not loosen a predicate to
+reach foreign/legacy objects, and do not drop the bucket to "fix" an upload — that
+empties it and destroys the images this bucket exists to preserve.
 
 Skipping this step is safe and visible: the compose screen keeps working and
 reports that photographs are not set up, so a text-only post can still be
@@ -165,7 +176,7 @@ configured".
    call to the donor's own folder with a token-less request must also fail.
 6. Post photographs: on the dashboard, open **From the community** (any of its
    controls lead to the same page), tap **Share an update**, attach two photos,
-   then publish. In *Storage → post-images* two objects should appear under
+   then publish. In *Storage → community-posts* two objects should appear under
    `{firebaseUid}/`, and the feed should show the new post at the top after the
    snapshot confirms it. Attach a third photo and abandon the draft: a
    confirmation appears, and after it the objects should be gone again.

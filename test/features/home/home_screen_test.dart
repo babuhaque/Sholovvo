@@ -28,6 +28,7 @@ import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/features/requests/application/requests_providers.dart';
 import 'package:sholovvo_app/features/requests/domain/entities/blood_request.dart';
 import 'package:sholovvo_app/features/requests/domain/request_repository.dart';
+import 'package:sholovvo_app/features/requests/presentation/create_request_screen.dart';
 import 'package:sholovvo_app/features/requests/presentation/requests_screen.dart';
 import 'package:sholovvo_app/features/requests/presentation/widgets/request_tile.dart';
 
@@ -261,8 +262,10 @@ void main() {
       expect(find.textContaining('donations'), findsNothing);
     });
 
-    testWidgets('offers both headline actions: one still to come, one opens '
-        'the donor search', (WidgetTester tester) async {
+    testWidgets('offers both headline actions: request blood opens the '
+        'create form, find donors opens the donor search', (
+      WidgetTester tester,
+    ) async {
       await _pumpHome(tester);
 
       final Finder requestBlood = find.widgetWithText(
@@ -276,15 +279,24 @@ void main() {
       expect(requestBlood, findsOneWidget);
       expect(findDonors, findsOneWidget);
 
+      // Both headline actions are real destinations now. "Find donors" opened
+      // the donor search since Stage 9.4; "Request blood" opens the create
+      // form since the write path closed — the rules permit the create, the
+      // service reaches them, and the form drives both. The tap must push the
+      // screen rather than report a feature that exists as still coming, so
+      // the assertion is on the destination type, not on a snackbar.
       await _tapVisible(tester, requestBlood);
-      expect(find.text('Coming soon.'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.byType(CreateRequestScreen), findsOneWidget);
 
-      // Since Stage 9.4 "Find donors" is a real destination: it pushes the donor
-      // search page rather than reporting a feature that now exists as coming soon.
+      // Back to the dashboard before the second assertion. Both taps push, so
+      // the second one only sees its own button once the first screen pops.
+      Navigator.of(tester.element(find.byType(CreateRequestScreen))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(CreateRequestScreen), findsNothing);
+
       await _tapVisible(tester, findDonors);
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.byType(DonorSearchScreen), findsOneWidget);
     });
 

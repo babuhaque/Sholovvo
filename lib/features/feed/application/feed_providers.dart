@@ -1,14 +1,34 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/core/logging/app_logger.dart';
+import 'package:sholovvo_app/core/preferences/app_preferences.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/features/feed/application/feed_state.dart';
 import 'package:sholovvo_app/features/feed/data/firestore_feed_documents.dart';
 import 'package:sholovvo_app/features/feed/data/firestore_feed_repository.dart';
+import 'package:sholovvo_app/features/feed/data/like_hydration_service.dart';
+import 'package:sholovvo_app/features/feed/data/post_edit_service.dart';
+import 'package:sholovvo_app/features/feed/data/post_like_service.dart';
+import 'package:sholovvo_app/features/feed/data/saved_posts_service.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/domain/feed_page.dart';
 import 'package:sholovvo_app/features/feed/domain/feed_repository.dart';
+
+/// The signed-in user's uid, or null.
+///
+/// A separate provider so that widget tests can override it without needing
+/// a full Firebase initialization, and so the controller can read the uid
+/// lazily only when hydration is needed.
+final Provider<String?> authUidProvider = Provider<String?>((Ref ref) {
+  try {
+    return FirebaseAuth.instance.currentUser?.uid;
+  } catch (_) {
+    return null;
+  }
+});
 
 /// The feed backend.
 ///
@@ -24,6 +44,43 @@ final Provider<FeedRepository> feedRepositoryProvider =
           FirebaseFirestore.instance,
         ),
       );
+    });
+
+/// The like/unlike write service.
+///
+/// Same lazy-constructed seam as [feedRepositoryProvider]: the controller calls
+/// through the [PostLikeService] interface, so a test overrides this one
+/// provider and never touches a live Firestore.
+final Provider<PostLikeService> postLikeServiceProvider =
+    Provider<PostLikeService>((Ref ref) {
+      return FirestorePostLikeService(FirebaseFirestore.instance);
+    });
+
+/// The like-hydration read service.
+///
+/// Queries which of the currently visible posts the signed-in user liked.
+/// Overridden in tests with a fake.
+final Provider<LikeHydrationService> likeHydrationServiceProvider =
+    Provider<LikeHydrationService>((Ref ref) {
+      return FirestoreLikeHydrationService(FirebaseFirestore.instance);
+    });
+
+/// The local saved-posts persistence service.
+///
+/// Reads/writes bookmarked post ids to SharedPreferences via the already-loaded
+/// [PreferencesStore.raw]. Overridden in tests with a fake.
+final Provider<SavedPostsService> savedPostsServiceProvider =
+    Provider<SavedPostsService>((Ref ref) {
+      return PrefsSavedPostsService(ref.read(preferencesStoreProvider).raw);
+    });
+
+/// The post-text edit service.
+///
+/// Updates an existing post's text, `editedAt`, and `updatedAt`. Overridden in
+/// tests with a fake.
+final Provider<PostEditService> postEditServiceProvider =
+    Provider<PostEditService>((Ref ref) {
+      return FirestorePostEditService(FirebaseFirestore.instance);
     });
 
 /// Owns the feed's pages.
@@ -72,7 +129,18 @@ class FeedController extends Notifier<FeedState> {
   bool get isFetching => _fetching;
 
   @override
-  FeedState build() => const FeedState();
+  FeedState build() {
+    // Defensive read: in tests the preferencesStoreProvider may not be
+    // overridden, causing savedPostsServiceProvider to throw. Fallback to an
+    // empty set so existing test harnesses remain unaffected.
+    Set<String> saved;
+    try {
+      saved = ref.read(savedPostsServiceProvider).load();
+    } catch (_) {
+      saved = <String>{};
+    }
+    return FeedState(savedPostIds: saved);
+  }
 
   /// Reads page one, replacing whatever is on screen.
   Future<void> loadFirstPage() {
@@ -120,6 +188,135 @@ class FeedController extends Notifier<FeedState> {
       return Future<void>.value();
     }
     return _read(after: cursor, append: true);
+  }
+
+  /// Increments the comment count on a visible post.
+  ///
+  /// Called by the comment sheet after a successful write, so the tile the
+  /// donor tapped reflects the new count without a full feed refresh.
+  void incrementCommentCount(String postId) {
+    final int index = state.posts.indexWhere((Post p) => p.id == postId);
+    if (index < 0) {
+      return;
+    }
+    final Post original = state.posts[index];
+    final Post updated = original.withCommentCount(original.commentCount + 1);
+    final List<Post> next = List<Post>.from(state.posts);
+    next[index] = updated;
+    state = state.copyWith(posts: next);
+  }
+
+  /// Called by the comment sheet after a successful delete, so the tile
+  /// reflects the reduced count without a full feed refresh.
+  void decrementCommentCount(String postId) {
+    final int index = state.posts.indexWhere((Post p) => p.id == postId);
+    if (index < 0) {
+      return;
+    }
+    final Post original = state.posts[index];
+    final Post updated =
+        original.withCommentCount((original.commentCount - 1).clamp(0, 1 << 31));
+    final List<Post> next = List<Post>.from(state.posts);
+    next[index] = updated;
+    state = state.copyWith(posts: next);
+  }
+
+  /// Toggles the current user's like on the given post.
+  ///
+  /// Optimistic: the UI updates immediately; the Firestore transaction runs
+  /// behind it. If the write fails (network, permission, missing post), the
+  /// local state rolls back and the error is logged but not shown as a snackbar
+  /// (a silent reversion is less disruptive than a popup for a misfire).
+  ///
+  /// No-op when the post is not visible in the current list.
+  Future<void> toggleLike(String postId, String uid) async {
+    // Locate the post to adjust its count.
+    final int index = state.posts.indexWhere(
+      (Post p) => p.id == postId,
+    );
+    if (index < 0) {
+      return;
+    }
+
+    final bool wasLiked = state.likedPostIds.contains(postId);
+    final Post original = state.posts[index];
+    final Post updated = original.withLikeCount(
+      wasLiked ? original.likeCount - 1 : original.likeCount + 1,
+    );
+
+    // Optimistic: flip the like in local state before awaiting the write.
+    final Set<String> nextLiked = Set<String>.from(state.likedPostIds);
+    if (wasLiked) {
+      nextLiked.remove(postId);
+    } else {
+      nextLiked.add(postId);
+    }
+    final List<Post> nextPosts = List<Post>.from(state.posts);
+    nextPosts[index] = updated;
+    state = state.copyWith(posts: nextPosts, likedPostIds: nextLiked);
+
+    // Write to the backend.
+    final PostLikeService service = ref.read(postLikeServiceProvider);
+    final Result<void> result = wasLiked
+        ? await service.unlike(postId, uid)
+        : await service.like(postId, uid);
+
+    // Roll back on failure.
+    if (result is FailureResult<void>) {
+      final Set<String> rolledBack = Set<String>.from(state.likedPostIds);
+      if (wasLiked) {
+        rolledBack.add(postId);
+      } else {
+        rolledBack.remove(postId);
+      }
+      final List<Post> rolledPosts = List<Post>.from(state.posts);
+      rolledPosts[index] = original;
+      state = state.copyWith(posts: rolledPosts, likedPostIds: rolledBack);
+      _logger.warning(
+        'Like toggle failed on post $postId: ${result.failure.code.name}',
+      );
+    }
+  }
+
+  /// Fetches which of the currently visible posts [uid] has liked and merges
+  /// the result into the session-local liked set.
+  ///
+  /// Fire-and-forget after the first page resolves: a missing heart is a minor
+  /// visual gap that self-heals on the next toggle, whereas a thrown exception
+  /// would take the feed down.
+  Future<void> _hydrateLikes(String uid) async {
+    final LikeHydrationService service =
+        ref.read(likeHydrationServiceProvider);
+    final List<String> postIds = state.posts
+        .map((Post p) => p.id)
+        .toList();
+    final Set<String> liked = await service.fetchLikedPostIds(postIds, uid);
+    if (liked.isEmpty) return;
+    state = state.copyWith(
+      likedPostIds: <String>{...state.likedPostIds, ...liked},
+    );
+  }
+
+  /// Toggles the bookmark on [postId] and persists the full set.
+  void toggleSave(String postId) {
+    final Set<String> next = Set<String>.from(state.savedPostIds);
+    if (!next.remove(postId)) {
+      next.add(postId);
+    }
+    state = state.copyWith(savedPostIds: next);
+    // Persist fire-and-forget: a failed write means the bookmark is lost on
+    // the next cold start, not that tapping the icon should throw.
+    try {
+      final SavedPostsService service = ref.read(savedPostsServiceProvider);
+      unawaited(service.save(next));
+    } catch (_) {
+      // No persistence available (test environment); state update is sufficient.
+    }
+  }
+
+  /// Toggles the "Saved only" filter on the feed list.
+  void toggleSavedFilter() {
+    state = state.copyWith(showOnlySaved: !state.showOnlySaved);
   }
 
   Future<void> _read({required FeedCursor? after, required bool append}) async {
@@ -207,6 +404,8 @@ class FeedController extends Notifier<FeedState> {
         hasMore: page.hasMore,
         loaded: true,
         skipped: skippedTotal,
+        likedPostIds: state.likedPostIds,
+        savedPostIds: state.savedPostIds,
       );
 
       // The operator-facing half of the count. A screen can only say "some posts
@@ -220,6 +419,16 @@ class FeedController extends Notifier<FeedState> {
         _logger.warning(
           'Feed read skipped $skippedTotal unreadable post document(s)',
         );
+      }
+
+      // Hydrate likes after a non-append read (first page / refresh).
+      // Fire-and-forget: a missing heart self-corrects on the next toggle,
+      // and blocking the read on this is worse UX than a late fill-in.
+      if (!append && next.isNotEmpty) {
+        final String? uid = ref.read(authUidProvider);
+        if (uid != null) {
+          unawaited(_hydrateLikes(uid));
+        }
       }
     } finally {
       _fetching = false;

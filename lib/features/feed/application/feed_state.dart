@@ -33,6 +33,9 @@ final class FeedState {
     this.failure,
     this.loaded = false,
     this.skipped = 0,
+    this.likedPostIds = const <String>{},
+    this.savedPostIds = const <String>{},
+    this.showOnlySaved = false,
   });
 
   final FeedStatus status;
@@ -67,6 +70,21 @@ final class FeedState {
   /// that tells a donor their list is shorter than the collection, and tells
   /// whoever maintains this app that the collection has drifted from the mapper.
   final int skipped;
+
+  /// The set of post ids the current user has liked.
+  ///
+  /// Hydrated from the server on first-page load (targeted existence reads
+  /// per visible post) and grown by session-local toggle actions. A refresh
+  /// preserves this set and merges new server data into it.
+  final Set<String> likedPostIds;
+
+  /// The set of post ids the user has bookmarked locally.
+  ///
+  /// Persisted to SharedPreferences; hydrated on controller build.
+  final Set<String> savedPostIds;
+
+  /// Whether the feed is showing only bookmarked posts.
+  final bool showOnlySaved;
 
   bool get isEmpty => posts.isEmpty;
 
@@ -126,6 +144,9 @@ final class FeedState {
     bool clearFailure = false,
     bool? loaded,
     int? skipped,
+    Set<String>? likedPostIds,
+    Set<String>? savedPostIds,
+    bool? showOnlySaved,
   }) {
     return FeedState(
       status: status ?? this.status,
@@ -135,6 +156,9 @@ final class FeedState {
       failure: clearFailure ? null : (failure ?? this.failure),
       loaded: loaded ?? this.loaded,
       skipped: skipped ?? this.skipped,
+      likedPostIds: likedPostIds ?? this.likedPostIds,
+      savedPostIds: savedPostIds ?? this.savedPostIds,
+      showOnlySaved: showOnlySaved ?? this.showOnlySaved,
     );
   }
 

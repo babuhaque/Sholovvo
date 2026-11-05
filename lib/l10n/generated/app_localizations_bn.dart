@@ -754,6 +754,227 @@ class AppLocalizationsBn extends AppLocalizations {
   String get feedCopy => 'লেখাটি কপি করুন';
 
   @override
+  String get feedShare => 'শেয়ার করুন';
+
+  @override
+  String get feedSave => 'সংরক্ষণ করুন';
+
+  @override
+  String get feedEditAction => 'সম্পাদনা';
+
+  @override
+  String get feedEditTitle => 'পোস্ট সম্পাদনা';
+
+  @override
+  String get feedEditHint => 'আপনার পোস্টের লেখা হালনাগাদ করুন।';
+
+  @override
+  String get feedEditSave => 'পরিবর্তন সংরক্ষণ';
+
+  @override
+  String get feedEditSaving => 'সংরক্ষণ হচ্ছে…';
+
+  @override
+  String get feedEditError => 'আপনার পরিবর্তন সংরক্ষণ করা যায়নি.';
+
+  @override
+  String get feedDeleteAction => 'পোস্ট মুছুন';
+
+  @override
+  String get feedDeleteConfirmTitle => 'এই পোস্টটি মুছবেন?';
+
+  @override
+  String get feedDeleteConfirmBody =>
+      'এটি পূর্বাবস্থায় ফেরানো যাবে না। পোস্ট এবং এর মন্তব্যগুলো স্থায়ীভাবে সরানো হবে।';
+
+  @override
+  String get feedDeleteConfirm => 'মুছুন';
+
+  @override
+  String get feedDeleted => 'পোস্ট মুছে ফেলা হয়েছে।';
+
+  @override
+  String get feedDeleteError => 'পোস্টটি মুছে ফেলা যায়নি।';
+
+  @override
+  String get feedSavedFilterOn => 'সংরক্ষিত দেখানো হচ্ছে';
+
+  @override
+  String get feedSavedFilterOff => 'সব পোস্ট';
+
+  @override
+  String get feedSavedEmpty => 'এখনো কোনো সংরক্ষিত পোস্ট নেই।';
+
+  @override
+  String get requestsCreateTitle => 'নতুন রক্তের অনুরোধ';
+
+  @override
+  String get requestsCreateAction => 'অনুরোধ তৈরি করুন';
+
+  @override
+  String get requestsBloodGroup => 'রক্তের গ্রুপ';
+
+  @override
+  String get requestsBags => 'প্রয়োজনীয় ব্যাগ';
+
+  @override
+  String get requestsHospital => 'হাসপাতালের নাম';
+
+  @override
+  String get requestsDate => 'প্রয়োজনের তারিখ';
+
+  @override
+  String get requestsTime => 'প্রয়োজনের সময়';
+
+  @override
+  String get requestsNotes => 'অতিরিক্ত তথ্য (ঐচ্ছিক)';
+
+  @override
+  String get requestsNotesHint => 'আরেকোনো বিবরণ…';
+
+  @override
+  String get requestsCreateSubmit => 'অনুরোধ জমা দিন';
+
+  @override
+  String get requestsCreating => 'তৈরি হচ্ছে…';
+
+  @override
+  String get requestsCreateSuccess => 'অনুরোধ পোস্ট হয়েছে।';
+
+  @override
+  String get requestsCreateError => 'অনুরোধ তৈরি করা যায়নি।';
+
+  @override
+  String get requestsRequired => 'এই ফিল্ডটি আবশ্যক';
+
+  @override
+  String get requestsDetailTitle => 'অনুরোধের বিবরণ';
+
+  @override
+  String get requestsDetailNoActionNote =>
+      'এই স্ক্রিনে যা প্রয়োজন এবং কোথায় প্রয়োজন তা দেখানো হয়। এই বিল্ডে অনুরোধকারীর সঙ্গে যোগাযোগ করা এখনো উপলব্ধ নয়।';
+
+  @override
+  String get requestsAcceptAction => 'অনুরোধ গ্রহণ করুন';
+
+  @override
+  String get requestsAcceptConfirmTitle => 'এই অনুরোধটি গ্রহণ করবেন?';
+
+  @override
+  String get requestsAcceptConfirmBody =>
+      'আপনি এই রোগীর জন্য রক্তদান করতে যাচ্ছেন। অনুরোধকারী দেখতে পাবেন যে আপনি গ্রহণ করেছেন।';
+
+  @override
+  String get requestsAcceptConfirmYes => 'হ্যাঁ, আমি রক্তদান করব';
+
+  @override
+  String get requestsAcceptConfirmNo => 'এখন নয়';
+
+  @override
+  String get requestsAcceptError => 'অনুরোধ গ্রহণ করা যায়নি।';
+
+  @override
+  String get requestsCancelAction => 'অনুরোধ বাতিল করুন';
+
+  @override
+  String get requestsCancelConfirmTitle => 'এই অনুরোধটি বাতিল করবেন?';
+
+  @override
+  String get requestsCancelConfirmBody =>
+      'এটি আপনার অনুরোধ খোলা তালিকা থেকে সরিয়ে দেবে। যারা এটি দেখেছিল তারা আর বিজ্ঞপ্তি পাবে না।';
+
+  @override
+  String get requestsCancelConfirmYes => 'হ্যাঁ, বাতিল করুন';
+
+  @override
+  String get requestsCancelConfirmNo => 'রেখে দিন';
+
+  @override
+  String get requestsCancelSuccess => 'অনুরোধ বাতিল হয়েছে।';
+
+  @override
+  String get requestsCancelError => 'অনুরোধ বাতিল করা যায়নি।';
+
+  @override
+  String get requestsEditAction => 'অনুরোধ সম্পাদনা করুন';
+
+  @override
+  String get requestsEditTitle => 'অনুরোধ সম্পাদনা';
+
+  @override
+  String get requestsEditSubmit => 'পরিবর্তন সংরক্ষণ করুন';
+
+  @override
+  String get requestsEditSaving => 'সংরক্ষণ হচ্ছে…';
+
+  @override
+  String get requestsEditSuccess => 'অনুরোধ হালনাগাদ হয়েছে।';
+
+  @override
+  String get requestsEditError => 'অনুরোধ হালনাগাদ করা যায়নি।';
+
+  @override
+  String get requestsContactAction => 'যোগাযোগের তথ্য';
+
+  @override
+  String get requestsContactTitle => 'অনুরোধকারীর যোগাযোগের তথ্য';
+
+  @override
+  String get requestsContactIntro =>
+      'এই তথ্য এই অনুরোধের সঙ্গে গোপনভাবে সংরক্ষিত হয়। এই বিল্ডে ডোনারদের দেখানো হয় না।';
+
+  @override
+  String get requestsPatientName => 'রোগীর নাম';
+
+  @override
+  String get requestsPhoneNumber => 'ফোন নম্বর';
+
+  @override
+  String get requestsHospitalAddress => 'হাসপাতালের ঠিকানা';
+
+  @override
+  String get requestsContactSubmit => 'যোগাযোগের তথ্য সংরক্ষণ করুন';
+
+  @override
+  String get requestsContactSaving => 'সংরক্ষণ হচ্ছে…';
+
+  @override
+  String get requestsContactLoading => 'লোড হচ্ছে…';
+
+  @override
+  String get requestsContactSuccess => 'যোগাযোগের তথ্য সংরক্ষিত হয়েছে।';
+
+  @override
+  String get requestsContactError => 'যোগাযোগের তথ্য সংরক্ষণ করা যায়নি।';
+
+  @override
+  String get requestsContactLoadError =>
+      'আপনার সংরক্ষিত যোগাযোগের তথ্য লোড করা যায়নি।';
+
+  @override
+  String get requestsContactRetry => 'আবার চেষ্টা করুন';
+
+  @override
+  String get requestsMyAction => 'আমার অনুরোধ';
+
+  @override
+  String get requestsMyTitle => 'আমার অনুরোধ';
+
+  @override
+  String get requestsMyEmptyTitle => 'আপনার কোনো খোলা অনুরোধ নেই';
+
+  @override
+  String get requestsMyEmptyBody =>
+      'আপনি তৈরি করা অনুরোধগুলো পূরণ বা বাতিল হওয়া পর্যন্ত এখানে দেখাবে।';
+
+  @override
+  String get requestsFilterLabel => 'গ্রুপ অনুযায়ী ফিল্টার';
+
+  @override
+  String get requestsFilterEmpty =>
+      'এই মুহূর্তে এই গ্রুপের কোনো খোলা অনুরোধ নেই।';
+
+  @override
   String get feedCopied => 'পোস্টের লেখাটি কপি হয়েছে।';
 
   @override
@@ -811,6 +1032,85 @@ class AppLocalizationsBn extends AppLocalizations {
 
     return '$countString মন্তব্য';
   }
+
+  @override
+  String get commentsSheetTitle => 'মন্তব্য';
+
+  @override
+  String get commentsEmptyBody => 'এখনো কোনো মন্তব্য নেই। প্রথম হোন।';
+
+  @override
+  String get commentsLoading => 'মন্তব্য লোড হচ্ছে…';
+
+  @override
+  String get commentsHintText => 'একটি মন্তব্য লিখুন…';
+
+  @override
+  String get commentsSendTooltip => 'পাঠান';
+
+  @override
+  String get commentsErrorTitle => 'মন্তব্য লোড করা যায়নি';
+
+  @override
+  String commentsReplyPrefix(String name) {
+    return '$name-কে উত্তর';
+  }
+
+  @override
+  String commentsReplyingTo(String name) {
+    return '$name-কে উত্তর দিচ্ছেন';
+  }
+
+  @override
+  String get commentsReplyHint => 'উত্তর লিখুন…';
+
+  @override
+  String get commentsReplyAction => 'উত্তর';
+
+  @override
+  String get commentsDeleteAction => 'মুছুন';
+
+  @override
+  String get reportTooltip => 'রিপোর্ট';
+
+  @override
+  String get reportSheetTitle => 'এই পোস্ট রিপোর্ট করুন';
+
+  @override
+  String get reportCommentSheetTitle => 'এই মন্তব্য রিপোর্ট করুন';
+
+  @override
+  String get reportReasonLabel => 'কারণ';
+
+  @override
+  String get reportReasonSpam => 'স্প্যাম';
+
+  @override
+  String get reportReasonHarassment => 'হয়রানি';
+
+  @override
+  String get reportReasonHateSpeech => 'ঘৃণামূলক বক্তব্য';
+
+  @override
+  String get reportReasonMisinformation => 'ভুল তথ্য';
+
+  @override
+  String get reportReasonOther => 'অন্যান্য';
+
+  @override
+  String get reportNoteHint => 'অতিরিক্ত বিবরণ (ঐচ্ছিক)';
+
+  @override
+  String get reportSubmitButton => 'রিপোর্ট জমা দিন';
+
+  @override
+  String get reportSubmitting => 'জমা হচ্ছে…';
+
+  @override
+  String get reportSuccess => 'রিপোর্ট জমা হয়েছে। ধন্যবাদ।';
+
+  @override
+  String get reportError => 'রিপোর্ট জমা করা যায়নি।';
 
   @override
   String get feedUnreadableTitle => 'ফিড সম্পূর্ণভাবে পড়া যায়নি';
@@ -938,7 +1238,7 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get requestsNoActionNote =>
-      'এখানে দেখা যাচ্ছে কী এবং কোথায় দরকার। অনুরোধ গ্রহণ করার সুযোগ এই বিল্ডে এখনো নেই।';
+      'এখানে দেখা যাচ্ছে কী এবং কোথায় দরকার। আপনি যোগ্য হলে অনুরোধটি খুলে গ্রহণ করতে পারেন।';
 
   @override
   String get donorSearchTitle => 'দাতা খুঁজুন';
