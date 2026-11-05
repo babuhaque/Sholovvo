@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Generated Flutter web entrypoint (root-level build artifact)
+/web_entrypoint.dart
+
 # Symbolication related
 app.*.symbols
 
