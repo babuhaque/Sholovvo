@@ -172,7 +172,7 @@ void main() {
       expect(page.skipped, 1);
     });
 
-    test('drops a document carrying more than four images', () async {
+    test('drops a document carrying more images than the limit allows', () async {
       final harness = _build(<FeedDocument>[
         feedDocument(
           'p1',
@@ -183,6 +183,7 @@ void main() {
               'https://example.test/3.jpg',
               'https://example.test/4.jpg',
               'https://example.test/5.jpg',
+              'https://example.test/6.jpg',
             ],
           ),
         ),

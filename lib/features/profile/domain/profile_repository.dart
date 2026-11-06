@@ -46,4 +46,13 @@ abstract interface class ProfileRepository {
   /// left open would overwrite a freshly uploaded URL with the stale one it was
   /// seeded from.
   Future<Result<void>> setPhotoUrl(String? photoUrl);
+
+  /// Points the profile banner at [coverUrl], or removes the field when `null`.
+  ///
+  /// A narrow write for the same reason as [setPhotoUrl]: the cover is chosen
+  /// from the profile screen rather than the edit form, so publishing it must
+  /// not carry the form's other fields along. It writes only the public
+  /// `coverUrl`; nothing in the private subcollection changes because a cover is
+  /// a public banner, not PII.
+  Future<Result<void>> setCoverUrl(String? coverUrl);
 }

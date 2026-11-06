@@ -39,9 +39,15 @@ enum SupabaseKeyRejection {
 /// `--dart-define=SUPABASE_POST_IMAGES_BUCKET=<bucket>`. It is left unset in the
 /// normal case, so the authoritative `community-posts` default holds.
 ///
-/// With neither define present the app is simply *not configured* for photo
-/// storage: the profile still works, and the photo sheet says so instead of
-/// showing a control that cannot succeed.
+/// When **neither** the URL nor the key define is present, [fromEnvironment]
+/// falls back to the shipped public project config
+/// ([defaultProjectUrl] / [defaultPublishableKey]) so photo upload is
+/// configured on every launch without a special run configuration. Those two
+/// values are Supabase's *publishable* client credentials — the anon key
+/// carries `role: anon` and is designed to ship in a client bundle, exactly
+/// like the Firebase config already committed in `firebase_options.dart`. A
+/// define still overrides the fallback, and [rejectPrivilegedKey] still drops a
+/// secret/service-role key, so a build that supplies one stays unconfigured.
 final class SupabaseConfig {
   const SupabaseConfig({
     this.url = '',
@@ -61,9 +67,18 @@ final class SupabaseConfig {
     const String rawBucket = String.fromEnvironment('SUPABASE_POST_IMAGES_BUCKET');
     final SupabaseKeyRejection? rejection = rejectPrivilegedKey(rawKey);
     final String bucket = rawBucket.trim();
+    // Neither endpoint define present → the shipped public project. Supplying
+    // either define opts out of the fallback entirely, so a build is never left
+    // with a half-overridden pair (a custom URL carrying the default key).
+    final bool useShippedProject =
+        rawUrl.trim().isEmpty && rawKey.trim().isEmpty;
+    final String url = useShippedProject ? defaultProjectUrl : rawUrl.trim();
+    final String publishableKey = useShippedProject
+        ? defaultPublishableKey
+        : (rejection == null ? rawKey.trim() : '');
     return SupabaseConfig(
-      url: rawUrl.trim(),
-      publishableKey: rejection == null ? rawKey.trim() : '',
+      url: url,
+      publishableKey: publishableKey,
       postImagesBucket: bucket.isEmpty ? defaultPostImagesBucket : bucket,
       rejection: rejection,
     );
@@ -91,6 +106,22 @@ final class SupabaseConfig {
   /// target another bucket at run time with `SUPABASE_POST_IMAGES_BUCKET` without
   /// touching this default.
   static const String defaultPostImagesBucket = 'community-posts';
+
+  /// The Supabase project this build ships against, used by [fromEnvironment]
+  /// when no `SUPABASE_URL` define is supplied. A project URL is public
+  /// information — it is the host header of every storage request.
+  static const String defaultProjectUrl =
+      'https://qiipuczhgacwrysyndij.supabase.co';
+
+  /// The project's **publishable (anon) key**, used by [fromEnvironment] when no
+  /// `SUPABASE_ANON_KEY` define is supplied. This is a public client key: its
+  /// JWT payload carries `role: anon`, and Supabase authorises every request
+  /// made with it against row-level security, so bundling it is by design (the
+  /// same reasoning as the committed Firebase config). It is not a secret —
+  /// [rejectPrivilegedKey] still refuses a `sb_secret_`/service-role key passed
+  /// as a define.
+  static const String defaultPublishableKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaXB1Y3poZ2Fjd3J5c3luZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyNzMxMjksImV4cCI6MjEwNzg0OTEyOX0.Zo2e8o5AV1_ELH_EIerQfzT1uGF3pJj2N8TFWPoEges';
 
   /// Project URL, e.g. `https://abcdefgh.supabase.co`. Empty when unset.
   final String url;

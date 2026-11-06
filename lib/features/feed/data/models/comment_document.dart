@@ -8,7 +8,10 @@ import 'package:sholovvo_app/features/feed/domain/entities/comment.dart';
 ///
 /// Mirrors `PostDocument`: pure functions over plain maps, testable without an
 /// emulator. The rules require `hasAll(['authorUid', 'authorName', 'text',
-/// 'createdAt'])` and allow optional `authorPhotoUrl`, `parentId`, `replyToName`.
+/// 'createdAt'])` and allow optional `authorPhotoUrl`, `parentId`,
+/// `replyToName`, and `postId`. This client always writes `postId` so a new
+/// comment carries the same shape as the production rows (which all have it);
+/// the rule checks that, when present, it equals the parent post.
 abstract final class CommentDocument {
   /// Required keys, as the rules spell them.
   static const List<String> requiredFields = [
@@ -27,6 +30,7 @@ abstract final class CommentDocument {
     'parentId',
     'replyToName',
     'createdAt',
+    'postId',
   };
 
   /// Builds the map for a Firestore `set` or transaction write.
@@ -34,6 +38,7 @@ abstract final class CommentDocument {
   /// [createdAt] is written as `FieldValue.serverTimestamp()` so the rules'
   /// `createdAt == request.time` check passes without a clock-skew risk.
   static Map<String, Object?> toMap({
+    required String postId,
     required String authorUid,
     required String authorName,
     String? authorPhotoUrl,
@@ -42,6 +47,7 @@ abstract final class CommentDocument {
     String? replyToName,
   }) {
     final Map<String, Object?> fields = <String, Object?>{
+      'postId': postId,
       'authorUid': authorUid,
       'authorName': authorName,
       'text': text.trim(),

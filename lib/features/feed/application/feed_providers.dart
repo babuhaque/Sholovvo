@@ -4,9 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/core/logging/app_logger.dart';
+import 'package:sholovvo_app/core/media/gallery_saver.dart';
 import 'package:sholovvo_app/core/preferences/app_preferences.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/features/feed/application/feed_state.dart';
+import 'package:sholovvo_app/features/feed/data/feed_count_hydration_service.dart';
 import 'package:sholovvo_app/features/feed/data/firestore_feed_documents.dart';
 import 'package:sholovvo_app/features/feed/data/firestore_feed_repository.dart';
 import 'package:sholovvo_app/features/feed/data/like_hydration_service.dart';
@@ -65,6 +67,17 @@ final Provider<LikeHydrationService> likeHydrationServiceProvider =
       return FirestoreLikeHydrationService(FirebaseFirestore.instance);
     });
 
+/// The derived social-count read service.
+///
+/// Reads each visible post's real like and comment totals from the
+/// `likes`/`comments` subcollections with an aggregate `count()` query, because
+/// the post document's counters are no longer written by any client (rules keep
+/// them immutable; the count is derived). Overridden in tests with a fake.
+final Provider<FeedCountHydrationService> feedCountHydrationServiceProvider =
+    Provider<FeedCountHydrationService>((Ref ref) {
+      return FirestoreFeedCountHydrationService(FirebaseFirestore.instance);
+    });
+
 /// The local saved-posts persistence service.
 ///
 /// Reads/writes bookmarked post ids to SharedPreferences via the already-loaded
@@ -82,6 +95,15 @@ final Provider<PostEditService> postEditServiceProvider =
     Provider<PostEditService>((Ref ref) {
       return FirestorePostEditService(FirebaseFirestore.instance);
     });
+
+/// The save-to-gallery seam used by the full-screen image viewer.
+///
+/// `gal` and `http` both reach the platform, so the viewer depends on this
+/// [GallerySaver] interface rather than the packages directly. Overridden in
+/// tests with a fake, exactly like the like/save services above.
+final Provider<GallerySaver> gallerySaverProvider = Provider<GallerySaver>(
+  (Ref ref) => const HttpGallerySaver(),
+);
 
 /// Owns the feed's pages.
 ///
@@ -278,23 +300,62 @@ class FeedController extends Notifier<FeedState> {
     }
   }
 
-  /// Fetches which of the currently visible posts [uid] has liked and merges
-  /// the result into the session-local liked set.
+  /// Fetches which of the currently visible posts [uid] has liked, and the
+  /// server-authoritative like/comment counts for every visible post, and merges
+  /// both into the list on screen.
   ///
-  /// Fire-and-forget after the first page resolves: a missing heart is a minor
-  /// visual gap that self-heals on the next toggle, whereas a thrown exception
-  /// would take the feed down.
-  Future<void> _hydrateLikes(String uid) async {
-    final LikeHydrationService service =
-        ref.read(likeHydrationServiceProvider);
-    final List<String> postIds = state.posts
-        .map((Post p) => p.id)
-        .toList();
-    final Set<String> liked = await service.fetchLikedPostIds(postIds, uid);
-    if (liked.isEmpty) return;
-    state = state.copyWith(
-      likedPostIds: <String>{...state.likedPostIds, ...liked},
-    );
+  /// Fire-and-forget after the first page resolves. Likes are applied first, on
+  /// their own, and a failure of either read is swallowed: a missing heart or a
+  /// stale zero is a minor visual gap that self-heals on the next toggle or
+  /// refresh, whereas a thrown exception would take the feed down. The count
+  /// read is defensive (its provider reaches for a live Firestore) so a test
+  /// that exercises likes without overriding the count seam is unaffected.
+  Future<void> _hydrate(String uid) async {
+    final List<String> postIds = state.posts.map((Post p) => p.id).toList();
+    if (postIds.isEmpty) {
+      return;
+    }
+
+    // 1. The viewer's own likes.
+    try {
+      final LikeHydrationService service = ref.read(
+        likeHydrationServiceProvider,
+      );
+      final Set<String> liked = await service.fetchLikedPostIds(postIds, uid);
+      if (liked.isNotEmpty) {
+        state = state.copyWith(
+          likedPostIds: <String>{...state.likedPostIds, ...liked},
+        );
+      }
+    } catch (_) {
+      // A missing heart self-corrects on the next toggle; not fatal.
+    }
+
+    // 2. The derived counts, applied after likes so the two reads cannot race
+    //    on the same posts list (each does a read-modify-write of `state`).
+    try {
+      final FeedCountHydrationService service = ref.read(
+        feedCountHydrationServiceProvider,
+      );
+      final Map<String, PostCountSnapshot> counts = await service.fetchCounts(
+        postIds,
+      );
+      if (counts.isEmpty) {
+        return;
+      }
+      final List<Post> next = <Post>[
+        for (final Post post in state.posts)
+          counts.containsKey(post.id)
+              ? post
+                    .withLikeCount(counts[post.id]!.likeCount)
+                    .withCommentCount(counts[post.id]!.commentCount)
+              : post,
+      ];
+      state = state.copyWith(posts: next);
+    } catch (_) {
+      // No count seam available (test environment) or the read failed: the
+      // optimistic counts already on screen stand until the next load.
+    }
   }
 
   /// Toggles the bookmark on [postId] and persists the full set.
@@ -427,7 +488,7 @@ class FeedController extends Notifier<FeedState> {
       if (!append && next.isNotEmpty) {
         final String? uid = ref.read(authUidProvider);
         if (uid != null) {
-          unawaited(_hydrateLikes(uid));
+          unawaited(_hydrate(uid));
         }
       }
     } finally {

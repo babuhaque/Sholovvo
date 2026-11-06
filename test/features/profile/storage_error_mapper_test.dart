@@ -75,6 +75,39 @@ void main() {
         isA<ConflictFailure>(),
       );
     });
+
+    // The exact sentences Supabase Storage answers with when the bucket
+    // itself does not exist — the delivery SQL was never applied. These must
+    // not surface as "We could not find that account", because the account is
+    // fine; the project's storage is not.
+    test('a missing bucket is a configuration failure, not a missing account', () {
+      for (final String message in <String>[
+        'Bucket not found',
+        'NoSuchBucket',
+      ]) {
+        final Failure failure = mapStorageErrorToFailure(
+          message: message,
+          statusCode: '404',
+        );
+
+        expect(failure, isA<ConfigurationFailure>(), reason: message);
+        expect(
+          (failure as ConfigurationFailure).setting,
+          'Supabase Storage bucket',
+        );
+      }
+    });
+
+    test('a missing bucket named without a status is still configuration', () {
+      // The live answer is exactly `{"message":"Bucket not found",
+      // "code":"NoSuchBucket"}` behind an outer HTTP 400, so the sentence can
+      // arrive without a parseable status — the text branch must still catch
+      // it.
+      expect(
+        mapStorageErrorToFailure(message: 'Bucket not found'),
+        isA<ConfigurationFailure>(),
+      );
+    });
   });
 
   group('mapStorageErrorToFailure: the bucket\'s own limits', () {

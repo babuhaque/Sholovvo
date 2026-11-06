@@ -14,7 +14,7 @@ import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 ///
 /// | Document | Readable by | Holds |
 /// | --- | --- | --- |
-/// | `users/{uid}` | any signed-in user | display name, role, blood group, availability, photo URL, the discovery-consent flag *only* while the donor has opted in, and the area *only* when the donor published it |
+/// | `users/{uid}` | any signed-in user | display name, role, blood group, availability, photo URL, cover URL, the discovery-consent flag *only* while the donor has opted in, and the area *only* when the donor published it |
 /// | `users/{uid}/private/profile` | the owner only | area, street address, phone, date of birth, gender, the publication flag, the discoverability flag |
 ///
 /// `area` appears in both on purpose: the private copy is the source of truth,
@@ -49,6 +49,7 @@ abstract final class ProfileDocuments {
 
     _putText(fields, 'bloodGroup', profile.bloodGroup);
     _putText(fields, 'photoUrl', profile.photoUrl);
+    _putText(fields, 'coverUrl', profile.coverUrl);
     // Published only while the switch is on. `_putText` collapses a null or
     // blank value to a field deletion, which is what makes switching it off
     // actually remove the data instead of hiding it behind a flag.
@@ -118,6 +119,18 @@ abstract final class ProfileDocuments {
     return fields;
   }
 
+  /// The narrow write used by the cover photo flow.
+  ///
+  /// The cover counterpart of [photoFields], with the same deletion behaviour:
+  /// removing a cover removes the field rather than storing an empty string.
+  static Map<String, Object?> coverFields(String? coverUrl) {
+    final Map<String, Object?> fields = <String, Object?>{
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    _putText(fields, 'coverUrl', coverUrl);
+    return fields;
+  }
+
   /// Rebuilds a profile from the two documents.
   ///
   /// Returns `null` when the public document does not exist: that is "nothing
@@ -143,6 +156,7 @@ abstract final class ProfileDocuments {
       displayName: _text(public['displayName']) ?? '',
       bloodGroup: _text(public['bloodGroup']),
       photoUrl: _text(public['photoUrl']),
+      coverUrl: _text(public['coverUrl']),
       isAvailable: public['isAvailable'] == true,
       area: privateArea ?? _text(public['area']),
       addressLine: _text(privateData['addressLine']),

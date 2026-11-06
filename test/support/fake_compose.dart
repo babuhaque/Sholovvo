@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/core/result/result.dart';
+import 'package:sholovvo_app/features/feed/data/post_edit_service.dart';
 import 'package:sholovvo_app/features/feed/data/post_writer.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/domain/post_draft.dart';
@@ -190,6 +191,79 @@ class FakePostWriter implements PostWriter {
     created.add((id: id, fields: fields));
     if (createFailure != null) {
       return FailureResult<void>(createFailure!);
+    }
+    return const Success<void>(null);
+  }
+}
+
+/// An in-memory [PostEditService]: the seam the edit sheet is tested across.
+///
+/// Records the text and the two image lists it was handed rather than writing
+/// them, so a test can assert that a save submitted the surviving photos as
+/// parallel url/path lists — the exact normalisation that fixes a legacy post
+/// whose document carried neither key. When the matching failure is set the
+/// call reports it, which is how the sheet's error paths are reached.
+class FakePostEditService implements PostEditService {
+  FakePostEditService({this.authorUid = 'uid-verified'});
+
+  /// The uid the stored posts are attributed to, checked the way the real
+  /// service checks it before any write.
+  String authorUid;
+
+  /// Returned instead of a success from [editPost] when set.
+  Failure? editFailure;
+
+  /// Returned instead of a success from [deletePost] when set.
+  Failure? deleteFailure;
+
+  int editCalls = 0;
+  int deleteCalls = 0;
+  String? lastEditedText;
+  List<String>? lastImageUrls;
+  List<String>? lastImagePaths;
+  String? lastPostId;
+  String? lastEditUid;
+
+  @override
+  Future<Result<void>> editPost({
+    required String postId,
+    required String uid,
+    required String newText,
+    required List<String> imageUrls,
+    required List<String> imagePaths,
+  }) async {
+    editCalls++;
+    lastPostId = postId;
+    lastEditUid = uid;
+    lastEditedText = newText.trim();
+    lastImageUrls = imageUrls;
+    lastImagePaths = imagePaths;
+    if (editFailure != null) {
+      return FailureResult<void>(editFailure!);
+    }
+    if (uid.isEmpty || postId.isEmpty) {
+      return const FailureResult<void>(
+        AuthFailure(debugMessage: 'Missing uid or postId'),
+      );
+    }
+    if (lastEditedText!.isEmpty) {
+      return const FailureResult<void>(
+        ValidationFailure(messageKey: 'textRequired'),
+      );
+    }
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> deletePost({
+    required String postId,
+    required String uid,
+  }) async {
+    deleteCalls++;
+    lastPostId = postId;
+    lastEditUid = uid;
+    if (deleteFailure != null) {
+      return FailureResult<void>(deleteFailure!);
     }
     return const Success<void>(null);
   }

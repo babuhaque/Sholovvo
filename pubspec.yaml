@@ -53,6 +53,14 @@ dependencies:
   image_picker: ^1.2.4
   share_plus: ^13.3.1
 
+  # Save-to-gallery for a post photo from the full-screen viewer (Stage 6).
+  # `gal` writes image bytes into the system gallery on Android/iOS and issues a
+  # browser download on web; `http` fetches the stored photo's bytes so `gal` has
+  # something to save. Both are cross-platform, so one code path serves every
+  # target the viewer is opened on.
+  gal: ^2.3.0
+  http: ^1.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

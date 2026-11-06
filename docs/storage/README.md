@@ -246,6 +246,44 @@ configured".
    than taking the screen with it. Deleting a post does not delete its
    photographs, because the feed has no delete yet.
 
+## Cleaning up orphaned post photographs
+
+Limitation 4 above describes the problem: a post deleted before the client fix
+left its photographs in `community-posts` with nothing pointing at them. The
+application now removes a post's own photos on delete, so no *new* orphans are
+created — but the objects already sitting in the bucket are outside that code
+path and need a one-off sweep.
+
+`cleanup-orphan-post-images.mjs` (this folder) does that sweep. It reads every
+live `posts` document, collects the `imagePaths` they still reference, lists
+every object in the bucket, and reports the difference. It is **dry-run by
+default** and deletes nothing until you pass `--execute`.
+
+Because the truth lives in two systems, the script bridges both and therefore
+needs **owner credentials** the donor-facing app never has — a Supabase
+`service_role` / `sb_secret_…` key (to list and delete across every donor
+folder) and a Firebase service-account JSON (to read `posts`). Both come from
+the environment; nothing is read from the repo and no key is ever printed.
+
+```powershell
+cd docs/storage
+npm install
+
+$env:SUPABASE_URL           = "https://<project-ref>.supabase.co"
+$env:SUPABASE_SERVICE_KEY   = "<service_role / sb_secret_… key>"
+$env:GOOGLE_APPLICATION_CREDENTIALS = "C:\path\to\service-account.json"
+$env:FIREBASE_PROJECT_ID    = "sholovvo-blood-donation"
+
+node cleanup-orphan-post-images.mjs              # report only — safe
+node cleanup-orphan-post-images.mjs --execute    # delete the orphans
+```
+
+Two guards are deliberate: a `posts` read that returns **0 documents** aborts
+immediately (a wrong project id would otherwise flag the entire bucket as
+orphaned and delete every real photo), and `--execute` deletes in batches so an
+interrupted run can simply be re-run — already-deleted objects come back as
+absent. This script is owner tooling; it is not wired into the app or any build.
+
 ## Rolling back
 
 Only to remove the feature entirely (not to make an upload work):

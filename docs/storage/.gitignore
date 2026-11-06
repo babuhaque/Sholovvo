@@ -1,0 +1,5 @@
+node_modules/
+# Never commit owner credentials used by the cleanup script.
+service-account.json
+*.service-account.json
+.env

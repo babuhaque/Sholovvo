@@ -62,6 +62,28 @@ void main() {
 
       expect(first, isNot(second));
     });
+
+    test('a cover shares the uid folder but never collides with the avatar', () {
+      final DateTime now = DateTime.fromMillisecondsSinceEpoch(1730000000000);
+      final String cover = SupabasePhotoStorage.objectPath(
+        uid: 'uid-verified',
+        now: now,
+        format: PhotoFormat.jpeg,
+        prefix: 'cover',
+      );
+      final String avatar = SupabasePhotoStorage.objectPath(
+        uid: 'uid-verified',
+        now: now,
+        format: PhotoFormat.jpeg,
+      );
+
+      // Same folder (the ownership policy checks only the first segment), so one
+      // bucket policy governs both, but a distinct file name so the two images of
+      // one account at one instant cannot overwrite each other.
+      expect(cover, 'uid-verified/cover-1730000000000.jpg');
+      expect(cover.split('/').first, avatar.split('/').first);
+      expect(cover, isNot(avatar));
+    });
   });
 
   group('SupabasePhotoStorage.objectPathOf', () {

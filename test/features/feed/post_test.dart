@@ -88,16 +88,16 @@ void main() {
       expect(_issue(imageCount: 0, imagePathCount: 0), isNull);
     });
 
-    test('four images are allowed and five are not', () {
-      final List<String> urls = List<String>.generate(4, (int i) => 'u$i');
-      final List<String> paths = List<String>.generate(4, (int i) => 'p$i');
+    test('five images are allowed and six are not', () {
+      final List<String> urls = List<String>.generate(5, (int i) => 'u$i');
+      final List<String> paths = List<String>.generate(5, (int i) => 'p$i');
 
       expect(
         _issue(imageCount: urls.length, imagePathCount: paths.length),
         isNull,
       );
-      expect(_issue(imageCount: 5, imagePathCount: 5), PostIssue.tooManyImages);
-      expect(PostValidator.maxImages, 4);
+      expect(_issue(imageCount: 6, imagePathCount: 6), PostIssue.tooManyImages);
+      expect(PostValidator.maxImages, 5);
     });
 
     test('more storage paths than URLs is refused', () {

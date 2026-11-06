@@ -130,9 +130,17 @@ describe('Stage 8.1 posts — create discovery', () => {
     );
   });
 
-  it('6. create with ten images is refused (max four, fixed by the compose grid and the storage budget)', async () => {
+  it('6. create with five images is accepted (the raised ceiling, Stage 6)', async () => {
     const db = testEnv.authenticatedContext(FEED.author).firestore();
-    const urls = Array.from({ length: 10 }, (_, i) => `https://cdn.example.test/${i}.jpg`);
+    const urls = Array.from({ length: 5 }, (_, i) => `https://cdn.example.test/${i}.jpg`);
+    await assertSucceeds(
+      setDoc(doc(db, 'posts', 'post_new_1'), validPostData({ imageUrls: urls, imagePaths: urls })),
+    );
+  });
+
+  it('6b. create with six images is refused (max five, fixed by the compose grid and the storage budget)', async () => {
+    const db = testEnv.authenticatedContext(FEED.author).firestore();
+    const urls = Array.from({ length: 6 }, (_, i) => `https://cdn.example.test/${i}.jpg`);
     await assertFails(
       setDoc(doc(db, 'posts', 'post_new_1'), validPostData({ imageUrls: urls, imagePaths: urls })),
     );
@@ -211,8 +219,8 @@ describe('Stage 8.1 posts — update discovery', () => {
     );
     await assertFails(
       updateDoc(doc(db, 'posts', FEED.post), {
-        imageUrls: Array.from({ length: 5 }, (_, i) => `https://cdn.example.test/${i}.jpg`),
-        imagePaths: Array.from({ length: 5 }, (_, i) => `a/${i}.jpg`),
+        imageUrls: Array.from({ length: 6 }, (_, i) => `https://cdn.example.test/${i}.jpg`),
+        imagePaths: Array.from({ length: 6 }, (_, i) => `a/${i}.jpg`),
         updatedAt: serverTimestamp(),
       }),
     );
@@ -305,62 +313,106 @@ describe('Stage 8.1 comments — discovery', () => {
   });
 });
 
-describe('Stage 8.1 likes — canonical subcollection', () => {
-  it('21. post_likes is closed for writes but stays readable (backward-compat), and posts/{id}/likes/{uid} is the only writable like shape', async () => {
+describe('Stage 6 comments — postId reconciliation', () => {
+  it('20b. a comment carrying a postId must match its parent; a mismatched postId is refused', async () => {
     await seedPost();
-    // A legacy flat like row, written by a pre-Stage-8 build. Stage 9.3 found
-    // 42 such documents live in production, and the deployed rules let any
-    // signed-in user read them, so the reconciliation keeps that read open
-    // while closing every write.
+    const db = testEnv.authenticatedContext(FEED.author).firestore();
+    // The shipped client always writes postId; it must equal the parent.
+    await assertSucceeds(
+      setDoc(doc(db, 'posts', FEED.post, 'comments', FEED.comment), {
+        authorUid: FEED.author,
+        authorName: 'Donor One',
+        text: 'Nice.',
+        createdAt: serverTimestamp(),
+        postId: FEED.post,
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db, 'posts', FEED.post, 'comments', 'comment_bad_1'), {
+        authorUid: FEED.author,
+        authorName: 'Donor One',
+        text: 'Nice.',
+        createdAt: serverTimestamp(),
+        postId: 'post_ghost',
+      }),
+    );
+  });
+});
+
+describe('Stage 6 likes — flat post_likes collection', () => {
+  const likeId = (post, uid) => `${post}_${uid}`;
+  const likeRow = (post, uid) => ({
+    postId: post,
+    userId: uid,
+    createdAt: serverTimestamp(),
+  });
+
+  it('21. a donor can like a post with the canonical {postId, userId, createdAt} row; a forged or malformed one cannot', async () => {
+    await seedPost();
+    const db = testEnv.authenticatedContext(FEED.author).firestore();
+    // The canonical deterministic id, in the writer's own name, on a real post.
+    await assertSucceeds(
+      setDoc(doc(db, 'post_likes', likeId(FEED.post, FEED.author)), likeRow(FEED.post, FEED.author)),
+    );
+    // Liking in another user's name is refused (userId must be the caller).
+    await assertFails(
+      setDoc(doc(db, 'post_likes', likeId(FEED.post, FEED.stranger)), likeRow(FEED.post, FEED.stranger)),
+    );
+    // A row whose id does not match postId_userId is refused.
+    await assertFails(
+      setDoc(doc(db, 'post_likes', 'rogue_id'), likeRow(FEED.post, FEED.author)),
+    );
+    // A like on a post that does not exist is refused.
+    await assertFails(
+      setDoc(doc(db, 'post_likes', likeId('post_ghost', FEED.author)), likeRow('post_ghost', FEED.author)),
+    );
+    // An extra field is refused.
+    await assertFails(
+      setDoc(doc(db, 'post_likes', likeId(FEED.post, FEED.author)), { ...likeRow(FEED.post, FEED.author), extra: 'x' }),
+    );
+  });
+
+  it('22. the same user cannot like the same post twice: the deterministic id collides into an update, which is closed', async () => {
+    await seedPost();
+    const db = testEnv.authenticatedContext(FEED.author).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'post_likes', likeId(FEED.post, FEED.author)), likeRow(FEED.post, FEED.author)),
+    );
+    await assertFails(
+      setDoc(doc(db, 'post_likes', likeId(FEED.post, FEED.author)), likeRow(FEED.post, FEED.author)),
+    );
+  });
+
+  it('23. only the liker can delete their own like, including a legacy auto-id row', async () => {
+    // Seed everything out-of-band in one admin pass: the parent post, a
+    // canonical like owned by the author, and a legacy auto-id row owned by
+    // the stranger from a pre-migration build.
     await testEnv.withSecurityRulesDisabled(async (adminCtx) => {
-      await setDoc(doc(adminCtx.firestore(), 'post_likes', 'legacy_like_1'), {
+      const admin = adminCtx.firestore();
+      await setDoc(doc(admin, 'posts', FEED.post), {
+        ...validPostData(),
+        createdAt: new Date('2026-11-01T10:00:00Z'),
+        updatedAt: new Date('2026-11-01T10:00:00Z'),
+      });
+      await setDoc(doc(admin, 'post_likes', likeId(FEED.post, FEED.author)), {
+        postId: FEED.post,
+        userId: FEED.author,
+        createdAt: new Date('2026-10-01T09:00:00Z'),
+      });
+      await setDoc(doc(admin, 'post_likes', 'legacy_like_1'), {
         postId: FEED.post,
         userId: FEED.stranger,
         createdAt: new Date('2026-10-01T09:00:00Z'),
       });
     });
-    const db = testEnv.authenticatedContext(FEED.author).firestore();
-    // Reading the stranded row succeeds: it is not orphaned by the write ban.
-    await assertSucceeds(getDoc(doc(db, 'post_likes', 'legacy_like_1')));
-    // Every write to the flat collection is denied, whichever verb is used.
-    await assertFails(
-      setDoc(doc(db, 'post_likes', 'like_anything'), { userId: FEED.author }),
-    );
-    await assertFails(
-      updateDoc(doc(db, 'post_likes', 'legacy_like_1'), { userId: FEED.author }),
-    );
-    await assertFails(deleteDoc(doc(db, 'post_likes', 'legacy_like_1')));
-    // The canonical subcollection is the only like a client can now write.
-    await assertSucceeds(
-      setDoc(doc(db, 'posts', FEED.post, 'likes', FEED.author), { likedAt: serverTimestamp() }),
-    );
-    // A like cast in another user's name — their uid as the document id —
-    // is impossible by construction.
-    await assertFails(
-      setDoc(doc(db, 'posts', FEED.post, 'likes', FEED.stranger), { likedAt: serverTimestamp() }),
-    );
-  });
-
-  it('22. the same user cannot like the same post twice: the duplicate id is an update, and updates are closed', async () => {
-    await seedPost();
-    const db = testEnv.authenticatedContext(FEED.author).firestore();
-    await assertSucceeds(
-      setDoc(doc(db, 'posts', FEED.post, 'likes', FEED.author), { likedAt: serverTimestamp() }),
-    );
-    await assertFails(
-      setDoc(doc(db, 'posts', FEED.post, 'likes', FEED.author), { likedAt: serverTimestamp() }),
-    );
-  });
-
-  it('23. only the liker can delete their like document', async () => {
-    await seedPost();
     const authorDb = testEnv.authenticatedContext(FEED.author).firestore();
-    await assertSucceeds(
-      setDoc(doc(authorDb, 'posts', FEED.post, 'likes', FEED.author), { likedAt: serverTimestamp() }),
-    );
     const strangerDb = testEnv.authenticatedContext(FEED.stranger).firestore();
-    await assertFails(deleteDoc(doc(strangerDb, 'posts', FEED.post, 'likes', FEED.author)));
-    await assertSucceeds(deleteDoc(doc(authorDb, 'posts', FEED.post, 'likes', FEED.author)));
+    // A stranger cannot delete the author's canonical like.
+    await assertFails(deleteDoc(doc(strangerDb, 'post_likes', likeId(FEED.post, FEED.author))));
+    // The author can delete their own.
+    await assertSucceeds(deleteDoc(doc(authorDb, 'post_likes', likeId(FEED.post, FEED.author))));
+    // The liker can delete their own legacy auto-id row too (check is on userId).
+    await assertSucceeds(deleteDoc(doc(strangerDb, 'post_likes', 'legacy_like_1')));
   });
 });
 

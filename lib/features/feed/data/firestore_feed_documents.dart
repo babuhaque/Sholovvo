@@ -21,20 +21,24 @@ final class SnapshotCursor implements FeedCursor {
 
 /// Reads the `posts` collection, one page at a time, newest first.
 ///
-/// **What the query is, and why it is this small.** One collection, no `where`,
-/// one `orderBy` on `createdAt`, one `limit`, and — for every page after the
-/// first — `startAfterDocument`. That shape matters for three reasons:
+/// **What the query is, and why it is this small.** The whole-feed read (`authorUid`
+/// `null`) is one collection, no `where`, one `orderBy` on `createdAt`, one
+/// `limit`, and — for every page after the first — `startAfterDocument`. The
+/// author-scoped read adds one `where('authorUid', isEqualTo: …)`. Both shapes
+/// matter for three reasons:
 ///
 /// * `firestore.rules` grants `allow read: if request.auth != null` on
 ///   `/posts/{postId}`, which covers a list query for a signed-in caller. The
-///   rule has no field condition, so no filter is required to satisfy it.
-/// * A single-field `orderBy` is served by Firestore's automatic index. There is
-///   no `firestore.indexes.json` in this repository and none is needed: a
-///   composite index only becomes necessary once a filter and a sort disagree,
-///   and this query filters nothing.
-/// * Nothing here reads a subcollection. Likes and comments are the counters the
-///   post document already carries; the subcollections cost one read each and
-///   this stage does not draw them.
+///   rule has no field condition, so neither read needs a filter to satisfy it.
+/// * The whole-feed `orderBy` alone is served by Firestore's automatic index.
+///   The author-scoped read puts an equality filter on one field and a sort on
+///   another, which is exactly the disagreement that needs a composite index
+///   (`authorUid` ASC, `createdAt` DESC) — declared in `firestore.indexes.json`.
+/// * Nothing here reads a subcollection. These queries only turn over the
+///   `posts` documents; the like and comment counts a card shows are DERIVED
+///   separately by the feed's count hydration, which runs an aggregate `count()`
+///   over each post's `likes`/`comments` subcollections after the page resolves.
+///   Keeping them out of this query is what lets a page be one indexed scan.
 class FirestoreFeedDocuments implements FeedDocuments {
   FirestoreFeedDocuments(this._auth, this._firestore);
 
@@ -52,6 +56,7 @@ class FirestoreFeedDocuments implements FeedDocuments {
   Future<Result<List<FeedDocument>>> fetch({
     required int limit,
     FeedCursor? after,
+    String? authorUid,
   }) async {
     // A zero or negative limit is not a database question. Asking Firestore for
     // `limit(0)` would still cost a round trip and could not be honoured.
@@ -71,6 +76,19 @@ class FirestoreFeedDocuments implements FeedDocuments {
       Query<Map<String, dynamic>> query = _posts
           .orderBy(orderByField, descending: true)
           .limit(limit);
+
+      // Narrowing to one author is the whole point of the tap-through "author
+      // posts" screen. An equality filter plus the `createdAt` sort is the one
+      // shape that needs a composite index (`authorUid` ASC, `createdAt` DESC)
+      // rather than the automatic single-field one — declared in
+      // `firestore.indexes.json`. A cursor from the filtered query stays valid
+      // because `startAfterDocument` re-applies every ordering column.
+      if (authorUid != null) {
+        query = _posts
+            .where('authorUid', isEqualTo: authorUid)
+            .orderBy(orderByField, descending: true)
+            .limit(limit);
+      }
 
       if (after != null) {
         // A cursor from anywhere else is refused rather than coerced: paging

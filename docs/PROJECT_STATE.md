@@ -1240,6 +1240,49 @@ The suite covers, beyond the Stage 4 tests:
    broken Firebase CLI, `com.example.*` applicationId, `firebase_core` KGP warning,
    ~173.8 MB debug APK, no third language, Bengali font not bundled, iOS unverified.
 
+### Cover photo addendum
+
+An audit against the Stage 5 brief ("add a Cover Photo") found every other listed
+item already delivered and approved; the cover image was the one genuine gap, so
+this addendum closes it as a full vertical slice that mirrors the Stage 6 avatar
+pipeline rather than inventing a second one.
+
+- **Model.** `UserProfile` gained a nullable `coverUrl`, a `hasCover` getter and a
+  `withCover(String?)` reconstruction. Cover is deliberately kept **out** of the
+  seven completion `ProfileField` values — adding it would silently restate every
+  existing completion count and message.
+- **Data.** `ProfileDocuments.publicFields` now writes `coverUrl`; a new
+  `coverFields(String?)` writes the single field plus `updatedAt` (with
+  `FieldValue.delete()` when cleared); `fromDocuments` reads it back.
+  `FirestoreProfileRepository.setCoverUrl` uses that map. Ownership is unchanged:
+  no `uid` parameter, addressed from `FirebaseAuth.currentUser`.
+- **Storage.** `SupabasePhotoStorage` generalised its upload/remove helpers to
+  take a path prefix; `objectPath` gained `prefix` (`avatar` by default, `cover`
+  for banners). Covers reuse the same public `avatars` bucket and the same
+  `{uid}/…` folder policy, so the Stage 6 per-owner auth and cache rules apply
+  unchanged — no new bucket, no new SQL.
+- **Application.** `ProfilePhotoController` gained `chooseAndUploadCover` and
+  `removeCover`, sharing one `_busy` gate and the same compensate-on-failure
+  ordering as the avatar path, selected by a private `_PhotoTarget { avatar, cover }`.
+- **Presentation.** New `ProfileCoverBanner` (3.2 aspect, `Image.network` with an
+  error placeholder, scrim, add/change action, spinner while busy) renders above
+  the cards in both the wide and narrow layouts; `ProfilePhotoSheet` gained a
+  `ProfilePhotoKind { avatar, cover }` so the edit sheet reads correctly for each.
+- **Rules.** `firestore.rules` adds `coverUrl` to the `users/{uid}` create and
+  update `hasOnly` allow-lists (public, like `photoUrl`); `firestore.test.js`
+  allow-list tests updated in lockstep. **Not deployed** — audit-only posture.
+- **l10n.** Ten cover keys added to both `app_en.arb` and `app_bn.arb`, regenerated.
+
+Verification for this addendum: `flutter analyze` **No issues found**; `flutter
+test` **1185 passed, 63 skipped, 0 failed**; the Firestore rules emulator suite
+**206 tests, 206 pass, 0 fail** (the M2 allow-list group, including the coverUrl
+create/update and the exhaustive-vs-`ProfileDocuments` assertion, is green).
+
+The CLI note in item 8 above is now understood: `C:\WINDOWS\system32\firebase.cmd`
+is an empty stub that shadows the real npm install on `PATH`. Invoking the CLI via
+`node "%APPDATA%\npm\node_modules\firebase-tools\lib\bin\firebase.js" …` runs the
+emulator correctly, which is how the suite above was executed.
+
 ### Next stage
 
 **Stage 6 — Profile photo upload (Supabase Storage).** Delivered below.
@@ -4364,3 +4407,380 @@ this pass **staged, committed and pushed nothing** and ran no write-Git command.
 stale-checkpoint consequence recorded under the capture entry still holds and now
 covers two unrecorded contact increments at once — a real commit is the next
 hygiene action regardless of which Stage-10 item is picked up after it.
+
+---
+
+## Feed hardening — 2026-11-06 (new-roadmap Stage 6)
+
+This increment is the social-feed hardening the tracker records as Stage 8.3
+*hardening in progress*, delivered under the roadmap's Stage-6 label. Four
+pieces landed and were re-verified end to end; none was deployed and nothing was
+live-verified.
+
+- **Like/comment counts are derived, never written.** `PostLikeService` and the
+  comment write path now touch only the child documents
+  (`posts/{id}/likes/{uid}`, `posts/{id}/comments/{id}`) and no longer mutate the
+  denormalised `likeCount`/`commentCount` on the post. `firestore.rules` pins
+  those counters immutable on update; the M3 probe (tests 14–15) proves neither a
+  stranger nor the author can move them directly.
+- **A derived-count hydration seam.** `FeedCountHydrationService` re-derives both
+  counts from the child collections with aggregate `.count()` queries and the feed
+  controller hydrates likes-then-counts after a first page resolves. Covered by a
+  dedicated `test/features/feed/count_hydration_test.dart` (9 cases) over
+  `FakeFeedCountHydrationService`: counts applied, untouched posts keep their
+  seed, a throwing seam is absorbed defensively, and the read is skipped with no
+  viewer uid or an empty page.
+- **The post image limit is now 5.** This **reverses** the 2026-11-04 owner note
+  above ("the post image limit stays at 4"); the plan now sets five, and the whole
+  stack enforces it consistently — `PostValidator.maxImages == 5`, `firestore.rules`
+  (`imageUrls`/`imagePaths .size() <= 5`), the rules probe (an oversized edit is now
+  a 6-element list), the composer, and the grid tests. The composer grid was also
+  corrected: with five slots over three columns it lays each cell out at a fixed
+  measured width, so a short final row stays left-aligned instead of being padded
+  with filler slots — the grid now always renders exactly `maxImages` cells.
+- **Tap an author to open their wall.** The feed post tile's header (avatar +
+  name) is tappable and pushes a new `UserPostsScreen` listing only that author's
+  posts. `FeedRepository.loadPage`/`FeedDocuments.fetch` gained an optional
+  `authorUid` filter (null keeps every existing caller and test byte-for-byte the
+  same); the Firestore read adds `.where('authorUid', isEqualTo: …)` and a new
+  composite index (`authorUid` ASC, `createdAt` DESC) is declared in
+  `firestore.indexes.json` and registered in `firebase.json`. A
+  `UserPostsController` reuses `FeedState` and the same read/hydration seams as
+  `FeedController`, scoped per wall via `NotifierProvider.autoDispose` with an
+  explicit `open(authorUid)` — the uid lives in the instance, never in a provider
+  that could resolve from the wrong scope, and a read before `open` bails rather
+  than falling back to the whole feed.
+
+### Verification evidence (this increment)
+
+Measured on the current working tree, not copied forward.
+
+| Gate | Command | Result |
+|---|---|---|
+| Static analysis (repo-wide) | `flutter analyze` | ✅ No issues found |
+| Full Dart suite | `flutter test` | ✅ **1168 passed, 63 skipped, 0 failed** |
+| Feed tranche | `flutter test test/features/feed` | ✅ 381 passed (incl. count-hydration, user-posts controller + navigation, and the recomposed grid) |
+| Firestore rules emulator | `npx firebase emulators:exec --only firestore "npm --prefix firestore-rules-tests test"` | ✅ **205/205 passed, 0 failed** |
+| Share / Save / Report / Pagination | within `test/features/feed` | ✅ green — unchanged behaviour under the new derived-count and author-filter seams |
+| Localisation | `flutter gen-l10n` + `test/l10n/arb_parity_test.dart` | ✅ parity green; `userPostsEmptyTitle`/`userPostsEmptyBody` in en + bn |
+| Four unused deps removed | `flutter pub get` | ✅ resolves — `google_maps_flutter`, `geolocator`, `geoflutterfire2`, `firebase_storage` dropped from `pubspec.yaml` (owner-approved; none referenced in code, `geoflutterfire2` blocked resolution against `cloud_firestore ^7.1.0`) |
+| Live Firebase / deploy / Git write | — | ⬜ **Not run.** No deploy, no device/browser build, no `firebase deploy`, no commit/stash/push |
+
+### Files (this increment)
+
+| File | Change |
+|---|---|
+| `lib/features/feed/data/*_service.dart`, `firestore.rules` | Like/comment writes are child-doc only; counters immutable on update; image-list limit `<= 5` |
+| `lib/features/feed/data/feed_count_hydration_service.dart` | Derived counts via aggregate `.count()` (+ provider, fake, controller wiring) |
+| `lib/features/feed/domain/entities/post.dart` | `PostValidator.maxImages` = 5 and its `imageCount`/`imagePathCount` guards |
+| `lib/features/feed/presentation/widgets/compose_image_grid.dart` | 3-column fixed-width layout; grid is exactly `maxImages` cells, no filler |
+| `lib/features/feed/domain/feed_repository.dart`, `data/feed_documents.dart`, `data/firestore_feed_documents.dart`, `data/firestore_feed_repository.dart` | Optional `authorUid` read filter (Firestore `where` when non-null) |
+| `lib/features/feed/application/user_posts_providers.dart` | New `UserPostsController` (`NotifierProvider.autoDispose`, `open(authorUid)`) |
+| `lib/features/feed/presentation/user_posts_screen.dart`, `widgets/feed_post_tile.dart`, `feed_screen.dart` | Tappable author header, pushed author-wall screen |
+| `firestore.indexes.json`, `firebase.json` | Composite `authorUid`+`createdAt` index declared and registered |
+| `lib/l10n/app_en.arb`, `app_bn.arb` | `userPostsEmptyTitle`/`userPostsEmptyBody` |
+| `pubspec.yaml` | Four unused/conflicting dependencies removed |
+| `test/features/feed/*` | `count_hydration_test.dart`, `user_posts_controller_test.dart`, `user_posts_screen_test.dart` new; grid/compose/repository tests realigned to the 5-image layout |
+| `firestore-rules-tests/firestore-feed.test.js` | Oversized image-list case moved to a 6-element list |
+
+### Git state (this increment)
+
+Nothing was staged, committed or pushed. All of the above sits in the same large
+uncommitted working tree recorded throughout this file; a real commit remains the
+next hygiene action so the Stage boundary is separable in Git.
+
+## Likes/comments schema reconciliation — 2026-11-06 (post-Stage 6)
+
+### Why
+
+The Stage-6 build moved likes to the `posts/{id}/likes/{uid}` child-document
+model and closed the flat `post_likes` collection for writes, planning a
+migration + rules deploy that **never ran**. Against the live project
+(`sholovvo-blood-donation`) the deployed rules still predate that design, so:
+likes/comments writes to the subcollection were rejected and the optimistic
+controller silently rolled back — the hearts and comments never appeared.
+A read-only check of the production database (owner screenshot) confirmed the
+likes actually live in the **flat `post_likes/{autoId}` collection** with fields
+`{postId, userId, createdAt}` (42 rows, per the Stage 9.3 audit), and comment
+rows carry a `postId` field the new comment `hasOnly` excluded.
+
+### Decision (owner-approved: "likes + comments, flat model, go")
+
+Point the app at the schema the live database **already uses**, rather than the
+never-migrated subcollection. No data migration and no rules deploy are needed
+for the app to work against the currently deployed rules. Counts stay
+**derived** (aggregate `count()`), so the stored-counter forgery hole stays
+closed. This **reverses** the Stage-6 likes child-document design for likes and
+realigns comments to include `postId`.
+
+### What changed
+
+| Area | Before | After |
+|---|---|---|
+| Like write | `posts/{id}/likes/{uid}` `{likedAt}` | `post_likes/{postId}_{uid}` `{postId, userId, createdAt}` (deterministic id ⇒ a repeat like is an id collision, not a duplicate row) |
+| Unlike | delete subcollection doc | query `post_likes` where `postId`+`userId`, batch-delete matches (also clears legacy auto-id rows) |
+| Like hydration | per-post existence `.get()` | one `userId == me` + `postId in [page]` query, chunked to 30 |
+| Like count | `.count()` on `posts/{id}/likes` | `.count()` on `post_likes` where `postId == X` |
+| Comment write | no `postId` | always writes `postId` (matches production rows) |
+| `firestore.rules` | `post_likes` write `if false`; `posts/{id}/likes` writable | `post_likes` create/delete shape-checked; `posts/{id}/likes` retired; comment `hasOnly` allows `postId` and checks it equals the parent |
+| `firestore.indexes.json` | posts `authorUid`+`createdAt` | + `post_likes (userId, postId)` and `(postId, userId)` |
+
+### Verification evidence (this increment)
+
+| Gate | Command | Result |
+|---|---|---|
+| Static analysis | `flutter analyze` | ✅ No issues found |
+| Full Dart suite | `flutter test` | ✅ **1168 passed, 63 skipped, 0 failed** (like/count unit tests run over fakes; interfaces unchanged) |
+| Firestore rules emulator | `npx firebase emulators:exec --only firestore "node --test --test-concurrency=1"` | ✅ **206/206 passed, 0 failed** (likes block rewritten to the flat model; +1 comment-`postId` test) |
+| Live Firebase / deploy / Git write | — | ⬜ **Not run.** No `firebase deploy`, no device build, no commit |
+
+### Files (this increment)
+
+| File | Change |
+|---|---|
+| `lib/features/feed/data/models/post_document.dart` | `likesSubcollection` → `likesCollection = 'post_likes'` |
+| `lib/features/feed/data/post_like_service.dart` | like/unlike target the flat collection; unlike queries + batch-deletes |
+| `lib/features/feed/data/like_hydration_service.dart` | single chunked `post_likes` query per page |
+| `lib/features/feed/data/feed_count_hydration_service.dart` | like count derived from `post_likes` aggregate |
+| `lib/features/feed/data/models/comment_document.dart`, `comment_service.dart` | comment write carries `postId` |
+| `firestore.rules` | `post_likes` writable; `posts/{id}/likes` retired; comment `postId` allowed + parent-checked |
+| `firestore.indexes.json` | two `post_likes` composite indexes |
+| `test/features/feed/comment_document_test.dart` | `toMap` cases carry `postId` |
+| `firestore-rules-tests/firestore-feed.test.js` | likes block rewritten for the flat model; comment `postId` reconciliation test |
+
+### Follow-up (not done here)
+
+The rules + indexes changes are **local only**. To make production enforce the
+same shape the emulator now pins, the owner must deploy `firestore.rules` and
+`firestore.indexes.json` to `sholovvo-blood-donation`. The app works against the
+currently deployed rules without that deploy; deploying only tightens the server
+side to match. No migration of the 42 legacy rows is required — the flat model
+reads and writes them in place.
+
+---
+
+## Social Feed audit — new-roadmap Stage 6 (2026-11-06)
+
+A client request framed the social feed as "Stage 6" (the new-roadmap numbering the
+2026-11-04 continuation already reconciled to) and asked for: Create Posts, Text
+and Image Posts, Like, Comment, Share, Save, Report, User Profile Navigation, Feed
+Pagination, a maximum of **5 images per post**, **no video uploads**, on Firestore
+and Supabase Storage, with privacy controls and ownership validation. A read-only
+audit against the tree found **every item already delivered** in Stage 8 — nothing
+was rebuilt, added or reverted.
+
+| Requirement | Where it lives | State |
+| --- | --- | --- |
+| Create Posts | `ComposePostScreen`, `ComposeController`, `PostRepository`/`PostWriter` | ✅ |
+| Text and Image Posts | `Post.text` + `imageUrls`/`imagePaths`, `ComposeImageGrid` | ✅ |
+| Like | `post_like_service` (flat `post_likes/{postId}_{uid}`), optimistic + double-tap | ✅ |
+| Comment | `comment_service`, `CommentSheet` | ✅ |
+| Share | `feed_post_tile._share` via `SharePlus` platform sheet | ✅ |
+| Save | `SavedPostsService` (on-device bookmark) + saved-only filter + toggle | ✅ |
+| Report | `report_service`, `ReportSheet` | ✅ |
+| User Profile Navigation | `onAuthorTap` → `UserPostsScreen` (author wall) | ✅ |
+| Feed Pagination | `FeedPage` cursor-based paging, exact `hasMore`, `skipped` count | ✅ |
+| Max 5 images | `PostValidator.maxImages = 5`; `firestore.rules` `imageUrls/imagePaths.size() <= 5` (create **and** update via `isPostBody`) | ✅ |
+| No video | `PhotoValidator` magic-byte sniff (jpeg/png/webp only) + bucket `allowed_mime_types` | ✅ |
+| Firestore + Supabase | `posts` collection + `community-posts` bucket | ✅ |
+| Privacy / ownership | `authorUid == auth.uid` on write, `ownPath` delete guard, counts derived by aggregate `count()` | ✅ |
+
+The image limit is genuinely **5** in both the Dart validator and the enforced
+rules, so the request is met. Two prose records disagreed with the code and are
+corrected here (documentation-only; no behaviour, rule logic or schema changed and
+nothing was deployed): the `firestore.rules` feed comment said "four images" (now
+"five"), `feed_screen`'s header comment said "Save remains a future stage" (Save
+ships), and `supabase_post_image_storage` said "Four photos" (now "Several"). The
+2026-11-04 continuation's "limit stays at **4**" sentence above is likewise
+superseded by the tree, which is 5.
+
+Gate: `flutter analyze` and `flutter test` are re-run below and reported honestly.
+No Firebase rules, index, bucket or SQL was edited beyond the comment above or
+deployed.
+
+## Feed photo fit-to-screen, gallery download and post edit — 2026-11-06
+
+A client request asked for three things on the community feed: a post image that
+**fits the screen** rather than a heavy crop, tap-to-view with a **download to the
+gallery**, and an **Edit post** that changes the picture as well as the text — and
+reported that saving an edit failed with "Could not save your changes." The crop
+and download were new capabilities; the failed save was a real bug. All three were
+implemented, on every platform (owner-approved scope: web browser download +
+Android/iOS gallery, and text **plus** pictures on edit).
+
+**The save bug — root cause.** `FirestorePostEditService.editText` wrote only
+`text`/`editedAt`/`updatedAt`. The rules revalidate the whole merged document with
+`isPostBody()` on every update, which requires `imageUrls` and `imagePaths` present
+as lists. 19 of 20 production posts carry the legacy shape (a singular `imageUrl`
+and no `imageUrls`/`imagePaths` at all), so their first edit revalidated a document
+still missing those keys and was refused — a `permission-denied` the sheet printed
+as the generic edit error. Fix: `editPost` (renamed from `editText`) now always
+writes `imageUrls` and `imagePaths` alongside the text, normalising a legacy
+document into the canonical shape on first edit. The five written keys are exactly
+the update whitelist `affectedKeys().hasOnly([...])` allows, and the client builds
+parallel lists so `imagePaths.size() <= imageUrls.size()` always holds. No rule,
+index or bucket was edited or deployed — this is a client write-shape change that
+the **existing** rules already permit.
+
+| Change | Files | Notes |
+| --- | --- | --- |
+| Lone photo fit to screen | `feed_post_tile.dart` | single image now letterboxed to the card's content width with `BoxFit.contain`, its height learned from the decoded aspect ratio (cached per URL in the tile state, capped at `maxHeight` and 60% of the viewport); grid cells keep the `cover` crop. New private `_FitPostImage`. |
+| Save-to-gallery download | `image_viewer_screen.dart`, new `gallery_saver.dart`, `feed_providers.dart`, `pubspec.yaml`, `AndroidManifest.xml`, `Info.plist` | viewer became a `ConsumerStatefulWidget` with a download button calling `gallerySaverProvider`; `HttpGallerySaver` fetches the bytes over `http` and writes with `gal` (`putImageBytes`), returning `Result`/`Failure`; web issues a browser download. `gal ^2.3.0` + `http ^1.2.2` added; Android `WRITE_EXTERNAL_STORAGE` capped at `maxSdkVersion 28`, iOS `NSPhotoLibraryAddUsageDescription` added. |
+| Edit picture + text | `edit_post_sheet.dart`, `post_edit_service.dart` | the sheet reuses `ComposeImageGrid` + `postImageStorageProvider`/`postPhotoPickerProvider` (pick→validate→upload on add, delete on remove), seeds the grid from the post's parallel lists, and calls `editPost` with the surviving photos. uid now read from the overridable `authUidProvider`; failures mapped through `feedFailureMessage` instead of one generic string. |
+| Localisation | `app_en.arb`, `app_bn.arb` | `feedEditPhotosLabel`, `feedImageDownload`, `feedImageDownloaded`, `feedImageDownloadFailed`, `feedImageDownloadDenied` (en + bn), regenerated. |
+
+**Tests.** New `image_viewer_screen_test.dart` (5: download button, success
+toast, network failure, denied permission, saves the visible page of a multi-image
+post), `edit_post_sheet_test.dart` (7: grid seeded from a shaped post, legacy
+post opens and adds, add uploads, remove deletes + drops from the submitted lists,
+save sends parallel lists, legacy save sends empty lists, network failure shown),
+`gallery_saver_test.dart` (6 pre-write branches: scheme, unparseable url, fetch
+throw, non-200, non-image bytes, image-byte acceptance). Three fit-to-screen cases
+added to `feed_post_tile_test.dart` (contain vs cover, content-width, tap opens the
+viewer). Fakes added at the existing seams: `FakeGallerySaver`
+(`test/support/fake_photo_services.dart`) and `FakePostEditService`
+(`test/support/fake_compose.dart`).
+
+### Verification evidence (this increment)
+
+`flutter analyze` → **No issues found**. `flutter test` → **1207 passed, 63
+skipped, 0 failed** (the 63 skips are the pre-existing emulator-gated Firestore
+rules suite; +22 tests over the prior count, all passing). The `HttpGallerySaver`
+happy path and denied-permission path end in a `gal` platform channel that
+`flutter test` cannot answer, so those two branches are exercised at the widget
+layer through `FakeGallerySaver`; the pure-Dart pre-write guards are unit-tested
+against a `MockClient`.
+
+### Files (this increment)
+
+- `lib/features/feed/presentation/widgets/feed_post_tile.dart` — fit-to-screen lone photo
+- `lib/features/feed/presentation/image_viewer_screen.dart` — download button, `ConsumerStatefulWidget`
+- `lib/core/media/gallery_saver.dart` — new `GallerySaver` seam + `HttpGallerySaver`
+- `lib/features/feed/application/feed_providers.dart` — `gallerySaverProvider`
+- `lib/features/feed/data/post_edit_service.dart` — `editText` → `editPost`, writes image lists
+- `lib/features/feed/presentation/edit_post_sheet.dart` — photo add/remove grid + text, `authUidProvider`, failure mapping
+- `pubspec.yaml`, `android/.../AndroidManifest.xml`, `ios/Runner/Info.plist` — deps + permissions
+- `lib/l10n/app_en.arb`, `lib/l10n/app_bn.arb` (+ generated) — new strings
+- tests above and the two fakes
+
+### Git state (this increment)
+
+Working tree only; no commit, branch or push was made. No Supabase or Firebase
+resource was deployed — the edit fix rides the rules already in production.
+
+## Profile and cover photo upload — root cause found, misleading error fixed — 2026-11-06
+
+A client reported that profile and cover photo upload "can't work", with a
+screenshot of the profile screen showing the banner **"We could not find that
+account."** next to an intact, verified profile — a sentence that cannot be
+true on the screen it appears on.
+
+**Root cause (verified read-only against the live project).** The upload flow
+itself is correctly wired (pick → validate → upload to `avatars/{uid}/…` →
+publish `photoUrl`). The failure is environmental: a public, anon-key, GET-only
+probe of the linked project (`qiipuczhgacwrysyndij`) answered
+`404 "Bucket not found" / NoSuchBucket` for **all three buckets** — `avatars`,
+`community-posts` and `post-images`. The delivery SQL in `docs/storage/` has
+never been applied (as `docs/storage/README.md` and
+`SUPABASE-VERIFICATION-PLAN.md` §0 already recorded honestly), so every
+profile photo, profile cover and post-photo upload fails at the storage step.
+The Supabase CLI is not installed on this machine, so applying it from here is
+not possible; it is an owner dashboard action.
+
+**Client defect (fixed here).** `mapStorageErrorToFailure` folded that storage
+404 into `NotFoundFailure`, which the profile screen renders as
+`failureNotFound` — "We could not find that account." The bucket-missing
+sentence (`"bucket not found"` / `"NoSuchBucket"`, checked before the 404
+branch) now maps to `ConfigurationFailure`, whose honest profile sentence
+already exists: `profilePhotoNotConfigured` ("Photo upload is not set up…"),
+and the compose screen's `feedComposePhotosNotConfigured` for post photos. A
+real object 404 still maps to `NotFoundFailure`; nothing else in the switch
+moved.
+
+**Tests.** Two mapper cases added to
+`test/features/profile/storage_error_mapper_test.dart` (bucket-not-found with
+and without a status code → `ConfigurationFailure`). Gate: `flutter analyze` →
+No issues found; `flutter test` → **1209 passed, 63 skipped, 0 failed**.
+
+**Still required from the owner (not performable from this repository):**
+apply `docs/storage/supabase-avatars.sql` and
+`docs/storage/supabase-community-posts.sql` in the Supabase SQL Editor, and
+enable Firebase third-party auth (project id `sholovvo-blood-donation`) per
+`docs/storage/README.md` §2 — without the latter, uploads will then fail 403
+instead. Until both are done, the app now says truthfully that photo upload is
+not set up, instead of accusing the account of not existing.
+
+## Post photo "not set up" note — shipped Supabase config defaults — 2026-11-06
+
+The next report was the compose screen showing the standing note **"Photo
+upload is not set up in this build yet."** (not an error banner). That message
+is rendered only when `postImageStorageProvider.isConfigured == false`
+(`compose_post_screen.dart` line 137), which — because both the profile and the
+feed read the *same* `supabaseConfigProvider` resolved once in `bootstrap()`
+from `SupabaseConfig.fromEnvironment()` — means the app was launched **without
+the `SUPABASE_URL` / `SUPABASE_ANON_KEY` defines**. This is a different failure
+from the 2026-11-06 profile report above, which was an actual upload attempt
+(defines present, bucket missing). Not a code defect.
+
+**Owner-approved change.** The Supabase project URL and publishable (anon)
+key — public client values already sitting in the untracked `.vscode/launch.json`
+and directly analogous to the Firebase config already committed in
+`lib/firebase_options.dart` — are now compile-time defaults
+(`SupabaseConfig.defaultProjectUrl` / `defaultPublishableKey`).
+`fromEnvironment()` falls back to them **only when neither endpoint define is
+present**; supplying either define opts out of the fallback entirely, and
+`rejectPrivilegedKey` still drops a `sb_secret_`/service-role key, so a build
+that passes a privileged key stays unconfigured. Effect: `isConfigured` is now
+`true` on every launch, so the photo picker is offered without the special run
+configuration.
+
+**What this does NOT fix.** A read-only anon-key probe re-run here confirms all
+three buckets (`avatars`, `community-posts`, `post-images`) still return
+`404 NoSuchBucket`. With the picker now offered, an upload will reach Supabase
+and fail as `ConfigurationFailure` ("Bucket not found") → the honest
+not-configured sentence. **Provisioning the buckets and enabling Firebase
+third-party auth remain the owner's dashboard actions** and are the real
+blocker; no deploy was performed and none is possible from here (the anon key
+cannot create a bucket).
+
+**Tests.** `test/core/supabase_config_test.dart` — the one test that pinned the
+old "no defines → unconfigured" contract now asserts the shipped-project
+fallback (`isConfigured == true`, url/key equal to the defaults); the
+constructor-level "empty config is unconfigured" tests are unchanged and still  
+pass. Gate: `flutter analyze` → No issues found; `flutter test` → **1209  
+passed, 63 skipped, 0 failed**. Working tree only; no commit, no deploy.
+
+## Post delete now cleans its Supabase photos — 2026-11-06
+
+Symptom (owner report): post create/edit/update/delete all work after the
+`firestore.rules` deploy, but deleting a post left its photographs in the
+Supabase `community-posts` bucket as orphans.
+
+Root cause: `FirestorePostEditService.deletePost` deletes only the Firestore
+document. Cloud Firestore rules cannot reach Supabase Storage — they are
+separate systems — so nothing removed the objects the document's `imagePaths`
+pointed at. The edit sheet already cleaned a single photo on `_removeImage`
+and the compose controller cleaned abandoned uploads on `discard`, but the
+delete path never ran the equivalent sweep.
+
+Fix (client only, `lib/features/feed/presentation/edit_post_sheet.dart`): in
+`_delete()`'s `Success` branch, after the document is gone, iterate the live
+`_images` set and call `postImageStorageProvider.remove(path)` for each —
+best-effort, mirroring the compose-discard idiom (a leaked file is not a
+reason to keep the sheet open on a post that no longer exists). Cleanup runs
+only on a successful Firestore delete, so a failed delete never strands the
+photos of a post that still exists. `remove()` enforces `ownPath` (exactly
+`{uid}/post-…`), so only the author's own objects are touched.
+
+Tests (`test/features/feed/edit_post_sheet_test.dart`, new `EditPostSheet
+delete` group): (1) deleting a post with a photo calls `deletePost` once and
+removes that photo's path; (2) a failed delete calls `deletePost` once but
+removes nothing and shows `feedDeleteError`. Gate: `flutter analyze` on both
+files → No issues found; `flutter test test/features/feed/edit_post_sheet_test.dart`
+→ **9 passed, 0 failed**. Working tree only; no commit, no deploy.
+
+Pre-existing orphans are outside this code path and must be cleared from the
+Supabase dashboard (or a one-off storage sweep); the fix only prevents new ones.
+
+
+

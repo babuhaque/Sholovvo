@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Stage 6: saving a post photo to the gallery from the full-screen viewer.
+         On Android 10 (API 29) and later `gal` writes through MediaStore, which
+         needs no permission. This is the legacy-path allowance only, so it is
+         capped at API 28 and never requested on modern devices. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <application
         android:label="sholovvo_app"
         android:name="${applicationName}"

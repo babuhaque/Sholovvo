@@ -20,6 +20,7 @@ import 'package:sholovvo_app/features/feed/presentation/compose_post_screen.dart
 import 'package:sholovvo_app/features/feed/presentation/edit_post_sheet.dart';
 import 'package:sholovvo_app/features/feed/presentation/feed_messages.dart';
 import 'package:sholovvo_app/features/feed/presentation/report_sheet.dart';
+import 'package:sholovvo_app/features/feed/presentation/user_posts_screen.dart';
 import 'package:sholovvo_app/features/feed/presentation/widgets/feed_post_tile.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
@@ -35,7 +36,8 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// heart toggles the viewer's like (optimistic, local-first). A tap on the
 /// comment bubble opens a modal thread; a tap on the flag opens a report sheet.
 /// Each write is handled by its own service and controller.
-/// Share pushes the text through the platform sheet; Save remains a future stage.
+/// Share pushes the text through the platform sheet; Save bookmarks a post
+/// on-device (`SavedPostsService`) and drives the header's saved-only filter.
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -315,6 +317,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 ),
                 isSaved: state.savedPostIds.contains(post.id),
                 onSaveToggle: () => controller.toggleSave(post.id),
+                onAuthorTap: () => unawaited(
+                  Navigator.of(context).push(
+                    UserPostsScreen.route(
+                      authorUid: post.authorUid,
+                      authorName: post.authorName,
+                    ),
+                  ),
+                ),
                 onEditTap: post.authorUid == currentUid
                     ? () async {
                         final String deletedMsg = context.l10n.feedDeleted;

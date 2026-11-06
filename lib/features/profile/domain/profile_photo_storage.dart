@@ -36,4 +36,18 @@ abstract interface class ProfilePhotoStorage {
   /// the flag to distinguish "cleaned up" from "nothing to clean up"; neither is
   /// an error.
   Future<Result<bool>> removeAvatar(String publicUrl);
+
+  /// Uploads the cover [photo] to the caller's own folder and returns its public
+  /// URL.
+  ///
+  /// Same contract as [uploadAvatar] — the URL is only returned, never written —
+  /// and the same `{uid}/...` ownership namespace, so one bucket policy governs
+  /// both an avatar and a cover. The object is named `cover-{timestamp}`.
+  Future<Result<String>> uploadCover(ValidatedPhoto photo);
+
+  /// Deletes the cover object [publicUrl] points at.
+  ///
+  /// The cover counterpart of [removeAvatar]: refuses to act on anything that is
+  /// not an object in this bucket under the caller's own folder.
+  Future<Result<bool>> removeCover(String publicUrl);
 }

@@ -15,9 +15,9 @@ service cloud.firestore {
     // owner can no longer write a sensitive field into the public projection.
     //
     // The list is exactly what `ProfileDocuments.publicFields`,
-    // `availabilityFields` and `photoFields` may write today:
+    // `availabilityFields`, `photoFields` and `coverFields` may write today:
     //   - displayName, role, isAvailable, updatedAt — always present on write
-    //   - bloodGroup, photoUrl — only while the profile has them
+    //   - bloodGroup, photoUrl, coverUrl — only while the profile has them
     //   - area — only while `publishAreaInSearch` is on
     //   - allowDonorDiscovery — only while the donor has opted into discovery
     //
@@ -34,14 +34,14 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.resource.data.keys().hasOnly([
           'displayName', 'role', 'isAvailable', 'updatedAt',
-          'bloodGroup', 'photoUrl', 'area', 'allowDonorDiscovery'
+          'bloodGroup', 'photoUrl', 'coverUrl', 'area', 'allowDonorDiscovery'
         ]);
 
       allow update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'role', 'isAvailable', 'updatedAt',
-          'bloodGroup', 'photoUrl', 'area', 'allowDonorDiscovery'
+          'bloodGroup', 'photoUrl', 'coverUrl', 'area', 'allowDonorDiscovery'
         ]);
 
       // The owner may still delete their whole public document. Delete is not
@@ -389,7 +389,7 @@ service cloud.firestore {
     // Feed: posts, with comments and likes as subcollections (Stage 8.1.1
     // reconciliation, ARCHITECTURE section 14.1). The create shape mirrors
     // PostDocument.requiredFields exactly; the Dart validators (2000-char
-    // text, four images, paths <= urls, counters from zero) are the ceiling,
+    // text, five images, paths <= urls, counters from zero) are the ceiling,
     // so client-side validation is never the only boundary. The stale
     // singular `imageUrl` key and the `donationRecordId` branch are gone:
     // nothing in the app reads or writes either, and the canonical schema
@@ -408,9 +408,9 @@ service cloud.firestore {
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 2000
           && request.resource.data.imageUrls is list
-          && request.resource.data.imageUrls.size() <= 4
+          && request.resource.data.imageUrls.size() <= 5
           && request.resource.data.imagePaths is list
-          && request.resource.data.imagePaths.size() <= 4
+          && request.resource.data.imagePaths.size() <= 5
           && request.resource.data.imagePaths.size() <= request.resource.data.imageUrls.size()
           // Element types are NOT checked here: this emulator's rules engine
           // fails `Function not found [all]` on list comprehensions over
@@ -442,10 +442,12 @@ service cloud.firestore {
       // Edit: author only, and only the body plus the edit marker and the
       // refreshed stamp. The author snapshot, the counters and createdAt are
       // immutable. The old any-signed-in-user +1/-1 likeCount branch was a
-      // counter-forging hole with no paired like write behind it; counters
-      // move only when a transaction that writes posts/{id}/likes/{uid}
-      // alongside them exists, and nothing in the app writes either yet.
-      // An edit must restamp updatedAt with the server's clock.
+      // counter-forging hole with no paired like write behind it. It stays
+      // closed on purpose: the app never writes these counters — the like and
+      // comment counts are DERIVED from the posts/{id}/likes and
+      // posts/{id}/comments subcollections by an aggregate count() on read, so
+      // a stored number is never the authority and can never be forged. An edit
+      // must restamp updatedAt with the server's clock.
       allow update: if request.auth != null
         && resource.data.authorUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'imageUrls', 'imagePaths', 'editedAt', 'updatedAt'])
@@ -468,7 +470,8 @@ service cloud.firestore {
         allow create: if request.auth != null
           && request.resource.data.authorUid == request.auth.uid
           && request.resource.data.keys().hasAll(['authorUid', 'authorName', 'text', 'createdAt'])
-          && request.resource.data.keys().hasOnly(['authorUid', 'authorName', 'authorPhotoUrl', 'text', 'parentId', 'replyToName', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['authorUid', 'authorName', 'authorPhotoUrl', 'text', 'parentId', 'replyToName', 'createdAt', 'postId'])
+          && (!request.resource.data.keys().hasAny(['postId']) || request.resource.data.postId == postId)
           && request.resource.data.authorUid is string
           && request.resource.data.authorUid.size() > 0
           && request.resource.data.authorName is string
@@ -486,36 +489,32 @@ service cloud.firestore {
         allow delete: if request.auth != null && resource.data.authorUid == request.auth.uid;
       }
 
-      // Like: one document per liker, the id IS the liker's uid, so a
-      // duplicate like is a duplicate id (an update, refused below) rather
-      // than an undetectable second row, and unlike is a delete of one's own
-      // document. Replaces the unbound top-level post_likes collection.
-      match /likes/{likeId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null
-          && likeId == request.auth.uid
-          && request.resource.data.keys().hasOnly(['likedAt'])
-          && request.resource.data.likedAt == request.time;
-        allow update: if false;
-        allow delete: if request.auth != null && likeId == request.auth.uid;
-      }
+      // The `posts/{id}/likes` subcollection is retired: the app never writes
+      // or reads it. Likes live in the flat `post_likes` collection below, the
+      // shape the live database actually uses.
     }
 
-    // The old flat likes collection is retired for WRITES by the subcollection
-    // move: no client of the canonical schema creates or edits a document here
-    // any more, and both are denied outright so a stranded row cannot be forged
-    // or grown. READ stays open to signed-in users, though, because a
-    // read-only audit of production (Stage 9.3) found 42 live `post_likes`
-    // documents written by a pre-Stage-8 build and the currently deployed rules
-    // already let any signed-in user read them. Denying that read would orphan
-    // real data and break any installed client still counting likes — a
-    // backward-incompatible change, not a security one. This is stricter than
-    // what is deployed today (writes fully closed) and no looser on reads.
-    // The read flips to `if false` only after a migration copies these rows to
-    // `posts/{id}/likes/{uid}` and no client queries the flat collection.
+    // The canonical likes collection. One document per (post, donor) keyed
+    // `{postId}_{uid}` and carrying `{postId, userId, createdAt}` — the shape
+    // the live database already uses (Stage 9.3 audit: 42 rows). A like is a
+    // create the liker alone can make, in their own userId, pointing at a real
+    // post, stamped with the server clock; the deterministic id makes a repeat
+    // like an update, which is refused, so the derived count can never be
+    // inflated. Unlike is a delete of the liker's own row, keyed on userId so
+    // it also clears any legacy auto-id row they own from a pre-migration build.
     match /post_likes/{likeId} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['postId', 'userId', 'createdAt'])
+        && request.resource.data.postId is string
+        && request.resource.data.postId.size() > 0
+        && request.resource.data.userId is string
+        && likeId == request.resource.data.postId + '_' + request.resource.data.userId
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId));
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Donors directory. A read-only audit found this collection live in

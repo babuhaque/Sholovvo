@@ -53,6 +53,22 @@ Failure mapStorageErrorToFailure({
     );
   }
 
+  // A bucket that does not exist (`NoSuchBucket`, "Bucket not found") is not a
+  // missing account and not a missing object: it is a build pointed at a
+  // project where the delivery SQL in `docs/storage/` was never applied. The
+  // screens already carry the honest sentence for that
+  // (`profilePhotoNotConfigured` / `feedComposePhotosNotConfigured`), so it
+  // surfaces as a ConfigurationFailure rather than the misleading
+  // "We could not find that account" a NotFoundFailure would render.
+  if (text.contains('bucket not found') || text.contains('nosuchbucket')) {
+    return ConfigurationFailure(
+      setting: 'Supabase Storage bucket',
+      debugMessage: message,
+      cause: cause,
+      stackTrace: stackTrace,
+    );
+  }
+
   if (status == 404 || text.contains('object not found')) {
     return NotFoundFailure(
       debugMessage: message,

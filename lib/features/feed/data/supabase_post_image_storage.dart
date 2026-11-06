@@ -19,7 +19,7 @@ import 'package:storage_client/storage_client.dart';
 /// Two things differ from avatars, and both come from a post being a list of
 /// objects rather than one:
 ///
-/// * **The path carries a sequence number.** Four photos picked in the same
+/// * **The path carries a sequence number.** Several photos picked in the same
 ///   second would otherwise share a timestamp, and a second upload would
 ///   overwrite the first. `{uid}/post-{millis}-{n}.{ext}` makes every upload a
 ///   new object, which is also why the URL behind each one is immutable and can

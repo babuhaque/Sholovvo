@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:sholovvo_app/core/error/failure.dart';
+import 'package:sholovvo_app/core/media/gallery_saver.dart';
 import 'package:sholovvo_app/core/media/photo.dart';
 import 'package:sholovvo_app/core/media/photo_picker.dart';
 import 'package:sholovvo_app/core/result/result.dart';
@@ -16,11 +17,16 @@ class FakePhotoStorage implements ProfilePhotoStorage {
   FakePhotoStorage({
     this.isConfigured = true,
     this.uploadUrl = defaultUploadUrl,
+    this.coverUrl = defaultCoverUploadUrl,
   });
 
   static const String defaultUploadUrl =
       'https://demo.supabase.co/storage/v1/object/public/avatars/'
       'uid-verified/avatar-1730000000000.jpg';
+
+  static const String defaultCoverUploadUrl =
+      'https://demo.supabase.co/storage/v1/object/public/avatars/'
+      'uid-verified/cover-1730000000000.jpg';
 
   @override
   bool isConfigured;
@@ -29,9 +35,14 @@ class FakePhotoStorage implements ProfilePhotoStorage {
   /// at a specific object when it asserts on the removal path.
   String uploadUrl;
 
+  /// The URL a successful cover upload returns.
+  String coverUrl;
+
   /// When set, the matching call returns this failure instead of succeeding.
   Failure? uploadFailure;
   Failure? removeFailure;
+  Failure? coverUploadFailure;
+  Failure? coverRemoveFailure;
 
   /// What a successful removal reports: `true` removed something, `false` found
   /// nothing of ours at that URL.
@@ -40,6 +51,10 @@ class FakePhotoStorage implements ProfilePhotoStorage {
   int uploadCalls = 0;
   ValidatedPhoto? lastUpload;
   final List<String> removedUrls = <String>[];
+
+  int coverUploadCalls = 0;
+  ValidatedPhoto? lastCoverUpload;
+  final List<String> coverRemovedUrls = <String>[];
 
   /// When set, both calls wait on it before answering.
   ///
@@ -64,6 +79,27 @@ class FakePhotoStorage implements ProfilePhotoStorage {
     await _waitForGate();
     if (removeFailure != null) {
       return FailureResult<bool>(removeFailure!);
+    }
+    return Success<bool>(removeResult);
+  }
+
+  @override
+  Future<Result<String>> uploadCover(ValidatedPhoto photo) async {
+    coverUploadCalls++;
+    lastCoverUpload = photo;
+    await _waitForGate();
+    if (coverUploadFailure != null) {
+      return FailureResult<String>(coverUploadFailure!);
+    }
+    return Success<String>(coverUrl);
+  }
+
+  @override
+  Future<Result<bool>> removeCover(String publicUrl) async {
+    coverRemovedUrls.add(publicUrl);
+    await _waitForGate();
+    if (coverRemoveFailure != null) {
+      return FailureResult<bool>(coverRemoveFailure!);
     }
     return Success<bool>(removeResult);
   }
@@ -154,4 +190,37 @@ Uint8List _prefixed(List<int> prefix, int length) {
   final Uint8List bytes = Uint8List(length < prefix.length ? prefix.length : length);
   bytes.setRange(0, prefix.length, prefix);
   return bytes;
+}
+
+/// In-memory [GallerySaver]: records the url it was asked to save.
+///
+/// `gal` and `http` both reach the platform, so the viewer's download control
+/// is tested through this seam rather than a real fetch-and-write. When [failure]
+/// is set the save reports it instead of succeeding, which is how the denied
+/// and failed toast paths are reached without a device refusing permission.
+class FakeGallerySaver implements GallerySaver {
+  FakeGallerySaver({this.failure});
+
+  /// Returned instead of a success when set.
+  Failure? failure;
+
+  /// Holds the call open so a test can watch the in-flight spinner.
+  Completer<void>? gate;
+
+  int calls = 0;
+  String? lastUrl;
+
+  @override
+  Future<Result<void>> saveImageFromUrl(String url) async {
+    calls++;
+    lastUrl = url;
+    final Completer<void>? pending = gate;
+    if (pending != null) {
+      await pending.future;
+    }
+    if (failure != null) {
+      return FailureResult<void>(failure!);
+    }
+    return const Success<void>(null);
+  }
 }

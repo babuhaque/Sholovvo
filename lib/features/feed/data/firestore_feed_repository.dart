@@ -21,13 +21,17 @@ class FirestoreFeedRepository implements FeedRepository {
   static const AppLogger _logger = AppLogger('feed');
 
   @override
-  Future<Result<FeedPage>> loadPage({FeedCursor? after}) async {
+  Future<Result<FeedPage>> loadPage({
+    FeedCursor? after,
+    String? authorUid,
+  }) async {
     // One extra document, so "is there another page?" is answered by the same
     // read that fills this one instead of by an empty request the user pays for
     // at the bottom of the list.
     final Result<List<FeedDocument>> fetched = await _documents.fetch(
       limit: FeedRepository.pageSize + 1,
       after: after,
+      authorUid: authorUid,
     );
 
     final Failure? failure = fetched.failureOrNull;

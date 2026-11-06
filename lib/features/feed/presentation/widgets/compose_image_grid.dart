@@ -9,13 +9,18 @@ import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/domain/post_image_storage.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
-/// The four photo slots of a new post.
+/// The photo slots of a new post, as many as [PostValidator.maxImages].
 ///
-/// **Always four cells, never fewer.** The grid is the statement of capacity:
-/// a donor sees two photos, one way to add a third, and one slot left, without a
-/// caption explaining that the limit is four. The limit itself is
-/// [PostValidator.maxImages], the same constant the validator and the rules
-/// stage will use.
+/// **Always a full grid of [PostValidator.maxImages] cells, never fewer.** The
+/// grid is the statement of capacity: a donor sees the chosen photos, one way to
+/// add another, and the empty slots that remain, without a caption explaining
+/// the limit. The limit itself is [PostValidator.maxImages], the same constant
+/// the validator and the rules use.
+///
+/// Cells are laid out three to a row, each a fixed square measured from the row
+/// width, so every slot keeps the same size whatever the count and a final short
+/// row sits left-aligned under the full ones rather than stretching wider than
+/// them. With the current limit of five that is a row of three over a row of two.
 ///
 /// The add tile opens a sheet rather than offering gallery and camera side by
 /// side. On a 152 dp cell the two labels do not fit in either language — Bangla
@@ -44,31 +49,48 @@ class ComposeImageGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> cells = <Widget>[
+    // A fixed column count keeps every cell the same size across rows. The
+    // grid is exactly [PostValidator.maxImages] cells: a short final row is
+    // left-aligned by measuring each cell from the row width, never padded with
+    // filler slots that would stretch two cells to full width.
+    const int columns = 3;
+    final List<Widget> slots = <Widget>[
       for (int index = 0; index < PostValidator.maxImages; index++)
-        Expanded(child: _cell(context, index)),
+        _cell(context, index),
     ];
 
-    return Column(
-      children: <Widget>[
-        Row(
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double cell =
+            (constraints.maxWidth - AppSpacing.xs * (columns - 1)) / columns;
+        final List<Widget> rows = <Widget>[];
+        for (int start = 0; start < slots.length; start += columns) {
+          final int end = (start + columns) > slots.length
+              ? slots.length
+              : start + columns;
+          rows.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                for (int i = start; i < end; i++) ...<Widget>[
+                  if (i > start) const SizedBox(width: AppSpacing.xs),
+                  SizedBox(width: cell, height: cell, child: slots[i]),
+                ],
+              ],
+            ),
+          );
+        }
+
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            cells[0],
-            const SizedBox(width: AppSpacing.xs),
-            cells[1],
+            for (int r = 0; r < rows.length; r++) ...<Widget>[
+              if (r > 0) const SizedBox(height: AppSpacing.xs),
+              rows[r],
+            ],
           ],
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            cells[2],
-            const SizedBox(width: AppSpacing.xs),
-            cells[3],
-          ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -132,7 +154,7 @@ class _FilledSlot extends StatelessWidget {
               fit: BoxFit.cover,
               // The word the grid already uses for its contents, chosen over the
               // object path or a coordinate: a listener needs to know a photo is
-              // here, and which of the four slots it is in is a question the
+              // here, and which slot it is in is a question the
               // "Remove photo" button in this same cell already answers.
               semanticLabel: l10n.feedComposePhotosLabel,
               // The object was uploaded seconds ago, so a failure here means it

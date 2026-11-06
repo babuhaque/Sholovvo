@@ -360,26 +360,26 @@ void main() {
   });
 
   group('PostDocument.fromMap: boundaries', () {
-    test('no images and four images are accepted', () {
+    test('no images and five images are accepted', () {
       final Map<String, dynamic> none = _document();
-      final Map<String, dynamic> four = _document()
+      final Map<String, dynamic> five = _document()
         ..['imageUrls'] = List<String>.generate(
-          4,
+          5,
           (int i) => 'https://cdn.test/$i.jpg',
         )
         ..['imagePaths'] = List<String>.generate(
-          4,
+          5,
           (int i) => 'uid-author/post-1/$i.jpg',
         );
 
       expect(PostDocument.fromMap(id: 'post-1', data: none).isSuccess, isTrue);
-      expect(PostDocument.fromMap(id: 'post-1', data: four).isSuccess, isTrue);
+      expect(PostDocument.fromMap(id: 'post-1', data: five).isSuccess, isTrue);
     });
 
-    test('five images are refused', () {
+    test('six images are refused', () {
       final Map<String, dynamic> data = _document()
         ..['imageUrls'] = List<String>.generate(
-          5,
+          6,
           (int i) => 'https://cdn.test/$i.jpg',
         );
 
@@ -389,10 +389,10 @@ void main() {
       );
     });
 
-    test('five storage paths are refused even with no URLs', () {
+    test('six storage paths are refused even with no URLs', () {
       final Map<String, dynamic> data = _document()
         ..['imagePaths'] = List<String>.generate(
-          5,
+          6,
           (int i) => 'uid-author/post-1/$i.jpg',
         );
 

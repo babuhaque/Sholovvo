@@ -25,6 +25,7 @@ import 'package:sholovvo_app/features/profile/presentation/profile_messages.dart
 import 'package:sholovvo_app/features/profile/presentation/widgets/donation_history_section.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_availability_card.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_completion_card.dart';
+import 'package:sholovvo_app/features/profile/presentation/widgets/profile_cover_banner.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_details_card.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_identity_card.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_photo_sheet.dart';
@@ -232,6 +233,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  /// Opens the cover sheet and performs whatever the donor chose there.
+  ///
+  /// Mirrors [_managePhoto] exactly — same sheet, same busy flag, same
+  /// compensate-in-the-controller ordering — because a cover is the same kind of
+  /// object in the same bucket; only the field it publishes to differs.
+  Future<void> _manageCover(UserProfile profile) async {
+    if (_anyBusy) {
+      return;
+    }
+    final AppLocalizations l10n = context.l10n;
+    final ProfilePhotoStorage storage = ref.read(profilePhotoStorageProvider);
+    final ProfilePhotoAction? action = await ProfilePhotoSheet.show(
+      context,
+      hasPhoto: profile.hasCover,
+      isConfigured: storage.isConfigured,
+      kind: ProfilePhotoKind.cover,
+    );
+    if (!mounted || action == null) {
+      return;
+    }
+
+    switch (action) {
+      case ProfilePhotoAction.gallery:
+      case ProfilePhotoAction.camera:
+        final Result<bool> result = await _runPhoto<bool>(
+          () => ref
+              .read(profilePhotoControllerProvider.notifier)
+              .chooseAndUploadCover(
+                action == ProfilePhotoAction.gallery
+                    ? PhotoSource.gallery
+                    : PhotoSource.camera,
+              ),
+        );
+        if (!mounted) {
+          return;
+        }
+        if (result.valueOrNull == true) {
+          _confirm(l10n.profileCoverUpdated);
+        }
+      case ProfilePhotoAction.remove:
+        final bool confirmed = await _confirmCoverRemoval();
+        if (!mounted || !confirmed) {
+          return;
+        }
+        final Result<void> result = await _runPhoto<void>(
+          () => ref
+              .read(profilePhotoControllerProvider.notifier)
+              .removeCover(profile.coverUrl),
+        );
+        if (!mounted) {
+          return;
+        }
+        if (result.isSuccess) {
+          _confirm(l10n.profileCoverRemoved);
+        }
+    }
+  }
+
   /// Runs one photo operation with the screen's busy and error state around it.
   ///
   /// The banner is set here rather than inside the controller so that every photo
@@ -270,6 +329,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(l10n.profilePhotoRemove),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  /// A second deliberate tap: removing the cover deletes the stored image, which
+  /// no undo in this app can bring back.
+  Future<bool> _confirmCoverRemoval() async {
+    final AppLocalizations l10n = context.l10n;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(l10n.profileCoverRemoveConfirmTitle),
+        content: Text(l10n.profileCoverRemoveConfirmBody),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.actionCancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.profileCoverRemove),
           ),
         ],
       ),
@@ -456,10 +539,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ],
     );
 
+    // The cover spans the full content width above the columns in both layouts:
+    // it is the banner the whole profile sits under, not a card in one column.
+    final Widget cover = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        ProfileCoverBanner(
+          hasCover: profile.hasCover,
+          coverUrl: profile.coverUrl,
+          onChanged: () => unawaited(_manageCover(profile)),
+          isBusy: _photoBusy,
+        ),
+        const SizedBox(height: AppSpacing.lg),
+      ],
+    );
+
     if (!wide) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          cover,
           leftColumn,
           const SizedBox(height: AppSpacing.xl),
           rightColumn,
@@ -467,12 +566,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Expanded(child: leftColumn),
-        const SizedBox(width: AppSpacing.xl),
-        Expanded(child: rightColumn),
+        cover,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(child: leftColumn),
+            const SizedBox(width: AppSpacing.xl),
+            Expanded(child: rightColumn),
+          ],
+        ),
       ],
     );
   }

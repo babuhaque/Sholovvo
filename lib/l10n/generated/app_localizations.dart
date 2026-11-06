@@ -890,6 +890,66 @@ abstract class AppLocalizations {
   /// **'Photo upload is not set up in this build yet.'**
   String get profilePhotoNotConfigured;
 
+  /// No description provided for @profileCoverAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add cover photo'**
+  String get profileCoverAdd;
+
+  /// No description provided for @profileCoverChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change cover photo'**
+  String get profileCoverChange;
+
+  /// No description provided for @profileCoverEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit cover photo'**
+  String get profileCoverEdit;
+
+  /// No description provided for @profileCoverSheetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cover photo'**
+  String get profileCoverSheetTitle;
+
+  /// No description provided for @profileCoverSheetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your cover photo appears at the top of your profile. Only you can change it.'**
+  String get profileCoverSheetBody;
+
+  /// No description provided for @profileCoverRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove cover photo'**
+  String get profileCoverRemove;
+
+  /// No description provided for @profileCoverRemoveConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove your cover photo?'**
+  String get profileCoverRemoveConfirmTitle;
+
+  /// No description provided for @profileCoverRemoveConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The stored image will be deleted and your profile will show its plain background instead.'**
+  String get profileCoverRemoveConfirmBody;
+
+  /// No description provided for @profileCoverUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Cover photo updated.'**
+  String get profileCoverUpdated;
+
+  /// No description provided for @profileCoverRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Cover photo removed.'**
+  String get profileCoverRemoved;
+
   /// No description provided for @actionCancel.
   ///
   /// In en, this message translates to:
@@ -1322,6 +1382,18 @@ abstract class AppLocalizations {
   /// **'When a donor shares an update, it appears here.'**
   String get feedEmptyBody;
 
+  /// No description provided for @userPostsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No posts from this donor yet'**
+  String get userPostsEmptyTitle;
+
+  /// No description provided for @userPostsEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'When they share an update, it will appear here.'**
+  String get userPostsEmptyBody;
+
   /// No description provided for @feedErrorTitle.
   ///
   /// In en, this message translates to:
@@ -1393,6 +1465,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Update the text of your post.'**
   String get feedEditHint;
+
+  /// No description provided for @feedEditPhotosLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get feedEditPhotosLabel;
+
+  /// No description provided for @feedImageDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get feedImageDownload;
+
+  /// No description provided for @feedImageDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved to your gallery.'**
+  String get feedImageDownloaded;
+
+  /// No description provided for @feedImageDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not download this photo.'**
+  String get feedImageDownloadFailed;
+
+  /// No description provided for @feedImageDownloadDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Solovvo needs permission to save to your gallery.'**
+  String get feedImageDownloadDenied;
 
   /// No description provided for @feedEditSave.
   ///

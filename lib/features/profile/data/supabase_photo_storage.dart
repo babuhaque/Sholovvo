@@ -45,7 +45,16 @@ class SupabasePhotoStorage implements ProfilePhotoStorage {
   bool get isConfigured => _config.isConfigured;
 
   @override
-  Future<Result<String>> uploadAvatar(ValidatedPhoto photo) async {
+  Future<Result<String>> uploadAvatar(ValidatedPhoto photo) {
+    return _upload(photo, prefix: _avatarPrefix);
+  }
+
+  @override
+  Future<Result<String>> uploadCover(ValidatedPhoto photo) {
+    return _upload(photo, prefix: _coverPrefix);
+  }
+
+  Future<Result<String>> _upload(ValidatedPhoto photo, {required String prefix}) async {
     final String? uid = _auth.currentUser?.uid;
     if (uid == null || uid.isEmpty) {
       return const FailureResult<String>(
@@ -59,6 +68,7 @@ class SupabasePhotoStorage implements ProfilePhotoStorage {
       uid: uid,
       now: _clock(),
       format: photo.format,
+      prefix: prefix,
     );
 
     try {
@@ -90,7 +100,16 @@ class SupabasePhotoStorage implements ProfilePhotoStorage {
   }
 
   @override
-  Future<Result<bool>> removeAvatar(String publicUrl) async {
+  Future<Result<bool>> removeAvatar(String publicUrl) {
+    return _remove(publicUrl);
+  }
+
+  @override
+  Future<Result<bool>> removeCover(String publicUrl) {
+    return _remove(publicUrl);
+  }
+
+  Future<Result<bool>> _remove(String publicUrl) async {
     final String? uid = _auth.currentUser?.uid;
     if (uid == null || uid.isEmpty) {
       return const FailureResult<bool>(
@@ -166,18 +185,25 @@ class SupabasePhotoStorage implements ProfilePhotoStorage {
     });
   }
 
-  /// `{uid}/avatar-{millis}.{ext}`.
+  /// `{uid}/avatar-{millis}.{ext}` for a photo, `{uid}/cover-{millis}.{ext}` for
+  /// a cover.
   ///
   /// The timestamp is what makes replacement safe: a new upload never overwrites
   /// the object the donor still has on screen, so if the profile write fails
-  /// afterwards the old photo is still there, intact.
+  /// afterwards the old photo is still there, intact. The prefix keeps an avatar
+  /// and a cover of the same account in one folder (so the bucket's per-`{uid}`
+  /// ownership policy governs both) without ever colliding with each other.
   static String objectPath({
     required String uid,
     required DateTime now,
     required PhotoFormat format,
+    String prefix = _avatarPrefix,
   }) {
-    return '$uid/avatar-${now.millisecondsSinceEpoch}.${format.extension}';
+    return '$uid/$prefix-${now.millisecondsSinceEpoch}.${format.extension}';
   }
+
+  static const String _avatarPrefix = 'avatar';
+  static const String _coverPrefix = 'cover';
 
   /// The object path inside the bucket for [publicUrl], or `null` when the URL
   /// is not an object of [uid]'s in [bucket].

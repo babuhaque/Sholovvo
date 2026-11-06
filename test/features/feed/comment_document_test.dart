@@ -6,19 +6,22 @@ import 'package:sholovvo_app/features/feed/domain/entities/comment.dart';
 
 void main() {
   group('CommentDocument.toMap', () {
-    test('writes exactly the four required fields when optionals are absent',
+    test('writes the required fields plus postId when optionals are absent',
         () {
       final Map<String, Object?> map = CommentDocument.toMap(
+        postId: 'post-1',
         authorUid: 'uid-1',
         authorName: 'Rahim',
         text: 'Great post!',
       );
       expect(map.keys.toSet(), {
+        'postId',
         'authorUid',
         'authorName',
         'text',
         'createdAt',
       });
+      expect(map['postId'], 'post-1');
       expect(map['authorUid'], 'uid-1');
       expect(map['authorName'], 'Rahim');
       expect(map['text'], 'Great post!');
@@ -27,6 +30,7 @@ void main() {
 
     test('includes optional fields only when they have values', () {
       final Map<String, Object?> map = CommentDocument.toMap(
+        postId: 'post-1',
         authorUid: 'uid-1',
         authorName: 'Rahim',
         authorPhotoUrl: 'https://x.com/p.jpg',
@@ -41,6 +45,7 @@ void main() {
 
     test('omits blank optional fields', () {
       final Map<String, Object?> map = CommentDocument.toMap(
+        postId: 'post-1',
         authorUid: 'uid-1',
         authorName: 'Rahim',
         authorPhotoUrl: '   ',

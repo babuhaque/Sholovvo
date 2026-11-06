@@ -33,6 +33,7 @@ class FakeProfileRepository implements ProfileRepository {
   Failure? availabilityFailure;
   Failure? historyFailure;
   Failure? photoUrlFailure;
+  Failure? coverUrlFailure;
 
   /// When set, the profile stream fails before emitting, which is the state the
   /// screen has to survive without claiming "no profile".
@@ -42,6 +43,7 @@ class FakeProfileRepository implements ProfileRepository {
   int availabilityCalls = 0;
   int historyCalls = 0;
   int photoUrlCalls = 0;
+  int coverUrlCalls = 0;
 
   /// The last payload handed to [saveProfile], for asserting what a form
   /// actually submitted.
@@ -51,6 +53,9 @@ class FakeProfileRepository implements ProfileRepository {
   /// The last URL handed to [setPhotoUrl], and whether it was called at all.
   /// `null` after a successful call means "the photo was removed".
   String? lastPhotoUrl;
+
+  /// The last URL handed to [setCoverUrl]; `null` means "the cover was removed".
+  String? lastCoverUrl;
 
   /// Replaces the document and notifies listeners.
   void emit(UserProfile? next) {
@@ -119,6 +124,20 @@ class FakeProfileRepository implements ProfileRepository {
     // document there is nothing to update, exactly as on the server.
     if (current != null) {
       emit(current.withPhoto(photoUrl));
+    }
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> setCoverUrl(String? coverUrl) async {
+    coverUrlCalls++;
+    lastCoverUrl = coverUrl;
+    if (coverUrlFailure != null) {
+      return FailureResult<void>(coverUrlFailure!);
+    }
+    final UserProfile? current = profile;
+    if (current != null) {
+      emit(current.withCover(coverUrl));
     }
     return const Success<void>(null);
   }

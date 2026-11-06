@@ -5,12 +5,19 @@ import 'package:sholovvo_app/features/feed/data/models/post_document.dart';
 
 /// Writes and removes one donor's like on a post.
 ///
-/// The like model uses the **donor's uid as the document id** within the post's
-/// `likes` subcollection, so a duplicate like is an id collision (an update,
-/// which the rules refuse) rather than a second row nobody can detect. The
-/// cached `likeCount` on the parent post document is maintained atomically via
-/// `FieldValue.increment` — a server-side operation that cannot go negative
-/// below what Firestore tracks and that needs no read-before-write.
+/// The like lives in the **flat `post_likes` collection**, the shape the live
+/// database actually uses: `post_likes/{postId}_{uid}` carrying
+/// `{postId, userId, createdAt}`. The document id embeds the post and the
+/// liker, so a duplicate like is an id collision (an update, which the rules
+/// refuse) rather than a second row that would inflate the count.
+///
+/// **This path writes the like document and nothing else.** The cached
+/// `likeCount` on the parent post is NOT incremented here. `firestore.rules`
+/// keeps the post's counters immutable to every client (an any-signed-in-user
+/// +/-1 branch was a counter-forging hole). The authoritative count is
+/// therefore derived: the feed's count hydration counts `post_likes` rows with
+/// an aggregate `count()` query, so what the donor sees always comes from the
+/// rows that actually exist, never from a number a client could drive.
 ///
 /// Both methods return a [Result]: a [Success] means the server accepted the
 /// write; a [Failure] carries the error for the controller to decide whether to
@@ -21,10 +28,12 @@ import 'package:sholovvo_app/features/feed/data/models/post_document.dart';
 /// currently liked or unliked is hydrated by [LikeHydrationService] on feed
 /// load and tracked in the controller's in-memory set for the session.
 abstract interface class PostLikeService {
-  /// Creates the like document and increments the parent's `likeCount`.
+  /// Creates the like document. The parent's `likeCount` is derived, not
+  /// written here.
   Future<Result<void>> like(String postId, String uid);
 
-  /// Deletes the like document and decrements the parent's `likeCount`.
+  /// Deletes the like document. The parent's `likeCount` is derived, not
+  /// written here.
   Future<Result<void>> unlike(String postId, String uid);
 }
 
@@ -32,9 +41,8 @@ abstract interface class PostLikeService {
 ///
 /// Takes the [FirebaseFirestore] instance rather than reaching for the static
 /// singleton, so a widget or unit test can inject an in-memory or fake instance
-/// without the real backend. The collection constant comes from [PostDocument]
-/// and the likes subcollection from [PostDocument.likesSubcollection], keeping
-/// the path definition in one place.
+/// without the real backend. The collection constant comes from
+/// [PostDocument.likesCollection], keeping the path definition in one place.
 final class FirestorePostLikeService implements PostLikeService {
   const FirestorePostLikeService(this._firestore);
 
@@ -43,16 +51,14 @@ final class FirestorePostLikeService implements PostLikeService {
   @override
   Future<Result<void>> like(String postId, String uid) async {
     try {
-      final DocumentReference<Map<String, dynamic>> postRef =
-          _firestore.collection(PostDocument.collection).doc(postId);
-      final DocumentReference<Map<String, dynamic>> likeRef =
-          postRef.collection(PostDocument.likesSubcollection).doc(uid);
-
-      await _firestore.runTransaction<void>((tx) async {
-        tx.set(likeRef, <String, Object?>{'likedAt': FieldValue.serverTimestamp()});
-        tx.update(postRef, <String, Object?>{
-          'likeCount': FieldValue.increment(1),
-        });
+      // Deterministic id: one like per (post, donor), enforced by collision.
+      await _firestore
+          .collection(PostDocument.likesCollection)
+          .doc('${postId}_$uid')
+          .set(<String, Object?>{
+        'postId': postId,
+        'userId': uid,
+        'createdAt': FieldValue.serverTimestamp(),
       });
       return const Success<void>(null);
     } on FirebaseException catch (e) {
@@ -63,17 +69,22 @@ final class FirestorePostLikeService implements PostLikeService {
   @override
   Future<Result<void>> unlike(String postId, String uid) async {
     try {
-      final DocumentReference<Map<String, dynamic>> postRef =
-          _firestore.collection(PostDocument.collection).doc(postId);
-      final DocumentReference<Map<String, dynamic>> likeRef =
-          postRef.collection(PostDocument.likesSubcollection).doc(uid);
-
-      await _firestore.runTransaction<void>((tx) async {
-        tx.delete(likeRef);
-        tx.update(postRef, <String, Object?>{
-          'likeCount': FieldValue.increment(-1),
-        });
-      });
+      // Query rather than delete-by-id so a legacy auto-id row (the
+      // pre-migration build did not embed the id) is removed too. Deleting
+      // every match is idempotent: zero rows is a success, not an error.
+      final QuerySnapshot<Map<String, dynamic>> rows = await _firestore
+          .collection(PostDocument.likesCollection)
+          .where('postId', isEqualTo: postId)
+          .where('userId', isEqualTo: uid)
+          .get();
+      if (rows.docs.isEmpty) {
+        return const Success<void>(null);
+      }
+      final WriteBatch batch = _firestore.batch();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> row in rows.docs) {
+        batch.delete(row.reference);
+      }
+      await batch.commit();
       return const Success<void>(null);
     } on FirebaseException catch (e) {
       return FailureResult<void>(_mapException(e));

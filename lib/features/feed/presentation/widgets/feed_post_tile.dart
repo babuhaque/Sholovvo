@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +41,7 @@ class FeedPostTile extends StatefulWidget {
     this.onCommentTap,
     this.onReportTap,
     this.onEditTap,
+    this.onAuthorTap,
     this.isSaved = false,
     this.onSaveToggle,
   });
@@ -67,6 +69,12 @@ class FeedPostTile extends StatefulWidget {
   /// Called when the author taps the edit pencil. Null hides the icon.
   final VoidCallback? onEditTap;
 
+  /// Called when a reader taps the author's name or avatar: opens that author's
+  /// posts. Null (as on the author's own posts screen, where tapping would
+  /// re-open the screen already showing) makes the header a plain label rather
+  /// than a button, so the affordance is only offered where it leads somewhere.
+  final VoidCallback? onAuthorTap;
+
   /// Whether the user has bookmarked this post locally.
   final bool isSaved;
 
@@ -82,6 +90,11 @@ class _FeedPostTileState extends State<FeedPostTile>
   late final AnimationController _heartController;
   late final Animation<double> _heartScale;
   late final Animation<double> _heartOpacity;
+
+  /// Intrinsic width-over-height ratios learned per image URL, kept across
+  /// rebuilds so a lone photo sizes to its true shape the first time it decodes
+  /// and stays put on every scroll afterward. See [_PostImages].
+  final Map<String, double> _aspectRatios = <String, double>{};
 
   @override
   void initState() {
@@ -125,6 +138,7 @@ class _FeedPostTileState extends State<FeedPostTile>
   VoidCallback? get onCommentTap => widget.onCommentTap;
   VoidCallback? get onReportTap => widget.onReportTap;
   VoidCallback? get onEditTap => widget.onEditTap;
+  VoidCallback? get onAuthorTap => widget.onAuthorTap;
   bool get isSaved => widget.isSaved;
   VoidCallback? get onSaveToggle => widget.onSaveToggle;
 
@@ -169,6 +183,7 @@ class _FeedPostTileState extends State<FeedPostTile>
             child: _PostImages(
               urls: post.imageUrls,
               authorName: post.authorName,
+              aspectRatios: _aspectRatios,
             ),
           ),
         ],
@@ -198,34 +213,50 @@ class _FeedPostTileState extends State<FeedPostTile>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Row(
-                  children: <Widget>[
-                    InitialsAvatar(
-                      name: post.authorName,
-                      photoUrl: post.authorPhotoUrl,
-                      size: 40,
-                      variant: InitialsAvatarVariant.muted,
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  // The whole header is one tap target when it leads somewhere:
+                  // avatar and name are what a reader recognises as "who wrote
+                  // this", and wrapping both (not just the name) matches how the
+                  // like and comment affordances below bind a generous region to
+                  // a small label. With [onAuthorTap] null the GestureDetector is
+                  // inert and the header is a plain label again.
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: onAuthorTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
                         children: <Widget>[
-                          Text(
-                            post.authorName,
-                            style: text.titleMedium,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          InitialsAvatar(
+                            name: post.authorName,
+                            photoUrl: post.authorPhotoUrl,
+                            size: 40,
+                            variant: InitialsAvatarVariant.muted,
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            post.isEdited
-                                ? '${l10n.feedEdited} · $postedAt'
-                                : postedAt,
-                            style: text.labelSmall,
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  post.authorName,
+                                  style: text.titleMedium,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  post.isEdited
+                                      ? '${l10n.feedEdited} · $postedAt'
+                                      : postedAt,
+                                  style: text.labelSmall,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
+                  ),
                     IconButton(
                       onPressed: onSaveToggle,
                       tooltip: l10n.feedSave,
@@ -391,12 +422,19 @@ class _FeedPostTileState extends State<FeedPostTile>
   }
 }
 
-/// Up to four photographs, in the order the donor arranged them.
+/// Up to five photographs, in the order the donor arranged them.
 ///
-/// One image gets a wide crop because a lone square wastes half the card. Two or
-/// more become a two-column grid of squares, which is the shape that keeps a
-/// four-image post the same height as a two-image one and stops the timeline
-/// from jumping as it loads.
+/// **A lone photograph is fit to the screen, not cropped.** A single image is
+/// letterboxed to the card's full width and given a height measured from its own
+/// aspect ratio (clamped to [_PostImages.maxHeight] and to a fraction of the
+/// viewport), painted with [BoxFit.contain] so nothing is cut off. A tall
+/// portrait that used to collapse to a thin 16:10 strip now shows in full — the
+/// reader taps it for the zoomable viewer, but the tile no longer hides most of
+/// the picture first.
+///
+/// Two or more become a two-column grid of squares, which is the shape that
+/// keeps a five-image post a predictable height and stops the timeline from
+/// jumping as it loads.
 ///
 /// **Height is capped.** A square is right for a 380 dp card and wrong for a
 /// 900 dp one, where two cells would each be over 400 dp tall and one photograph
@@ -409,15 +447,34 @@ class _FeedPostTileState extends State<FeedPostTile>
 /// could need — who wrote this, and what is in the picture — are not both
 /// answerable from the author line above.
 class _PostImages extends StatelessWidget {
-  const _PostImages({required this.urls, required this.authorName});
+  const _PostImages({
+    required this.urls,
+    required this.authorName,
+    required this.aspectRatios,
+  });
 
   /// The tallest a picture may draw, whatever the card's width.
   static const double maxHeight = 300;
+
+  /// The tallest a lone picture may draw on a phone, as a fraction of the
+  /// viewport height. A portrait is shown whole, but a feed that forces the
+  /// reader to scroll past a full-screen picture before they can reach the next
+  /// post is a gallery, not a feed. The cap below [maxHeight] only bites on
+  /// short windows.
+  static const double _maxSingleViewportFraction = 0.6;
+
+  /// The shape assumed before an image's own dimensions are known.
+  static const double _defaultAspectRatio = 16 / 10;
 
   final List<String> urls;
 
   /// Whose post these pictures belong to. Used for the label, never drawn.
   final String authorName;
+
+  /// Learned intrinsic ratios keyed by URL, owned by the tile state so a lone
+  /// picture keeps its measured height across rebuilds instead of collapsing
+  /// and re-growing each frame the image repaints.
+  final Map<String, double> aspectRatios;
 
   @override
   Widget build(BuildContext context) {
@@ -432,14 +489,24 @@ class _PostImages extends StatelessWidget {
         final double width = constraints.maxWidth;
 
         if (urls.length == 1) {
+          final double ratio = aspectRatios[urls.first] ?? _defaultAspectRatio;
+          final double viewport = MediaQuery.sizeOf(context).height;
+          final double cap = math.min(
+            maxHeight,
+            viewport * _maxSingleViewportFraction,
+          );
+          // Full-width letterbox that still fits a tall picture: the greater of
+          // the true height and the cap, so a wide photo hugs its own height and
+          // a portrait is bounded rather than running off the screen.
+          final double height = math.max(math.min(width / ratio, cap), 120);
           return SizedBox(
             width: width,
-            height: math.min(width * 10 / 16, maxHeight),
-            child: _PostImage(
-              url: urls[0],
+            height: height,
+            child: _FitPostImage(
+              url: urls.first,
               semanticLabel: label,
               allUrls: urls,
-              index: 0,
+              aspectRatios: aspectRatios,
             ),
           );
         }
@@ -540,6 +607,129 @@ class _PostImage extends StatelessWidget {
             url,
             fit: BoxFit.cover,
             semanticLabel: semanticLabel,
+            errorBuilder:
+                (BuildContext context, Object error, StackTrace? stackTrace) =>
+                    Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        size: 22,
+                        color: palette.textSecondary,
+                      ),
+                    ),
+            loadingBuilder:
+                (BuildContext context, Widget child, ImageChunkEvent? progress) =>
+                    progress == null
+                    ? child
+                    : const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A lone photograph, drawn whole rather than cropped.
+///
+/// Used only when a post carries exactly one image, where there is no grid to
+/// keep level and the picture deserves the width it has. The image is painted
+/// with [BoxFit.contain] inside the full-width slot [ _PostImages] gives it, so
+/// a portrait shows top to bottom instead of collapsing to a strip.
+///
+/// On first decode the image's intrinsic ratio is written into the tile-owned
+/// [aspectRatios] cache and the tile rebuilds, so the slot's height settles on
+/// the picture's true shape. Before that decode the slot is its default ratio
+/// and the picture is centered inside it — an image that never loads keeps the
+/// placeholder the parent sized, exactly as [_PostImage] does in a grid cell.
+class _FitPostImage extends StatefulWidget {
+  const _FitPostImage({
+    required this.url,
+    required this.semanticLabel,
+    required this.allUrls,
+    required this.aspectRatios,
+  });
+
+  final String url;
+  final String semanticLabel;
+  final List<String> allUrls;
+  final Map<String, double> aspectRatios;
+
+  @override
+  State<_FitPostImage> createState() => _FitPostImageState();
+}
+
+class _FitPostImageState extends State<_FitPostImage> {
+  ImageStream? _stream;
+  late final ImageStreamListener _listener;
+
+  @override
+  void initState() {
+    super.initState();
+    _listener = ImageStreamListener(_onImage);
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FitPostImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _resolve();
+    }
+  }
+
+  @override
+  void dispose() {
+    _stream?.removeListener(_listener);
+    super.dispose();
+  }
+
+  void _resolve() {
+    _stream?.removeListener(_listener);
+    if (widget.url.isEmpty) {
+      _stream = null;
+      return;
+    }
+    _stream = NetworkImage(widget.url).resolve(ImageConfiguration.empty)
+      ..addListener(_listener);
+  }
+
+  void _onImage(ImageInfo info, bool _) {
+    if (!mounted) {
+      info.dispose();
+      return;
+    }
+    final ui.Image image = info.image;
+    if (image.height != 0) {
+      setState(() => widget.aspectRatios[widget.url] = image.width / image.height);
+    }
+    info.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final SolovvoPalette palette = context.palette;
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        ImageViewerScreen.route(
+          widget.allUrls,
+          initialIndex: 0,
+          semanticLabel: widget.semanticLabel,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: AppRadius.mdRadius,
+        child: ColoredBox(
+          color: palette.surfaceMuted,
+          child: Image.network(
+            widget.url,
+            fit: BoxFit.contain,
+            semanticLabel: widget.semanticLabel,
             errorBuilder:
                 (BuildContext context, Object error, StackTrace? stackTrace) =>
                     Center(

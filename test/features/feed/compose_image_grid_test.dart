@@ -103,7 +103,7 @@ Future<void> _choose(WidgetTester tester, {PhotoSource source = PhotoSource.gall
 }
 
 void main() {
-  group('the grid always holds four cells', () {
+  group('the grid always holds its full set of cells', () {
     for (int count = 0; count <= PostValidator.maxImages; count++) {
       testWidgets('with $count photo(s) attached', (
         WidgetTester tester,
@@ -118,7 +118,10 @@ void main() {
           _addTile,
           count < PostValidator.maxImages ? findsOneWidget : findsNothing,
         );
-        expect(find.text('Add photo'), findsNWidgets(count < 4 ? 1 : 0));
+        expect(
+          find.text('Add photo'),
+          findsNWidgets(count < PostValidator.maxImages ? 1 : 0),
+        );
       });
     }
 
@@ -131,7 +134,7 @@ void main() {
         (Element element) => tester.getRect(find.byWidget(element.widget)),
       );
       final List<Rect> cells = <Rect>[
-        for (int index = 0; index < 4; index++)
+        for (int index = 0; index < PostValidator.maxImages; index++)
           tester.getRect(_cells.at(index)),
       ];
 
@@ -142,7 +145,12 @@ void main() {
       expect(photos.elementAt(0).topLeft.dy, closeTo(cells[0].topLeft.dy, 0.5));
       expect(photos.elementAt(1).topLeft.dx, closeTo(cells[1].topLeft.dx, 0.5));
       expect(photos.elementAt(1).topLeft.dy, closeTo(cells[1].topLeft.dy, 0.5));
-      expect(cells[0].top, lessThan(cells[2].top), reason: 'two rows of two');
+      // Three to a row: the first three cells share a top edge and read left to
+      // right, and the fourth starts the row below, so a short final row never
+      // reaches up beside a full one.
+      expect(cells[1].top, closeTo(cells[0].top, 0.5), reason: 'same row');
+      expect(cells[0].left, lessThan(cells[1].left), reason: 'left to right');
+      expect(cells[0].top, lessThan(cells[3].top), reason: 'wraps after three');
     });
 
     testWidgets('every cell is square', (WidgetTester tester) async {
@@ -216,15 +224,21 @@ void main() {
       expect(_addTile, findsOneWidget);
     });
 
-    testWidgets('offers no way in once the four slots are full', (
+    testWidgets('offers no way in once every slot is full', (
       WidgetTester tester,
     ) async {
-      final _Actions actions = await _pumpGrid(tester, images: _images(4));
+      final _Actions actions = await _pumpGrid(
+        tester,
+        images: _images(PostValidator.maxImages),
+      );
 
-      // The limit is drawn, not explained: with four photos there is no tile to
-      // tap, so a fifth photo cannot be asked for in the first place.
+      // The limit is drawn, not explained: with the grid full there is no tile
+      // to tap, so one photo past the limit cannot be asked for at all.
       expect(_addTile, findsNothing);
-      expect(find.byIcon(Icons.close_rounded), findsNWidgets(4));
+      expect(
+        find.byIcon(Icons.close_rounded),
+        findsNWidgets(PostValidator.maxImages),
+      );
       expect(actions.added, isEmpty);
     });
   });
@@ -295,7 +309,7 @@ void main() {
 
       expect(find.byType(Image), findsNWidgets(2));
       expect(_spinner, findsOneWidget);
-      // Still four cells: the third is busy, the fourth waits.
+      // Still a full grid: the third is busy, the rest wait.
       expect(_cells, findsNWidgets(PostValidator.maxImages));
     });
 
@@ -394,12 +408,15 @@ void main() {
             );
 
             // A RenderFlex overflow is thrown, so this is a real layout verdict
-            // rather than a look: four cells, two rows, nothing spilling.
+            // rather than a look: the full grid over two rows, nothing spilling.
             expect(tester.takeException(), isNull);
             expect(_cells, findsNWidgets(PostValidator.maxImages));
             // The removal controls are counted by icon: their tooltip is a
             // localised string, and this test runs in both languages.
-            expect(find.byIcon(Icons.close_rounded), findsNWidgets(4));
+            expect(
+              find.byIcon(Icons.close_rounded),
+              findsNWidgets(PostValidator.maxImages),
+            );
           }
 
           await _pumpGrid(

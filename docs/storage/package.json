@@ -1,0 +1,15 @@
+{
+  "name": "sholovvo-storage-cleanup",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One-off owner maintenance: delete orphaned post photographs from the Supabase community-posts bucket that no live Firestore post references.",
+  "scripts": {
+    "cleanup": "node cleanup-orphan-post-images.mjs",
+    "cleanup:execute": "node cleanup-orphan-post-images.mjs --execute"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "firebase-admin": "^12.0.0"
+  }
+}

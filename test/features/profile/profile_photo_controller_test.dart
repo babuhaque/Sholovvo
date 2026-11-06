@@ -28,6 +28,12 @@ class _RecordingRepository extends FakeProfileRepository {
     _events.add(photoUrl == null ? 'clear' : 'publish');
     return super.setPhotoUrl(photoUrl);
   }
+
+  @override
+  Future<Result<void>> setCoverUrl(String? coverUrl) {
+    _events.add(coverUrl == null ? 'clearCover' : 'publishCover');
+    return super.setCoverUrl(coverUrl);
+  }
 }
 
 class _RecordingStorage extends FakePhotoStorage {
@@ -41,6 +47,18 @@ class _RecordingStorage extends FakePhotoStorage {
   Future<Result<bool>> removeAvatar(String publicUrl) {
     _events.add('delete');
     return super.removeAvatar(publicUrl);
+  }
+
+  @override
+  Future<Result<String>> uploadCover(ValidatedPhoto photo) {
+    _events.add('uploadCover');
+    return super.uploadCover(photo);
+  }
+
+  @override
+  Future<Result<bool>> removeCover(String publicUrl) {
+    _events.add('deleteCover');
+    return super.removeCover(publicUrl);
   }
 }
 
@@ -72,6 +90,9 @@ void main() {
 
   /// The profile of a donor who already has a photo at [url].
   UserProfile withPhoto(String url) => filledProfile.withPhoto(url);
+
+  /// The profile of a donor who already has a cover at [url].
+  UserProfile withCover(String url) => filledProfile.withCover(url);
 
   group('ProfilePhotoController.chooseAndUpload', () {
     test('uploads the object, then publishes the URL it came back with', () async {
@@ -266,6 +287,89 @@ void main() {
       expect(result.isSuccess, isTrue, reason: 'the profile is what the donor sees');
       expect(_events, <String>['clear', 'delete']);
       expect(repo.profile?.photoUrl, isNull);
+    });
+  });
+
+  group('ProfilePhotoController cover', () {
+    test('chooses, uploads and publishes a cover without touching the photo', () async {
+      setUpController(profile: filledProfile);
+
+      final Result<bool> result = await controller().chooseAndUploadCover(
+        PhotoSource.gallery,
+      );
+
+      expect(result.valueOrNull, isTrue);
+      expect(_events, <String>['uploadCover', 'publishCover']);
+      expect(storage.lastCoverUpload?.format, PhotoFormat.jpeg);
+      expect(repo.lastCoverUrl, storage.coverUrl);
+      expect(repo.profile?.coverUrl, storage.coverUrl);
+      // The avatar is a separate field and a separate narrow write; a cover
+      // change must not publish or clear it.
+      expect(repo.photoUrlCalls, 0);
+      expect(repo.profile?.photoUrl, filledProfile.photoUrl);
+    });
+
+    test('a failed cover write deletes the object it just uploaded', () async {
+      setUpController(profile: filledProfile);
+      repo.coverUrlFailure = const PermissionFailure(debugMessage: 'denied');
+
+      final Result<bool> result = await controller().chooseAndUploadCover(
+        PhotoSource.gallery,
+      );
+
+      expect(result.failureOrNull, isA<PermissionFailure>());
+      expect(_events, <String>['uploadCover', 'publishCover', 'deleteCover']);
+      expect(storage.coverRemovedUrls, <String>[storage.coverUrl]);
+      expect(repo.profile?.coverUrl, isNull);
+    });
+
+    test('removing a cover clears the field first, then deletes the object', () async {
+      final String url = FakePhotoStorage.defaultCoverUploadUrl;
+      setUpController(profile: withCover(url));
+
+      final Result<void> result = await controller().removeCover(url);
+
+      expect(result.isSuccess, isTrue);
+      expect(_events, <String>['clearCover', 'deleteCover']);
+      expect(repo.lastCoverUrl, isNull);
+      expect(repo.profile?.hasCover, isFalse);
+      expect(storage.coverRemovedUrls, <String>[url]);
+      // Removing the cover never touches the avatar's field or object.
+      expect(repo.photoUrlCalls, 0);
+      expect(storage.removedUrls, isEmpty);
+    });
+
+    test('an empty cover removal writes and deletes nothing', () async {
+      setUpController(profile: filledProfile);
+
+      expect((await controller().removeCover(null)).isSuccess, isTrue);
+
+      expect(_events, isEmpty);
+      expect(repo.coverUrlCalls, 0);
+      expect(storage.coverRemovedUrls, isEmpty);
+    });
+
+    test('a cover upload cannot race an avatar upload on the same document', () async {
+      setUpController(profile: filledProfile);
+      storage.gate = Completer<void>();
+
+      final Future<Result<bool>> first = controller().chooseAndUpload(
+        PhotoSource.gallery,
+      );
+      await pumpEventQueue();
+
+      // The second call targets the *other* image, but it is the same Firestore
+      // document, so the one shared busy gate must refuse it.
+      final Result<bool> second = await controller().chooseAndUploadCover(
+        PhotoSource.gallery,
+      );
+
+      expect(second.failureOrNull, isA<ConflictFailure>());
+      expect(storage.uploadCalls, 1);
+      expect(storage.coverUploadCalls, 0);
+
+      storage.gate!.complete();
+      expect((await first).valueOrNull, isTrue);
     });
   });
 }

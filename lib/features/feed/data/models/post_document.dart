@@ -40,9 +40,16 @@ abstract final class PostDocument {
   /// rules and the query all quote one string.
   static const String collection = 'posts';
 
-  /// `posts/{postId}/likes/{uid}` — one document per liker, so a duplicate like
-  /// is a duplicate document id rather than a second row nobody can detect.
-  static const String likesSubcollection = 'likes';
+  /// The flat, production-canonical likes collection:
+  /// `post_likes/{postId}_{uid}` carrying `{postId, userId, createdAt}`.
+  ///
+  /// This is the shape the live database actually uses (the Stage 9.3 audit
+  /// found 42 such rows), so the like read/write path targets it directly
+  /// rather than the never-migrated `posts/{id}/likes` subcollection. The
+  /// deterministic id makes a second like on the same post an id collision
+  /// (an update, which the rules refuse) instead of a duplicate row that would
+  /// inflate the derived count.
+  static const String likesCollection = 'post_likes';
 
   /// `posts/{postId}/comments/{commentId}`.
   static const String commentsSubcollection = 'comments';

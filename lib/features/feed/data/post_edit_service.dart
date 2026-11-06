@@ -4,20 +4,30 @@ import 'package:sholovvo_app/core/logging/app_logger.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 
-/// Manages the text and lifecycle of an existing post (author-only).
+/// Manages the text, photographs and lifecycle of an existing post (author-only).
 abstract interface class PostEditService {
-  /// Updates only the [newText] field, stamping `editedAt` and `updatedAt` with
-  /// the server clock. Fails with [AuthFailure] if the caller is not the author
-  /// (verified client-side before touching the network).
-  Future<Result<void>> editText({
+  /// Rewrites the [newText] and the post's images, stamping `editedAt` and
+  /// `updatedAt` with the server clock. Fails with [AuthFailure] if the caller
+  /// is not the author (verified client-side before touching the network).
+  ///
+  /// [imageUrls] and [imagePaths] are the full lists the post should carry after
+  /// the edit — the ones left in the edit sheet, in order — not only the changes.
+  /// They are always written so the stored document satisfies the rules'
+  /// `isPostBody()` even when it predates the `imageUrls`/`imagePaths` schema:
+  /// a legacy post edited for the first time gains the two empty (or supplied)
+  /// lists, which is exactly what the earlier text-only write left out and what
+  /// made those edits fail with a permission-denied the donor could not read.
+  Future<Result<void>> editPost({
     required String postId,
     required String uid,
     required String newText,
+    required List<String> imageUrls,
+    required List<String> imagePaths,
   });
 
   /// Permanently deletes the post identified by [postId].
   ///
-  /// Verifies authorship client-side (same read-then-act pattern as [editText])
+  /// Verifies authorship client-side (same read-then-act pattern as [editPost])
   /// so a non-author gets a clean [PermissionFailure] rather than the generic
   /// `permission-denied` the rules return. The rules enforce this too.
   Future<Result<void>> deletePost({
@@ -28,10 +38,10 @@ abstract interface class PostEditService {
 
 /// Firestore-backed implementation.
 ///
-/// The rules (L449-460) enforce author-only updates with an immutable-key
+/// The rules (L451-462) enforce author-only updates with an immutable-key
 /// whitelist (`text`, `imageUrls`, `imagePaths`, `editedAt`, `updatedAt`). This
-/// service writes the text and the two timestamp fields; the rules re-validate
-/// the resulting document via `isPostBody()`.
+/// service writes the text, the two image lists and the two timestamp fields; the
+/// rules re-validate the resulting document via `isPostBody()`.
 final class FirestorePostEditService implements PostEditService {
   const FirestorePostEditService(this._firestore);
 
@@ -42,10 +52,12 @@ final class FirestorePostEditService implements PostEditService {
   static const String _collection = 'posts';
 
   @override
-  Future<Result<void>> editText({
+  Future<Result<void>> editPost({
     required String postId,
     required String uid,
     required String newText,
+    required List<String> imageUrls,
+    required List<String> imagePaths,
   }) async {
     // Client-side validation mirrors the rules' `isPostBody()` bounds.
     if (uid.isEmpty || postId.isEmpty) {
@@ -63,11 +75,22 @@ final class FirestorePostEditService implements PostEditService {
         ),
       );
     }
-    if (trimmed.length > PostValidator.maxTextLength) {
-      return const FailureResult<void>(
+    // The same field rules a new post is held to, so an edit can never store a
+    // body the publish path would have refused. Counts are immutable on an edit
+    // and are not measured here, so the (non-negative) seeds keep the validator
+    // focused on the text and the two image lists.
+    final PostIssue? issue = PostValidator.validate(
+      text: trimmed,
+      imageCount: imageUrls.length,
+      imagePathCount: imagePaths.length,
+      likeCount: 0,
+      commentCount: 0,
+    );
+    if (issue != null) {
+      return FailureResult<void>(
         ValidationFailure(
-          messageKey: 'textTooLong',
-          debugMessage: 'Edit rejected: exceeds ${PostValidator.maxTextLength}',
+          messageKey: issue.name,
+          debugMessage: 'Edit rejected the body: ${issue.name}',
         ),
       );
     }
@@ -98,11 +121,15 @@ final class FirestorePostEditService implements PostEditService {
       );
     }
 
-    // Write the three fields the rules allow on a text-only edit.
+    // Write the five fields the rules allow on an edit. The two image lists are
+    // written even when unchanged, so a document that predates them gains the
+    // keys `isPostBody()` requires rather than being rejected on first edit.
     try {
       await _firestore.collection(_collection).doc(postId).update(
         <String, Object?>{
           'text': trimmed,
+          'imageUrls': imageUrls,
+          'imagePaths': imagePaths,
           'editedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         },

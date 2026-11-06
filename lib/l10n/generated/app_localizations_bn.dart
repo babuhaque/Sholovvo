@@ -471,6 +471,38 @@ class AppLocalizationsBn extends AppLocalizations {
       'এই বিল্ডে ছবি আপলোড এখনো চালু হয়নি।';
 
   @override
+  String get profileCoverAdd => 'কভার ছবি যোগ করুন';
+
+  @override
+  String get profileCoverChange => 'কভার ছবি বদলান';
+
+  @override
+  String get profileCoverEdit => 'কভার ছবি সম্পাদনা করুন';
+
+  @override
+  String get profileCoverSheetTitle => 'কভার ছবি';
+
+  @override
+  String get profileCoverSheetBody =>
+      'আপনার কভার ছবি প্রোফাইলের একদম উপরে দেখা যায়। কেবল আপনিই এটি বদলাতে পারেন।';
+
+  @override
+  String get profileCoverRemove => 'কভার ছবি সরান';
+
+  @override
+  String get profileCoverRemoveConfirmTitle => 'কভার ছবিটি সরিয়ে ফেলবেন?';
+
+  @override
+  String get profileCoverRemoveConfirmBody =>
+      'সংরক্ষিত ছবিটি মুছে ফেলা হবে এবং প্রোফাইলে এর বদলে সাধারণ পটভূমি দেখা যাবে।';
+
+  @override
+  String get profileCoverUpdated => 'কভার ছবি হালনাগাদ হয়েছে।';
+
+  @override
+  String get profileCoverRemoved => 'কভার ছবি সরানো হয়েছে।';
+
+  @override
   String get actionCancel => 'বাতিল';
 
   @override
@@ -733,6 +765,12 @@ class AppLocalizationsBn extends AppLocalizations {
       'কোনো রক্তদাতা কিছু শেয়ার করলে তা এখানে দেখা যাবে।';
 
   @override
+  String get userPostsEmptyTitle => 'এই রক্তদাতার এখনো কোনো পোস্ট নেই';
+
+  @override
+  String get userPostsEmptyBody => 'তিনি কিছু শেয়ার করলে তা এখানে দেখা যাবে।';
+
+  @override
   String get feedErrorTitle => 'ফিডটি লোড করা যায়নি';
 
   @override
@@ -767,6 +805,22 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get feedEditHint => 'আপনার পোস্টের লেখা হালনাগাদ করুন।';
+
+  @override
+  String get feedEditPhotosLabel => 'ছবি';
+
+  @override
+  String get feedImageDownload => 'ডাউনলোড';
+
+  @override
+  String get feedImageDownloaded => 'আপনার গ্যালারিতে সংরক্ষিত হয়েছে।';
+
+  @override
+  String get feedImageDownloadFailed => 'এই ছবিটি ডাউনলোড করা যায়নি।';
+
+  @override
+  String get feedImageDownloadDenied =>
+      'গ্যালারিতে সংরক্ষণ করতে সলভোকে অনুমতি দরকার।';
 
   @override
   String get feedEditSave => 'পরিবর্তন সংরক্ষণ';

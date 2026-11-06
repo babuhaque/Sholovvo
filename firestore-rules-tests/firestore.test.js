@@ -1997,8 +1997,8 @@ describe('Stage 9.5 M2 — public users profile field allow-list', () => {
   // projection.
   //
   // The allow-list matches what `ProfileDocuments.publicFields`,
-  // `availabilityFields` and `photoFields` actually write. Any of the private
-  // keys — `phone`, `addressLine`, `dateOfBirth`, `gender`,
+  // `availabilityFields`, `photoFields` and `coverFields` actually write. Any of
+  // the private keys — `phone`, `addressLine`, `dateOfBirth`, `gender`,
   // `publishAreaInSearch` — must be refused on both create and update.
   const PUBLIC_FIELDS = [
     'displayName',
@@ -2007,6 +2007,7 @@ describe('Stage 9.5 M2 — public users profile field allow-list', () => {
     'updatedAt',
     'bloodGroup',
     'photoUrl',
+    'coverUrl',
     'area',
     'allowDonorDiscovery',
   ];
@@ -2026,6 +2027,7 @@ describe('Stage 9.5 M2 — public users profile field allow-list', () => {
     // donor with an area — every key on the allow-list, none off it.
     const payload = legalPublicDoc({
       photoUrl: 'https://cdn/ayesha.jpg',
+      coverUrl: 'https://cdn/ayesha-cover.jpg',
       area: 'Dhanmondi, Dhaka',
       allowDonorDiscovery: true,
     });
@@ -2090,6 +2092,7 @@ describe('Stage 9.5 M2 — public users profile field allow-list', () => {
     await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { displayName: 'Rafiq Uddin' }));
     await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { isAvailable: false }));
     await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { photoUrl: 'https://cdn/new.jpg' }));
+    await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { coverUrl: 'https://cdn/new-cover.jpg' }));
     await assertSucceeds(updateDoc(doc(db, 'users', IDS.donor), { allowDonorDiscovery: true }));
   });
 
@@ -2200,6 +2203,7 @@ describe('Stage 9.5 M2 — public users profile field allow-list', () => {
         'allowDonorDiscovery',
         'area',
         'bloodGroup',
+        'coverUrl',
         'displayName',
         'isAvailable',
         'photoUrl',

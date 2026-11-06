@@ -9,6 +9,7 @@ import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/data/supabase_photo_storage.dart';
 import 'package:sholovvo_app/features/profile/domain/profile_photo_storage.dart';
+import 'package:sholovvo_app/features/profile/domain/profile_repository.dart';
 
 /// The photo backend.
 ///
@@ -56,6 +57,23 @@ class ProfilePhotoController extends AsyncNotifier<void> {
   /// donor closed the picker without choosing anything — a cancel is not a
   /// failure and must not be reported as one.
   Future<Result<bool>> chooseAndUpload(PhotoSource source) {
+    return _chooseAndUpload(source, _PhotoTarget.avatar);
+  }
+
+  /// Picks an image for the cover banner and publishes it, exactly as
+  /// [chooseAndUpload] does for the avatar.
+  ///
+  /// Shares the one [_busy] gate: an avatar and a cover are two fields on the
+  /// same document, and two uploads racing it could each compensate the other
+  /// away. Only ever one photo operation at a time.
+  Future<Result<bool>> chooseAndUploadCover(PhotoSource source) {
+    return _chooseAndUpload(source, _PhotoTarget.cover);
+  }
+
+  Future<Result<bool>> _chooseAndUpload(
+    PhotoSource source,
+    _PhotoTarget target,
+  ) {
     return _run<bool>(() async {
       final Result<PhotoCandidate?> picked = await ref
           .read(photoPickerProvider)
@@ -74,7 +92,7 @@ class ProfilePhotoController extends AsyncNotifier<void> {
       if (validationFailure != null) {
         return FailureResult<bool>(validationFailure);
       }
-      return _upload(checked.valueOrNull!);
+      return _upload(checked.valueOrNull!, target);
     });
   }
 
@@ -84,6 +102,19 @@ class ProfilePhotoController extends AsyncNotifier<void> {
   /// re-read here: the screen already has it, and a second read could see a
   /// different value than the one the donor is looking at.
   Future<Result<void>> remove(String? currentUrl) {
+    return _remove(currentUrl, _PhotoTarget.avatar);
+  }
+
+  /// Removes the cover at [currentUrl], following the same order as [remove]:
+  /// clear the profile field first, then delete the object.
+  Future<Result<void>> removeCover(String? currentUrl) {
+    return _remove(currentUrl, _PhotoTarget.cover);
+  }
+
+  Future<Result<void>> _remove(
+    String? currentUrl,
+    _PhotoTarget target,
+  ) {
     return _run<void>(() async {
       final String url = currentUrl?.trim() ?? '';
       if (url.isEmpty) {
@@ -91,9 +122,13 @@ class ProfilePhotoController extends AsyncNotifier<void> {
         return const Success<void>(null);
       }
 
-      final Result<void> cleared = await ref
-          .read(profileRepositoryProvider)
-          .setPhotoUrl(null);
+      final ProfileRepository repository = ref.read(
+        profileRepositoryProvider,
+      );
+      final Result<void> cleared = switch (target) {
+        _PhotoTarget.avatar => await repository.setPhotoUrl(null),
+        _PhotoTarget.cover => await repository.setCoverUrl(null),
+      };
       if (cleared.isFailure) {
         return cleared;
       }
@@ -102,12 +137,18 @@ class ProfilePhotoController extends AsyncNotifier<void> {
       // at the object, so a storage failure here costs a few kilobytes of
       // orphaned data and nothing the donor can see. Failing the whole action
       // now would report a failure for something that already worked.
-      await ref.read(profilePhotoStorageProvider).removeAvatar(url);
+      final ProfilePhotoStorage storage = ref.read(profilePhotoStorageProvider);
+      switch (target) {
+        case _PhotoTarget.avatar:
+          await storage.removeAvatar(url);
+        case _PhotoTarget.cover:
+          await storage.removeCover(url);
+      }
       return const Success<void>(null);
     });
   }
 
-  Future<Result<bool>> _upload(ValidatedPhoto photo) async {
+  Future<Result<bool>> _upload(ValidatedPhoto photo, _PhotoTarget target) async {
     final ProfilePhotoStorage storage = ref.read(profilePhotoStorageProvider);
     if (!storage.isConfigured) {
       return FailureResult<bool>(
@@ -118,7 +159,10 @@ class ProfilePhotoController extends AsyncNotifier<void> {
       );
     }
 
-    final Result<String> uploaded = await storage.uploadAvatar(photo);
+    final Result<String> uploaded = switch (target) {
+      _PhotoTarget.avatar => await storage.uploadAvatar(photo),
+      _PhotoTarget.cover => await storage.uploadCover(photo),
+    };
     final String? url = uploaded.valueOrNull;
     if (url == null) {
       // Nothing was stored, so nothing changed. The previous photo, if any, is
@@ -126,9 +170,11 @@ class ProfilePhotoController extends AsyncNotifier<void> {
       return FailureResult<bool>(uploaded.failureOrNull!);
     }
 
-    final Result<void> published = await ref
-        .read(profileRepositoryProvider)
-        .setPhotoUrl(url);
+    final ProfileRepository repository = ref.read(profileRepositoryProvider);
+    final Result<void> published = switch (target) {
+      _PhotoTarget.avatar => await repository.setPhotoUrl(url),
+      _PhotoTarget.cover => await repository.setCoverUrl(url),
+    };
     if (published.isSuccess) {
       return const Success<bool>(true);
     }
@@ -138,7 +184,12 @@ class ProfilePhotoController extends AsyncNotifier<void> {
     // can see or remove. If the delete also fails, the object is orphaned — a
     // documented limitation, and still better than publishing a URL that the
     // profile write has already rejected.
-    await storage.removeAvatar(url);
+    switch (target) {
+      case _PhotoTarget.avatar:
+        await storage.removeAvatar(url);
+      case _PhotoTarget.cover:
+        await storage.removeCover(url);
+    }
     return FailureResult<bool>(published.failureOrNull!);
   }
 
@@ -179,3 +230,13 @@ profilePhotoControllerProvider =
     AsyncNotifierProvider<ProfilePhotoController, void>(
       ProfilePhotoController.new,
     );
+
+/// Which of the two images on a profile an operation targets.
+///
+/// A private detail of the controller: the screen calls the named methods
+/// ([ProfilePhotoController.chooseAndUpload] vs
+/// [ProfilePhotoController.chooseAndUploadCover]) and never passes this. It
+/// exists so one upload/remove implementation serves both images without
+/// duplicating the compensate-on-failure ordering, which is the part that must
+/// not drift between them.
+enum _PhotoTarget { avatar, cover }

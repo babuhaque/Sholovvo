@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/presentation/expandable_post_text.dart';
+import 'package:sholovvo_app/features/feed/presentation/image_viewer_screen.dart';
 import 'package:sholovvo_app/features/feed/presentation/widgets/feed_post_tile.dart';
 
 import '../../support/fake_feed.dart';
@@ -258,6 +259,85 @@ void main() {
       // donor's sentence down with it.
       expect(find.text('Donated at Dhaka Medical today.'), findsOneWidget);
       expect(find.text('Ayesha Rahman'), findsOneWidget);
+    });
+
+    testWidgets('fits a lone photo to the screen instead of cropping it', (
+      WidgetTester tester,
+    ) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(
+          post: _post(imageUrls: <String>['https://cdn/portrait.jpg']),
+          now: _stamp,
+        ),
+      );
+
+      // A single image is drawn whole (contain), not chopped to a wide strip
+      // (the old cover crop). This is the change that lets a tall portrait show
+      // top to bottom at the card's full width.
+      final Image image = tester.widget<Image>(find.byType(Image));
+      expect(image.fit, BoxFit.contain);
+    });
+
+    testWidgets('a lone photo spans the content width, not a cropped square', (
+      WidgetTester tester,
+    ) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(
+          post: _post(imageUrls: <String>['https://cdn/portrait.jpg']),
+          now: _stamp,
+        ),
+      );
+
+      // A single photo claims the whole content width of the card (the card's
+      // inner measure, after its own padding), rather than the half-width a
+      // grid cell gets. That full-bleed width plus BoxFit.contain is what makes
+      // it read as fit-to-screen instead of a thumbnail.
+      final double inner = _cardWidth - 2 * 16; // SolovvoCard padAll(AppSpacing.md)
+      final Size size = tester.getSize(find.byType(Image));
+      expect(size.width, inner);
+    });
+
+    testWidgets('grid cells keep the crop, a lone photo does not', (
+      WidgetTester tester,
+    ) async {
+      // Two images stay a cover-cropped grid (level cells, predictable height);
+      // only the single picture is fit whole. This pins that the contain change
+      // is scoped to one-image posts and did not disturb the grid.
+      await _pumpTile(
+        tester,
+        FeedPostTile(
+          post: _post(
+            imageUrls: <String>[
+              'https://cdn/a.jpg',
+              'https://cdn/b.jpg',
+            ],
+          ),
+          now: _stamp,
+        ),
+      );
+      for (final Widget widget in tester.widgetList(find.byType(Image))) {
+        expect((widget as Image).fit, BoxFit.cover);
+      }
+    });
+
+    testWidgets('tapping a lone photo opens the full-screen viewer', (
+      WidgetTester tester,
+    ) async {
+      await _pumpTile(
+        tester,
+        FeedPostTile(
+          post: _post(imageUrls: <String>['https://cdn/portrait.jpg']),
+          now: _stamp,
+        ),
+      );
+
+      expect(find.byType(ImageViewerScreen), findsNothing);
+      await tester.tap(find.byType(Image));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(ImageViewerScreen), findsOneWidget);
     });
   });
 

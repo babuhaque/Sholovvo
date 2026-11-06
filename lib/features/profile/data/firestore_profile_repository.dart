@@ -110,6 +110,16 @@ class FirestoreProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<Result<void>> setCoverUrl(String? coverUrl) {
+    return _run(() async {
+      final String uid = _requireUid();
+      await _users
+          .doc(uid)
+          .set(ProfileDocuments.coverFields(coverUrl), SetOptions(merge: true));
+    });
+  }
+
+  @override
   Future<Result<DonationHistory>> loadDonationHistory() async {
     try {
       final String uid = _requireUid();

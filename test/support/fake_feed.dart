@@ -72,6 +72,7 @@ FeedDocument feedDocument(String id, {Map<String, Object?>? fields}) {
 /// A valid [Post], for the controller and screen tests.
 Post fakePost({
   String id = 'post-1',
+  String authorUid = 'uid-verified',
   String authorName = 'Ayesha Rahman',
   String text = 'Donated at Dhaka Medical today.',
   List<String> imageUrls = const <String>[],
@@ -82,7 +83,7 @@ Post fakePost({
   final DateTime stamp = createdAt ?? DateTime.utc(2026, 10, 20, 9);
   return Post(
     id: id,
-    authorUid: 'uid-verified',
+    authorUid: authorUid,
     authorName: authorName,
     text: text,
     imageUrls: imageUrls,
@@ -125,6 +126,7 @@ class FakeFeedDocuments implements FeedDocuments {
   Future<Result<List<FeedDocument>>> fetch({
     required int limit,
     FeedCursor? after,
+    String? authorUid,
   }) async {
     calls++;
     lastLimit = limit;
@@ -140,15 +142,26 @@ class FakeFeedDocuments implements FeedDocuments {
       return FailureResult<List<FeedDocument>>(failure!);
     }
 
+    // Narrow to one author when asked, mirroring the `where('authorUid')` the
+    // real query adds; a null authorUid is the whole collection, as before.
+    final List<FeedDocument> pool = authorUid == null
+        ? documents
+        : documents
+              .where(
+                (FeedDocument document) =>
+                    document.fields['authorUid'] == authorUid,
+              )
+              .toList(growable: false);
+
     final int start = after is FeedTestCursor
-        ? documents.indexWhere(
+        ? pool.indexWhere(
                 (FeedDocument document) => document.id == after.id,
               ) +
               1
         : 0;
 
     return Success<List<FeedDocument>>(
-      documents.skip(start).take(limit).toList(growable: false),
+      pool.skip(start).take(limit).toList(growable: false),
     );
   }
 }
@@ -193,7 +206,10 @@ class FakeFeedRepository implements FeedRepository {
   final List<FeedCursor?> requestedAfter = <FeedCursor?>[];
 
   @override
-  Future<Result<FeedPage>> loadPage({FeedCursor? after}) async {
+  Future<Result<FeedPage>> loadPage({
+    FeedCursor? after,
+    String? authorUid,
+  }) async {
     calls++;
     requestedAfter.add(after);
 
@@ -222,15 +238,24 @@ class FakeFeedRepository implements FeedRepository {
       );
     }
 
+    // Narrow to one author when asked, exactly as the real repository's query
+    // does. Paging is over the filtered pool, so the index cursor addresses
+    // positions within what this screen is actually showing.
+    final List<Post> pool = authorUid == null
+        ? posts
+        : posts
+              .where((Post post) => post.authorUid == authorUid)
+              .toList(growable: false);
+
     final int start = after is FeedTestCursor ? int.parse(after.id) : 0;
-    final int end = math.min(start + pageSize, posts.length);
-    final List<Post> slice = posts.sublist(start, end);
+    final int end = math.min(start + pageSize, pool.length);
+    final List<Post> slice = pool.sublist(start, end);
 
     return Success<FeedPage>(
       FeedPage(
         posts: slice,
         cursor: slice.isEmpty ? after : FeedTestCursor('$end'),
-        hasMore: end < posts.length,
+        hasMore: end < pool.length,
       ),
     );
   }

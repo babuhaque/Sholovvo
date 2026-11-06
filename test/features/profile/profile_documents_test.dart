@@ -11,6 +11,7 @@ final UserProfile _profile = UserProfile(
   displayName: '  Ayesha Rahman  ',
   bloodGroup: 'O+',
   photoUrl: 'https://example.test/ayesha.jpg',
+  coverUrl: 'https://example.test/ayesha-cover.jpg',
   isAvailable: true,
   area: 'Dhanmondi, Dhaka',
   addressLine: 'House 12, Road 5',
@@ -33,6 +34,7 @@ void main() {
         'updatedAt',
         'bloodGroup',
         'photoUrl',
+        'coverUrl',
         'area',
         'allowDonorDiscovery',
       });
@@ -41,6 +43,7 @@ void main() {
       expect(fields['isAvailable'], isTrue);
       expect(fields['bloodGroup'], 'O+');
       expect(fields['photoUrl'], 'https://example.test/ayesha.jpg');
+      expect(fields['coverUrl'], 'https://example.test/ayesha-cover.jpg');
       expect(fields['allowDonorDiscovery'], isTrue);
       expect(fields['updatedAt'], FieldValue.serverTimestamp());
     });
@@ -109,6 +112,7 @@ void main() {
 
       expect(fields['bloodGroup'], FieldValue.delete());
       expect(fields['photoUrl'], FieldValue.delete());
+      expect(fields['coverUrl'], FieldValue.delete());
       // The switch is off, so the area it holds is not published either.
       expect(fields['area'], FieldValue.delete());
       // And consent has never been given, so it is not projected either —
@@ -202,6 +206,7 @@ void main() {
         'displayName',
         'bloodGroup',
         'photoUrl',
+        'coverUrl',
         'isAvailable',
         'role',
       ]) {
@@ -233,6 +238,30 @@ void main() {
     });
   });
 
+  group('coverFields', () {
+    test('writes only the cover and the timestamp', () {
+      final Map<String, Object?> fields = ProfileDocuments.coverFields(
+        'https://example.test/cover.jpg',
+      );
+
+      expect(fields.keys.toSet(), <String>{'updatedAt', 'coverUrl'});
+      expect(fields['coverUrl'], 'https://example.test/cover.jpg');
+      // A narrow cover write must never carry the avatar or any other field with
+      // it — otherwise a cover change would overwrite a stale avatar URL.
+      expect(fields.containsKey('photoUrl'), isFalse);
+      expect(fields['updatedAt'], FieldValue.serverTimestamp());
+    });
+
+    test('trims the url and deletes the field when it is blank or null', () {
+      expect(
+        ProfileDocuments.coverFields('  https://example.test/c.jpg  ')['coverUrl'],
+        'https://example.test/c.jpg',
+      );
+      expect(ProfileDocuments.coverFields(null)['coverUrl'], FieldValue.delete());
+      expect(ProfileDocuments.coverFields('   ')['coverUrl'], FieldValue.delete());
+    });
+  });
+
   group('fromDocuments', () {
     test('no public document means no profile at all', () {
       expect(
@@ -252,6 +281,7 @@ void main() {
           'displayName': 'Ayesha Rahman',
           'bloodGroup': 'O+',
           'photoUrl': 'https://example.test/ayesha.jpg',
+          'coverUrl': 'https://example.test/ayesha-cover.jpg',
           'isAvailable': true,
           'area': 'Dhanmondi, Dhaka',
           'allowDonorDiscovery': true,
@@ -273,6 +303,7 @@ void main() {
       expect(profile.displayName, 'Ayesha Rahman');
       expect(profile.bloodGroup, 'O+');
       expect(profile.photoUrl, 'https://example.test/ayesha.jpg');
+      expect(profile.coverUrl, 'https://example.test/ayesha-cover.jpg');
       expect(profile.isAvailable, isTrue);
       // The private copy is canonical: the public one is only a projection.
       expect(profile.area, 'Mirpur, Dhaka');

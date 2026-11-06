@@ -105,7 +105,10 @@ final class _ScriptedPages implements FeedRepository {
   int get calls => _next;
 
   @override
-  Future<Result<FeedPage>> loadPage({FeedCursor? after}) async {
+  Future<Result<FeedPage>> loadPage({
+    FeedCursor? after,
+    String? authorUid,
+  }) async {
     requestedAfter.add(after);
 
     final Completer<void>? pending = gate;

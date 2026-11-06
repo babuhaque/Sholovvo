@@ -37,6 +37,11 @@
 	<string>Solovvo uses your photo library so you can choose a profile picture or a photo to share in a post.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Solovvo uses the camera so you can take a profile picture or a photo to share in a post.</string>
+	<!-- Stage 6: saving a post photo to the Photos library from the full-screen
+	     viewer. This is the write-only purpose string `gal` requires; it is
+	     separate from NSPhotoLibraryUsageDescription above, which covers reading. -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Solovvo saves a photo to your gallery when you choose to download it.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -52,6 +52,7 @@ class UserProfile {
     this.displayName = '',
     this.bloodGroup,
     this.photoUrl,
+    this.coverUrl,
     this.isAvailable = false,
     this.area,
     this.addressLine,
@@ -88,6 +89,16 @@ class UserProfile {
   /// succeeded: the URL is published by a narrow write of its own, so a failed
   /// upload can never leave this field pointing at something that is not there.
   final String? photoUrl;
+
+  /// Absolute URL of the cover (banner) photo shown at the top of the profile.
+  ///
+  /// Public like [photoUrl]: a cover is the banner other donors see, so it lives
+  /// on the world-readable `users/{uid}` document and is written only by the
+  /// photo flow after a successful upload. Unlike [photoUrl] it is not one of the
+  /// seven facts the completion indicator counts — a cover is decoration on the
+  /// donor card, not a fact that makes someone matchable, so counting it would
+  /// nudge donors to upload something for a number rather than for a reason.
+  final String? coverUrl;
 
   /// The donor's own switch. Nothing in the app may flip it on their behalf.
   final bool isAvailable;
@@ -156,10 +167,18 @@ class UserProfile {
 
   bool get hasPhoto => _hasPhoto;
 
+  /// Whether a cover photo is currently published.
+  bool get hasCover => _hasCover;
+
   // A URL typed into a text field can be an empty string; treat that as absent
   // rather than letting it count as a completed field.
   bool get _hasPhoto {
     final String? url = photoUrl?.trim();
+    return url != null && url.isNotEmpty;
+  }
+
+  bool get _hasCover {
+    final String? url = coverUrl?.trim();
     return url != null && url.isNotEmpty;
   }
 
@@ -178,6 +197,7 @@ class UserProfile {
       displayName: displayName,
       bloodGroup: bloodGroup,
       photoUrl: photoUrl,
+      coverUrl: coverUrl,
       isAvailable: isAvailable ?? this.isAvailable,
       area: area,
       addressLine: addressLine,
@@ -202,6 +222,31 @@ class UserProfile {
       displayName: displayName,
       bloodGroup: bloodGroup,
       photoUrl: photoUrl,
+      coverUrl: coverUrl,
+      isAvailable: isAvailable,
+      area: area,
+      addressLine: addressLine,
+      phone: phone,
+      dateOfBirth: dateOfBirth,
+      gender: gender,
+      publishAreaInSearch: publishAreaInSearch,
+      allowDonorDiscovery: allowDonorDiscovery,
+      updatedAt: updatedAt,
+    );
+  }
+
+  /// The same profile pointing at a different cover, or at none.
+  ///
+  /// Named for the same reason as [withPhoto]: `coverUrl` is nullable, so a
+  /// `copyWith` could not tell "clear it" from "leave it", and telling those
+  /// apart is exactly what the cover-removal flow does.
+  UserProfile withCover(String? coverUrl) {
+    return UserProfile(
+      uid: uid,
+      displayName: displayName,
+      bloodGroup: bloodGroup,
+      photoUrl: photoUrl,
+      coverUrl: coverUrl,
       isAvailable: isAvailable,
       area: area,
       addressLine: addressLine,
@@ -221,6 +266,7 @@ class UserProfile {
       other.displayName == displayName &&
       other.bloodGroup == bloodGroup &&
       other.photoUrl == photoUrl &&
+      other.coverUrl == coverUrl &&
       other.isAvailable == isAvailable &&
       other.area == area &&
       other.addressLine == addressLine &&
@@ -236,6 +282,7 @@ class UserProfile {
     displayName,
     bloodGroup,
     photoUrl,
+    coverUrl,
     isAvailable,
     area,
     addressLine,

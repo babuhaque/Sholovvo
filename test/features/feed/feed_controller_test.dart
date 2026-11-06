@@ -21,7 +21,10 @@ final class _ScriptedRepository implements FeedRepository {
   int calls = 0;
 
   @override
-  Future<Result<FeedPage>> loadPage({FeedCursor? after}) async {
+  Future<Result<FeedPage>> loadPage({
+    FeedCursor? after,
+    String? authorUid,
+  }) async {
     final FeedPage page =
         pages[calls < pages.length ? calls : pages.length - 1];
     calls++;

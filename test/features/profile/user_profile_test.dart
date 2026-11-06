@@ -163,6 +163,7 @@ void main() {
       expect(hidden.displayName, _completeProfile.displayName);
       expect(hidden.bloodGroup, _completeProfile.bloodGroup);
       expect(hidden.photoUrl, _completeProfile.photoUrl);
+      expect(hidden.coverUrl, _completeProfile.coverUrl);
       expect(hidden.area, _completeProfile.area);
       expect(hidden.addressLine, _completeProfile.addressLine);
       expect(hidden.phone, _completeProfile.phone);
@@ -232,6 +233,59 @@ void main() {
       expect(cleared.photoUrl, isNull);
       expect(cleared.allowDonorDiscovery, isTrue);
     });
+
+    test('does not disturb the cover', () {
+      final UserProfile withCover = _completeProfile.withCover(
+        'https://example.test/cover.jpg',
+      );
+      final UserProfile rePhotoed = withCover.withPhoto(
+        'https://example.test/new.jpg',
+      );
+
+      expect(rePhotoed.photoUrl, 'https://example.test/new.jpg');
+      expect(rePhotoed.coverUrl, 'https://example.test/cover.jpg');
+    });
+  });
+
+  group('withCover', () {
+    test('carries every other field across, including the avatar', () {
+      final UserProfile reCovered = _completeProfile.withCover(
+        'https://example.test/new-cover.jpg',
+      );
+
+      expect(reCovered.coverUrl, 'https://example.test/new-cover.jpg');
+      expect(reCovered.hasCover, isTrue);
+      expect(reCovered.photoUrl, _completeProfile.photoUrl);
+      expect(reCovered.displayName, _completeProfile.displayName);
+      expect(reCovered.isAvailable, isTrue);
+    });
+
+    test('clearing the cover leaves the avatar untouched', () {
+      final UserProfile withCover = _completeProfile.withCover(
+        'https://example.test/cover.jpg',
+      );
+      final UserProfile cleared = withCover.withCover(null);
+
+      expect(cleared.coverUrl, isNull);
+      expect(cleared.hasCover, isFalse);
+      expect(cleared.photoUrl, _completeProfile.photoUrl);
+    });
+
+    test('a cover alone does not count toward completion', () {
+      // Completion is about the seven facts that make a donor matchable; a cover
+      // is decoration, so a profile with a cover but no photo still misses the
+      // photo and its total count is unchanged.
+      final UserProfile coverOnly = UserProfile.draft(uid: 'uid-verified')
+          .withCover('https://example.test/cover.jpg');
+
+      expect(coverOnly.hasCover, isTrue);
+      expect(coverOnly.hasPhoto, isFalse);
+      expect(coverOnly.missingFields, contains(ProfileField.photo));
+      expect(
+        coverOnly.completedCount,
+        UserProfile.draft(uid: 'uid-verified').completedCount,
+      );
+    });
   });
 
   group('equality', () {
@@ -262,6 +316,12 @@ void main() {
       expect(
         const UserProfile(uid: 'uid-a'),
         isNot(equals(const UserProfile(uid: 'uid-b'))),
+      );
+      // A cover is part of the value: two otherwise identical profiles that
+      // differ only by their banner are not equal.
+      expect(
+        _completeProfile,
+        isNot(equals(_completeProfile.withCover('https://example.test/c.jpg'))),
       );
     });
   });

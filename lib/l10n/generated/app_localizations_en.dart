@@ -484,6 +484,38 @@ class AppLocalizationsEn extends AppLocalizations {
       'Photo upload is not set up in this build yet.';
 
   @override
+  String get profileCoverAdd => 'Add cover photo';
+
+  @override
+  String get profileCoverChange => 'Change cover photo';
+
+  @override
+  String get profileCoverEdit => 'Edit cover photo';
+
+  @override
+  String get profileCoverSheetTitle => 'Cover photo';
+
+  @override
+  String get profileCoverSheetBody =>
+      'Your cover photo appears at the top of your profile. Only you can change it.';
+
+  @override
+  String get profileCoverRemove => 'Remove cover photo';
+
+  @override
+  String get profileCoverRemoveConfirmTitle => 'Remove your cover photo?';
+
+  @override
+  String get profileCoverRemoveConfirmBody =>
+      'The stored image will be deleted and your profile will show its plain background instead.';
+
+  @override
+  String get profileCoverUpdated => 'Cover photo updated.';
+
+  @override
+  String get profileCoverRemoved => 'Cover photo removed.';
+
+  @override
   String get actionCancel => 'Cancel';
 
   @override
@@ -747,6 +779,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get feedEmptyBody => 'When a donor shares an update, it appears here.';
 
   @override
+  String get userPostsEmptyTitle => 'No posts from this donor yet';
+
+  @override
+  String get userPostsEmptyBody =>
+      'When they share an update, it will appear here.';
+
+  @override
   String get feedErrorTitle => 'The feed could not be loaded';
 
   @override
@@ -781,6 +820,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get feedEditHint => 'Update the text of your post.';
+
+  @override
+  String get feedEditPhotosLabel => 'Photos';
+
+  @override
+  String get feedImageDownload => 'Download';
+
+  @override
+  String get feedImageDownloaded => 'Saved to your gallery.';
+
+  @override
+  String get feedImageDownloadFailed => 'Could not download this photo.';
+
+  @override
+  String get feedImageDownloadDenied =>
+      'Solovvo needs permission to save to your gallery.';
 
   @override
   String get feedEditSave => 'Save changes';

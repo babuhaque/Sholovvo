@@ -10,6 +10,7 @@ import 'package:sholovvo_app/features/profile/application/profile_photo_provider
 import 'package:sholovvo_app/features/profile/application/profile_providers.dart';
 import 'package:sholovvo_app/features/profile/domain/user_profile.dart';
 import 'package:sholovvo_app/features/profile/presentation/profile_screen.dart';
+import 'package:sholovvo_app/features/profile/presentation/widgets/profile_cover_banner.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_identity_card.dart';
 import 'package:sholovvo_app/features/profile/presentation/widgets/profile_photo_sheet.dart';
 
@@ -477,6 +478,106 @@ void main() {
 
       expect(_inSheet(find.text(english.profilePhotoFromGallery)), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the cover banner', () {
+    Finder coverButton(String label) => find.descendant(
+      of: find.byType(ProfileCoverBanner),
+      matching: find.widgetWithText(TextButton, label),
+    );
+    Finder coverImage() => find.descendant(
+      of: find.byType(ProfileCoverBanner),
+      matching: find.byType(Image),
+    );
+
+    testWidgets('offers to add a cover when there is none, and shows no image', (
+      WidgetTester tester,
+    ) async {
+      await _pumpProfile(tester);
+
+      expect(find.byType(ProfileCoverBanner), findsOneWidget);
+      expect(coverButton(english.profileCoverAdd), findsOneWidget);
+      expect(find.text(english.profileCoverChange), findsNothing);
+      expect(coverImage(), findsNothing);
+    });
+
+    testWidgets('offers to change it once there is one, and shows the image', (
+      WidgetTester tester,
+    ) async {
+      const String url =
+          'https://demo.supabase.co/storage/v1/object/public/avatars/'
+          'uid-verified/cover-1.jpg';
+      await _pumpProfile(tester, profile: filledProfile.withCover(url));
+
+      expect(coverButton(english.profileCoverChange), findsOneWidget);
+      expect(find.text(english.profileCoverAdd), findsNothing);
+      final Image image = tester.widget<Image>(coverImage());
+      expect((image.image as NetworkImage).url, url);
+    });
+
+    testWidgets('uploads a cover through its own sheet without touching the photo', (
+      WidgetTester tester,
+    ) async {
+      final _Harness harness = await _pumpProfile(
+        tester,
+        candidate: PhotoCandidate(bytes: jpegBytes()),
+      );
+
+      await _tapVisible(tester, coverButton(english.profileCoverAdd));
+      await _settle(tester);
+      // The sheet is worded for a cover, not for the donor-card photo.
+      expect(_inSheet(find.text(english.profileCoverSheetTitle)), findsOneWidget);
+      await tester.tap(find.text(english.profilePhotoFromGallery));
+      await _settle(tester);
+
+      expect(harness.repository.coverUrlCalls, 1);
+      expect(harness.repository.profile?.coverUrl, harness.storage.coverUrl);
+      expect(harness.repository.photoUrlCalls, 0, reason: 'the avatar is separate');
+      expect(find.text(english.profileCoverUpdated), findsOneWidget);
+    });
+
+    testWidgets('removes a cover after confirming, and deletes the object', (
+      WidgetTester tester,
+    ) async {
+      const String url =
+          'https://demo.supabase.co/storage/v1/object/public/avatars/'
+          'uid-verified/cover-1.jpg';
+      final _Harness harness = await _pumpProfile(
+        tester,
+        profile: filledProfile.withCover(url),
+      );
+
+      await _tapVisible(tester, coverButton(english.profileCoverChange));
+      await _settle(tester);
+      await tester.tap(find.text(english.profileCoverRemove));
+      await _settle(tester);
+
+      expect(find.text(english.profileCoverRemoveConfirmTitle), findsOneWidget);
+      expect(harness.repository.coverUrlCalls, 0, reason: 'nothing yet');
+
+      await tester.tap(
+        find.widgetWithText(TextButton, english.profileCoverRemove),
+      );
+      await _settle(tester);
+
+      expect(harness.repository.lastCoverUrl, isNull);
+      expect(harness.repository.profile?.coverUrl, isNull);
+      expect(harness.storage.coverRemovedUrls, <String>[url]);
+      expect(find.text(english.profileCoverRemoved), findsOneWidget);
+    });
+
+    testWidgets('labels the banner and its sheet in Bangla', (
+      WidgetTester tester,
+    ) async {
+      await _pumpProfile(tester, locale: const Locale('bn'));
+
+      expect(coverButton(bangla.profileCoverAdd), findsOneWidget);
+      await _tapVisible(tester, coverButton(bangla.profileCoverAdd));
+      await _settle(tester);
+
+      expect(_inSheet(find.text(bangla.profileCoverSheetTitle)), findsOneWidget);
+      expect(find.text(english.profileCoverSheetTitle), findsNothing);
     });
   });
 }

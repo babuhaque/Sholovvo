@@ -458,7 +458,7 @@ void main() {
       expect(_addTile, findsOneWidget);
     });
 
-    testWidgets('four photos fill the grid and the add tile goes', (
+    testWidgets('every photo fills the grid and the add tile goes', (
       WidgetTester tester,
     ) async {
       final _Compose fakes = await _pumpCompose(tester);
@@ -472,13 +472,13 @@ void main() {
       expect(find.byType(Image), findsNWidgets(PostValidator.maxImages));
       expect(_addTile, findsNothing);
       expect(find.text('Add photo'), findsNothing);
-      // Four is the limit, not one past it: the draft is still publishable.
+      // The limit is the limit, not one past it: the draft is still publishable.
       await fakes.type(tester, 'Donated at Dhaka Medical today.');
       expect(tester.widget<SolovvoButton>(_publishButton).onPressed, isNotNull);
 
       await tester.tap(_publishButton);
       await _settle(tester);
-      expect(fakes.repository.lastDraft?.imageUrls, hasLength(4));
+      expect(fakes.repository.lastDraft?.imageUrls, hasLength(PostValidator.maxImages));
     });
 
     testWidgets('removing a photo empties the slot and deletes the object', (

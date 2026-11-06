@@ -64,10 +64,10 @@ abstract final class PostValidator {
   /// literal in the form.
   static const int maxTextLength = 2000;
 
-  /// Four. Fixed by the compose screen's grid, by the storage budget (four
+  /// Five. Fixed by the compose screen's grid, by the storage budget (five
   /// images per post on a free tier), and by the fact that a feed card stops
   /// being scannable past a small gallery.
-  static const int maxImages = 4;
+  static const int maxImages = 5;
 
   /// Field-level rules only. Counts are passed in as lengths rather than as
   /// lists so this stays free of collection types and callable from the mapper
@@ -192,12 +192,16 @@ final class Post {
   /// be longer, because a path with no URL names an object nobody can reach.
   final List<String> imagePaths;
 
-  /// The cached like count written by the like path. Authoritative only in the
-  /// sense that rules keep it within one of the truth; the count on a post's
-  /// own screen comes from an aggregation query.
+  /// The like count as carried on the stored document. It is written once, at
+  /// publish, and never by a like: `firestore.rules` keeps the counters
+  /// immutable to every client so none can be forged. The number a card shows
+  /// is therefore the DERIVED one — the feed's count hydration replaces it with
+  /// an aggregate `count()` over the post's `likes` subcollection after a page
+  /// resolves. Before that hydration lands this field is the author-supplied
+  /// seed, which is why the compose path always starts it at zero.
   final int likeCount;
 
-  /// The cached comment count, maintained the same way.
+  /// The comment count, carried and derived exactly as [likeCount].
   final int commentCount;
 
   final DateTime createdAt;

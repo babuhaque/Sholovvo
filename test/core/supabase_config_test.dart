@@ -144,13 +144,17 @@ void main() {
       expect(config.rejection, SupabaseKeyRejection.secretKey);
     });
 
-    test('fromEnvironment reports no rejection when no define is present', () {
-      // The test runner passes no `--dart-define`, which is also what a plain
-      // `flutter build` does: unconfigured, and honest about it.
+    test('fromEnvironment falls back to the shipped public project', () {
+      // The test runner passes no `--dart-define`, so the build resolves to the
+      // committed publishable config rather than reporting itself unconfigured.
+      // The default key carries role: anon, so it is not a privileged key and
+      // the fallback is genuinely configured.
       final SupabaseConfig config = SupabaseConfig.fromEnvironment();
 
-      expect(config.isConfigured, isFalse);
+      expect(config.isConfigured, isTrue);
       expect(config.rejection, isNull);
+      expect(config.url, SupabaseConfig.defaultProjectUrl);
+      expect(config.publishableKey, SupabaseConfig.defaultPublishableKey);
     });
   });
 

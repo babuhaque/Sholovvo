@@ -14,10 +14,14 @@ abstract interface class CommentService {
   /// Loads up to [maxComments] comments for the given post, oldest first.
   Future<Result<List<Comment>>> loadComments(String postId);
 
-  /// Creates a comment document and atomically increments the parent post's
-  /// `commentCount`. Returns the constructed [Comment] entity (the
+  /// Creates a comment document. Returns the constructed [Comment] entity (the
   /// [createdAt] is the local clock; the server resolves `FieldValue
   /// .serverTimestamp()` independently).
+  ///
+  /// The parent post's `commentCount` is NOT written here — it is derived from
+  /// the `comments` subcollection by the feed's count hydration, exactly as
+  /// likes are (see [PostLikeService]). `firestore.rules` keeps the counters
+  /// immutable to every client.
   Future<Result<Comment>> addComment({
     required String postId,
     required String authorUid,
@@ -28,7 +32,8 @@ abstract interface class CommentService {
     String? replyToName,
   });
 
-  /// Deletes a comment and atomically decrements the parent's `commentCount`.
+  /// Deletes a comment. The parent's `commentCount` is derived, not written
+  /// here.
   Future<Result<void>> deleteComment({
     required String postId,
     required String commentId,
@@ -37,8 +42,10 @@ abstract interface class CommentService {
 
 /// Firestore-backed implementation.
 ///
-/// Uses transactions for writes so the comment doc and the parent counter
-/// change together. Reads are simple queries ordered by `createdAt`.
+/// Writes a single comment document per add and a single delete per removal;
+/// the parent's `commentCount` is never touched here because the rules forbid a
+/// client counter write and the count is derived from the subcollection. Reads
+/// are simple queries ordered by `createdAt`.
 final class FirestoreCommentService implements CommentService {
   const FirestoreCommentService(this._firestore);
 
@@ -105,10 +112,9 @@ final class FirestoreCommentService implements CommentService {
         .doc(postId)
         .collection(PostDocument.commentsSubcollection);
     final DocumentReference<Map<String, dynamic>> commentDoc = commentsRef.doc();
-    final DocumentReference<Map<String, dynamic>> postRef =
-        _firestore.collection(PostDocument.collection).doc(postId);
 
     final Map<String, Object?> fields = CommentDocument.toMap(
+      postId: postId,
       authorUid: authorUid,
       authorName: authorName,
       authorPhotoUrl: authorPhotoUrl,
@@ -118,12 +124,7 @@ final class FirestoreCommentService implements CommentService {
     );
 
     try {
-      await _firestore.runTransaction<void>((tx) async {
-        tx.set(commentDoc, fields);
-        tx.update(postRef, <String, Object?>{
-          'commentCount': FieldValue.increment(1),
-        });
-      });
+      await commentDoc.set(fields);
     } on FirebaseException catch (e) {
       return FailureResult<Comment>(_mapException(e));
     }
@@ -155,12 +156,7 @@ final class FirestoreCommentService implements CommentService {
         postRef.collection(PostDocument.commentsSubcollection).doc(commentId);
 
     try {
-      await _firestore.runTransaction<void>((tx) async {
-        tx.delete(commentRef);
-        tx.update(postRef, <String, Object?>{
-          'commentCount': FieldValue.increment(-1),
-        });
-      });
+      await commentRef.delete();
       return const Success<void>(null);
     } on FirebaseException catch (e) {
       return FailureResult<void>(_mapException(e));

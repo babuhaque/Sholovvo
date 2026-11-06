@@ -7,6 +7,11 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 /// What the donor picked in [ProfilePhotoSheet].
 enum ProfilePhotoAction { gallery, camera, remove }
 
+/// Which image the sheet is managing. The choices are identical for both — the
+/// only difference is the wording, so a donor is never told "your photo appears
+/// on your donor card" while picking a banner.
+enum ProfilePhotoKind { avatar, cover }
+
 /// The photo choices, as a sheet that returns the choice instead of acting on it.
 ///
 /// A plain widget with a `show` helper rather than an async-heavy sheet: picking
@@ -19,6 +24,7 @@ class ProfilePhotoSheet extends StatelessWidget {
     super.key,
     required this.hasPhoto,
     required this.isConfigured,
+    this.kind = ProfilePhotoKind.avatar,
   });
 
   /// Whether there is a photo to remove. "Remove" is not offered otherwise.
@@ -28,11 +34,15 @@ class ProfilePhotoSheet extends StatelessWidget {
   /// instead of offering three controls that could only fail.
   final bool isConfigured;
 
+  /// Whether this sheet manages the avatar or the cover banner.
+  final ProfilePhotoKind kind;
+
   /// Opens the sheet and resolves with the chosen action, or `null` on dismiss.
   static Future<ProfilePhotoAction?> show(
     BuildContext context, {
     required bool hasPhoto,
     required bool isConfigured,
+    ProfilePhotoKind kind = ProfilePhotoKind.avatar,
   }) {
     return showModalBottomSheet<ProfilePhotoAction>(
       context: context,
@@ -44,8 +54,11 @@ class ProfilePhotoSheet extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 520),
       // No `backgroundColor` either: the theme's `bottomSheetTheme` supplies the
       // surface, and it changes with the palette.
-      builder: (BuildContext context) =>
-          ProfilePhotoSheet(hasPhoto: hasPhoto, isConfigured: isConfigured),
+      builder: (BuildContext context) => ProfilePhotoSheet(
+        hasPhoto: hasPhoto,
+        isConfigured: isConfigured,
+        kind: kind,
+      ),
     );
   }
 
@@ -65,9 +78,19 @@ class ProfilePhotoSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(l10n.profilePhotoSheetTitle, style: text.titleLarge),
+          Text(
+            kind == ProfilePhotoKind.cover
+                ? l10n.profileCoverSheetTitle
+                : l10n.profilePhotoSheetTitle,
+            style: text.titleLarge,
+          ),
           const SizedBox(height: AppSpacing.xxs),
-          Text(l10n.profilePhotoSheetBody, style: text.bodySmall),
+          Text(
+            kind == ProfilePhotoKind.cover
+                ? l10n.profileCoverSheetBody
+                : l10n.profilePhotoSheetBody,
+            style: text.bodySmall,
+          ),
           const SizedBox(height: AppSpacing.md),
           if (!isConfigured)
             _NotConfigured(l10n: l10n)
@@ -93,7 +116,9 @@ class ProfilePhotoSheet extends StatelessWidget {
               const SizedBox(height: AppSpacing.xs),
               _PhotoOption(
                 icon: Icons.delete_outline_rounded,
-                label: l10n.profilePhotoRemove,
+                label: kind == ProfilePhotoKind.cover
+                    ? l10n.profileCoverRemove
+                    : l10n.profilePhotoRemove,
                 destructive: true,
                 onTap: () =>
                     Navigator.of(context).pop(ProfilePhotoAction.remove),

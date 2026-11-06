@@ -1,0 +1,32 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Photo upload needs the Supabase build defines. Both values here
+            // are publishable (the anon key is a public client key; the app
+            // refuses any sb_secret_/service_role key by design). This file is
+            // untracked but NOT git-ignored: if you plan to commit it, revert
+            // the ANON_KEY arg to "${env:SUPABASE_ANON_KEY}" and set that
+            // variable instead.
+            "name": "Solovvo (with Supabase photo upload)",
+            "type": "dart",
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "args": [
+                "--dart-define=SUPABASE_URL=https://qiipuczhgacwrysyndij.supabase.co",
+                "--dart-define=SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaXB1Y3poZ2Fjd3J5c3luZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyNzMxMjksImV4cCI6MjEwNzg0OTEyOX0.Zo2e8o5AV1_ELH_EIerQfzT1uGF3pJj2N8TFWPoEges"
+            ]
+        },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Launch Chrome against localhost",
+            "url": "http://localhost:8080",
+            "webRoot": "${workspaceFolder}"
+        }
+    ]
+}

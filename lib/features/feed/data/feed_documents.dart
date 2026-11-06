@@ -34,8 +34,12 @@ abstract interface class FeedDocuments {
   ///
   /// Returns a failure rather than throwing, so the caller can tell "the read
   /// was refused" from "there were no posts".
+  ///
+  /// [authorUid] restricts the read to one author's documents; `null` reads the
+  /// whole collection as before.
   Future<Result<List<FeedDocument>>> fetch({
     required int limit,
     FeedCursor? after,
+    String? authorUid,
   });
 }
