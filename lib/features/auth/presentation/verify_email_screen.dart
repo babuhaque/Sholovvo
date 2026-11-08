@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/core/result/result.dart';
+import 'package:sholovvo_app/design/tokens/app_elevation.dart';
 import 'package:sholovvo_app/design/tokens/app_palette.dart';
 import 'package:sholovvo_app/design/tokens/app_spacing.dart';
 import 'package:sholovvo_app/design/widgets/solovvo_button.dart';
+import 'package:sholovvo_app/design/widgets/solovvo_card.dart';
 import 'package:sholovvo_app/features/auth/application/auth_providers.dart';
 import 'package:sholovvo_app/features/auth/domain/auth_user.dart';
 import 'package:sholovvo_app/features/auth/presentation/widgets/auth_error_banner.dart';
@@ -124,7 +126,9 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       _busy = true;
       _failure = null;
     });
-    final Result<void> result = await ref.read(authRepositoryProvider).signOut();
+    final Result<void> result = await ref
+        .read(authRepositoryProvider)
+        .signOut();
     if (!mounted) {
       return;
     }
@@ -173,46 +177,49 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
           AuthErrorBanner(failure: _failure!),
           const SizedBox(height: AppSpacing.md),
         ],
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: palette.brandTint,
-                shape: BoxShape.circle,
+        SolovvoCard(
+          color: palette.surfaceMuted,
+          shadow: AppElevation.none,
+          borderColor: palette.outline,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: palette.brandTint,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.mark_email_unread_outlined,
+                  size: 22,
+                  color: palette.onBrandTint,
+                ),
               ),
-              child: Icon(
-                Icons.mark_email_unread_outlined,
-                size: 22,
-                color: palette.onBrandTint,
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(l10n.sentToLabel, style: text.labelSmall),
+                    const SizedBox(height: 2),
+                    Text(address, style: text.titleMedium),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(l10n.sentToLabel, style: text.labelSmall),
-                  const SizedBox(height: 2),
-                  Text(address, style: text.titleMedium),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         Text(l10n.verifyLockedBody, style: text.bodyMedium),
         if (_notice != null) ...<Widget>[
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            switch (_notice!) {
-              _Notice.linkSent => l10n.freshLinkSent,
-              _Notice.notConfirmed => l10n.notConfirmedYet,
-            },
-            style: text.bodySmall?.copyWith(color: palette.success),
-          ),
+          Text(switch (_notice!) {
+            _Notice.linkSent => l10n.freshLinkSent,
+            _Notice.notConfirmed => l10n.notConfirmedYet,
+          }, style: text.bodySmall?.copyWith(color: palette.success)),
         ],
         const SizedBox(height: AppSpacing.lg),
         SolovvoButton(

@@ -19,11 +19,7 @@ import 'package:sholovvo_app/l10n/l10n.dart';
 ///
 /// Still no notification bell: it would have nothing behind it until Stage 11.
 class HomeHeader extends StatelessWidget {
-  const HomeHeader({
-    super.key,
-    this.profile,
-    this.onProfileTap,
-  });
+  const HomeHeader({super.key, this.profile, this.onProfileTap});
 
   /// `null` until a profile document exists.
   final UserProfile? profile;
@@ -91,7 +87,7 @@ class VerifiedChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.xs,
-        vertical: 5,
+        vertical: AppSpacing.xxs,
       ),
       decoration: BoxDecoration(
         color: palette.success.withValues(alpha: 0.10),
@@ -101,13 +97,11 @@ class VerifiedChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(Icons.verified_rounded, size: 14, color: palette.success),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppSpacing.xxs),
           Text(
             context.l10n.verified,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: palette.success,
-              letterSpacing: 0.4,
-            ),
+            style: Theme.of(context).textTheme.labelSmall
+                ?.copyWith(color: palette.success, letterSpacing: 0.4),
           ),
         ],
       ),

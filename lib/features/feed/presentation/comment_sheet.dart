@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sholovvo_app/design/tokens/app_palette.dart';
+import 'package:sholovvo_app/design/tokens/app_radius.dart';
 import 'package:sholovvo_app/design/tokens/app_spacing.dart';
 import 'package:sholovvo_app/features/feed/application/comment_providers.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/comment.dart';
@@ -120,9 +122,7 @@ class _CommentSheetState extends ConsumerState<CommentSheet> {
           children: <Widget>[
             _Header(title: l10n.commentsSheetTitle),
             const Divider(height: 1),
-            Expanded(
-              child: _buildBody(context, l10n, state),
-            ),
+            Expanded(child: _buildBody(context, l10n, state)),
             if (_replyTo != null)
               _ReplyBanner(
                 replyToName: _replyTo!.authorName,
@@ -155,7 +155,10 @@ class _CommentSheetState extends ConsumerState<CommentSheet> {
           children: <Widget>[
             const CircularProgressIndicator(),
             const SizedBox(height: AppSpacing.sm),
-            Text(l10n.commentsLoading, style: Theme.of(context).textTheme.labelMedium),
+            Text(
+              l10n.commentsLoading,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
           ],
         ),
       );
@@ -170,8 +173,10 @@ class _CommentSheetState extends ConsumerState<CommentSheet> {
             children: <Widget>[
               Icon(Icons.error_outline_rounded, size: 32),
               const SizedBox(height: AppSpacing.sm),
-              Text(l10n.commentsErrorTitle,
-                  style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                l10n.commentsErrorTitle,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
               const SizedBox(height: AppSpacing.sm),
               TextButton(
                 onPressed: () =>
@@ -214,12 +219,14 @@ class _CommentSheetState extends ConsumerState<CommentSheet> {
                 }
               : null,
           onReport: comment.authorUid != uid
-              ? () => unawaited(ReportSheet.show(
+              ? () => unawaited(
+                  ReportSheet.show(
                     context,
                     targetId: comment.id,
                     targetAuthorUid: comment.authorUid,
                     targetType: ReportTarget.comment,
-                  ))
+                  ),
+                )
               : null,
         );
       },
@@ -244,10 +251,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
           ),
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -277,7 +281,7 @@ class _ComposeBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
+    final SolovvoPalette palette = context.palette;
 
     return SafeArea(
       child: Padding(
@@ -300,9 +304,7 @@ class _ComposeBar extends StatelessWidget {
                   hintText: hintText,
                   counterText: '',
                   isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                  border: OutlineInputBorder(borderRadius: AppRadius.lgRadius),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.sm,
                     vertical: AppSpacing.sm,
@@ -321,7 +323,7 @@ class _ComposeBar extends StatelessWidget {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Icon(Icons.send_rounded, color: colors.primary),
+                  : Icon(Icons.send_rounded, color: palette.brandInk),
             ),
           ],
         ),
@@ -341,7 +343,7 @@ class _ReplyBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = context.l10n;
-    final ColorScheme colors = Theme.of(context).colorScheme;
+    final SolovvoPalette palette = context.palette;
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -349,19 +351,18 @@ class _ReplyBanner extends StatelessWidget {
         vertical: AppSpacing.xxs,
       ),
       decoration: BoxDecoration(
-        color: colors.primaryContainer.withAlpha(80),
-        border: Border(top: BorderSide(color: colors.outlineVariant)),
+        color: palette.brandTint.withValues(alpha: 0.3),
+        border: Border(top: BorderSide(color: palette.outline)),
       ),
       child: Row(
         children: <Widget>[
-          Icon(Icons.reply_rounded, size: 14, color: colors.primary),
+          Icon(Icons.reply_rounded, size: 14, color: palette.brandInk),
           const SizedBox(width: AppSpacing.xxs),
           Expanded(
             child: Text(
               l10n.commentsReplyingTo(replyToName),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colors.primary,
-                  ),
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(color: palette.brandInk),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

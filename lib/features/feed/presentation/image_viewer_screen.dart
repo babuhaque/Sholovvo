@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sholovvo_app/core/error/failure.dart';
 import 'package:sholovvo_app/core/result/result.dart';
 import 'package:sholovvo_app/design/motion/fade_slide_route.dart';
+import 'package:sholovvo_app/design/tokens/app_radius.dart';
 import 'package:sholovvo_app/features/feed/application/feed_providers.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
@@ -73,7 +74,9 @@ class _ImageViewerScreenState extends ConsumerState<ImageViewerScreen> {
       return;
     }
     final AppLocalizations l10n = context.l10n;
-    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
+    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+      context,
+    );
     final String url = widget.urls[_currentPage];
 
     setState(() => _isSaving = true);
@@ -122,28 +125,25 @@ class _ImageViewerScreenState extends ConsumerState<ImageViewerScreen> {
                     fit: BoxFit.contain,
                     semanticLabel: widget.semanticLabel,
                     errorBuilder:
-                        (
-                          BuildContext context,
-                          Object error,
-                          StackTrace? _,
-                        ) =>
+                        (BuildContext context, Object error, StackTrace? _) =>
                             const Icon(
                               Icons.broken_image_outlined,
                               size: 64,
                               color: Colors.white54,
                             ),
-                    loadingBuilder: (
-                      BuildContext context,
-                      Widget child,
-                      ImageChunkEvent? progress,
-                    ) {
-                      if (progress == null) return child;
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white70,
-                        ),
-                      );
-                    },
+                    loadingBuilder:
+                        (
+                          BuildContext context,
+                          Widget child,
+                          ImageChunkEvent? progress,
+                        ) {
+                          if (progress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white70,
+                            ),
+                          );
+                        },
                   ),
                 ),
               );
@@ -163,14 +163,11 @@ class _ImageViewerScreenState extends ConsumerState<ImageViewerScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: Colors.black54,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: AppRadius.mdRadius,
                     ),
                     child: Text(
                       '${_currentPage + 1} / ${widget.urls.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ),
                 ),
