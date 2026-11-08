@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:sholovvo_app/core/media/photo_picker.dart';
+import 'package:sholovvo_app/design/tokens/app_elevation.dart';
 import 'package:sholovvo_app/design/tokens/app_palette.dart';
 import 'package:sholovvo_app/design/tokens/app_radius.dart';
 import 'package:sholovvo_app/design/tokens/app_spacing.dart';
+import 'package:sholovvo_app/design/widgets/solovvo_card.dart';
 import 'package:sholovvo_app/features/feed/domain/entities/post.dart';
 import 'package:sholovvo_app/features/feed/domain/post_image_storage.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
@@ -162,14 +164,17 @@ class _FilledSlot extends StatelessWidget {
               // slot stays, because the URL is already in the draft and silently
               // dropping a photo the donor can see a placeholder for is worse.
               errorBuilder:
-                  (BuildContext context, Object error, StackTrace? stackTrace) =>
-                      Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          size: 22,
-                          color: palette.textSecondary,
-                        ),
-                      ),
+                  (
+                    BuildContext context,
+                    Object error,
+                    StackTrace? stackTrace,
+                  ) => Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      size: 22,
+                      color: palette.textSecondary,
+                    ),
+                  ),
             ),
           ),
           PositionedDirectional(
@@ -267,9 +272,7 @@ class _AddSlot extends StatelessWidget {
         onTap: enabled ? () => unawaited(_chooseSource(context)) : null,
         borderRadius: AppRadius.mdRadius,
         child: Container(
-          constraints: const BoxConstraints(
-            minHeight: AppSpacing.minTapTarget,
-          ),
+          constraints: const BoxConstraints(minHeight: AppSpacing.minTapTarget),
           decoration: BoxDecoration(
             borderRadius: AppRadius.mdRadius,
             border: Border.all(color: palette.brandInk.withValues(alpha: 0.35)),
@@ -296,12 +299,13 @@ class _EmptySlot extends StatelessWidget {
   Widget build(BuildContext context) {
     final SolovvoPalette palette = context.palette;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.surfaceMuted,
-        borderRadius: AppRadius.mdRadius,
-        border: Border.all(color: palette.outline),
-      ),
+    return SolovvoCard(
+      color: palette.surfaceMuted,
+      borderRadius: AppRadius.mdRadius,
+      shadow: AppElevation.none,
+      borderColor: palette.outline,
+      padding: EdgeInsets.zero,
+      child: const SizedBox.expand(),
     );
   }
 }
@@ -402,9 +406,8 @@ class _SourceOption extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: palette.textPrimary,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge
+                      ?.copyWith(color: palette.textPrimary),
                 ),
               ),
             ],

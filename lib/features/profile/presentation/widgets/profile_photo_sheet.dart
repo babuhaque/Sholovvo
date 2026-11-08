@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:sholovvo_app/design/tokens/app_elevation.dart';
 import 'package:sholovvo_app/design/tokens/app_palette.dart';
 import 'package:sholovvo_app/design/tokens/app_radius.dart';
 import 'package:sholovvo_app/design/tokens/app_spacing.dart';
+import 'package:sholovvo_app/design/widgets/solovvo_card.dart';
 import 'package:sholovvo_app/l10n/l10n.dart';
 
 /// What the donor picked in [ProfilePhotoSheet].
@@ -109,10 +111,7 @@ class ProfilePhotoSheet extends StatelessWidget {
             ),
             if (hasPhoto) ...<Widget>[
               const SizedBox(height: AppSpacing.sm),
-              Container(
-                height: 1,
-                color: context.palette.outline,
-              ),
+              Container(height: 1, color: context.palette.outline),
               const SizedBox(height: AppSpacing.xs),
               _PhotoOption(
                 icon: Icons.delete_outline_rounded,
@@ -208,17 +207,20 @@ class _NotConfigured extends StatelessWidget {
     final SolovvoPalette palette = context.palette;
     final TextTheme text = Theme.of(context).textTheme;
 
-    return Container(
+    return SolovvoCard(
+      color: palette.surfaceMuted,
+      borderRadius: AppRadius.mdRadius,
+      shadow: AppElevation.none,
+      borderColor: palette.outline,
       padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: palette.surfaceMuted,
-        borderRadius: AppRadius.mdRadius,
-        border: Border.all(color: palette.outline),
-      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(Icons.info_outline_rounded, size: 20, color: palette.textSecondary),
+          Icon(
+            Icons.info_outline_rounded,
+            size: 20,
+            color: palette.textSecondary,
+          ),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
             child: Column(

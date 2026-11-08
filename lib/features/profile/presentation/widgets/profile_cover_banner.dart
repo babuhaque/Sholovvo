@@ -59,9 +59,11 @@ class ProfileCoverBanner extends StatelessWidget {
             // The banner stands for the donor's profile, so a screen reader gets
             // a name rather than an unlabelled picture.
             semanticLabel: l10n.profileCoverSheetTitle,
-            errorBuilder:
-                (BuildContext context, Object error, StackTrace? stack) =>
-                    _Placeholder(palette: palette),
+            errorBuilder: (
+              BuildContext context,
+              Object error,
+              StackTrace? stack,
+            ) => _Placeholder(palette: palette),
           )
         : _Placeholder(palette: palette);
 
@@ -104,9 +106,7 @@ class ProfileCoverBanner extends StatelessWidget {
                       size: 18,
                     ),
                     label: Text(
-                      hasCover
-                          ? l10n.profileCoverChange
-                          : l10n.profileCoverAdd,
+                      hasCover ? l10n.profileCoverChange : l10n.profileCoverAdd,
                     ),
                   ),
                 ),

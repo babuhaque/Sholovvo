@@ -257,133 +257,159 @@ class _FeedPostTileState extends State<FeedPostTile>
                       ),
                     ),
                   ),
-                    IconButton(
-                      onPressed: onSaveToggle,
-                      tooltip: l10n.feedSave,
-                      iconSize: 20,
-                      visualDensity: VisualDensity.compact,
-                      color: isSaved
-                          ? Theme.of(context).colorScheme.primary
-                          : palette.textSecondary,
-                      icon: Icon(
-                        isSaved
-                            ? Icons.bookmark_rounded
-                            : Icons.bookmark_border_rounded,
+                  IconButton(
+                    onPressed: onSaveToggle,
+                    tooltip: l10n.feedSave,
+                    iconSize: 20,
+                    constraints: const BoxConstraints(
+                      minWidth: AppSpacing.minTapTarget,
+                      minHeight: AppSpacing.minTapTarget,
+                    ),
+                    padding: EdgeInsets.zero,
+                    color: isSaved
+                        ? Theme.of(context).colorScheme.primary
+                        : palette.textSecondary,
+                    icon: Icon(
+                      isSaved
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_border_rounded,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              _buildContent(context, text, palette),
+              const SizedBox(height: AppSpacing.xxs),
+              Row(
+                children: <Widget>[
+                  Flexible(
+                    child: GestureDetector(
+                      onTap: onLikeToggle,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minHeight: AppSpacing.minTapTarget,
+                        ),
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xxs,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              isLiked
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              size: 18,
+                              color: isLiked
+                                  ? palette.danger
+                                  : palette.textSecondary,
+                            ),
+                            const SizedBox(width: AppSpacing.xxs),
+                            Flexible(
+                              child: Text(
+                                l10n.feedLikeCount(post.likeCount),
+                                style: text.labelSmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                _buildContent(context, text, palette),
-          const SizedBox(height: AppSpacing.xxs),
-          Row(
-            children: <Widget>[
-              Flexible(
-                child: GestureDetector(
-                  onTap: onLikeToggle,
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 4,
-                      horizontal: 2,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(
-                          isLiked
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          size: 18,
-                          color: isLiked
-                              ? palette.danger
-                              : palette.textSecondary,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Flexible(
+                    child: GestureDetector(
+                      onTap: onCommentTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minHeight: AppSpacing.minTapTarget,
                         ),
-                        const SizedBox(width: AppSpacing.xxs),
-                        Flexible(
-                          child: Text(
-                            l10n.feedLikeCount(post.likeCount),
-                            style: text.labelSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xxs,
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              size: 18,
+                              color: palette.textSecondary,
+                            ),
+                            const SizedBox(width: AppSpacing.xxs),
+                            Flexible(
+                              child: Text(
+                                l10n.feedCommentCount(post.commentCount),
+                                style: text.labelSmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Flexible(
-                child: GestureDetector(
-                  onTap: onCommentTap,
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 4,
-                      horizontal: 2,
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => unawaited(_copy(context)),
+                    tooltip: l10n.feedCopy,
+                    iconSize: 18,
+                    constraints: const BoxConstraints(
+                      minWidth: AppSpacing.minTapTarget,
+                      minHeight: AppSpacing.minTapTarget,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          size: 18,
-                          color: palette.textSecondary,
-                        ),
-                        const SizedBox(width: AppSpacing.xxs),
-                        Flexible(
-                          child: Text(
-                            l10n.feedCommentCount(post.commentCount),
-                            style: text.labelSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
+                    padding: EdgeInsets.zero,
+                    color: palette.textSecondary,
+                    icon: const Icon(Icons.content_copy_rounded),
                   ),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () => unawaited(_copy(context)),
-                tooltip: l10n.feedCopy,
-                iconSize: 18,
-                visualDensity: VisualDensity.compact,
-                color: palette.textSecondary,
-                icon: const Icon(Icons.content_copy_rounded),
-              ),
-              IconButton(
-                onPressed: () => _share(context),
-                tooltip: l10n.feedShare,
-                iconSize: 18,
-                visualDensity: VisualDensity.compact,
-                color: palette.textSecondary,
-                icon: const Icon(Icons.share_outlined),
-              ),
-              if (onEditTap != null)
-                IconButton(
-                  onPressed: onEditTap,
-                  tooltip: l10n.feedEditAction,
-                  iconSize: 18,
-                  visualDensity: VisualDensity.compact,
-                  color: palette.textSecondary,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-              IconButton(
-                onPressed: onReportTap,
-                tooltip: l10n.reportTooltip,
-                iconSize: 18,
-                visualDensity: VisualDensity.compact,
-                color: palette.textSecondary,
-                icon: const Icon(Icons.flag_outlined),
+                  IconButton(
+                    onPressed: () => _share(context),
+                    tooltip: l10n.feedShare,
+                    iconSize: 18,
+                    constraints: const BoxConstraints(
+                      minWidth: AppSpacing.minTapTarget,
+                      minHeight: AppSpacing.minTapTarget,
+                    ),
+                    padding: EdgeInsets.zero,
+                    color: palette.textSecondary,
+                    icon: const Icon(Icons.share_outlined),
+                  ),
+                  if (onEditTap != null)
+                    IconButton(
+                      onPressed: onEditTap,
+                      tooltip: l10n.feedEditAction,
+                      iconSize: 18,
+                      constraints: const BoxConstraints(
+                        minWidth: AppSpacing.minTapTarget,
+                        minHeight: AppSpacing.minTapTarget,
+                      ),
+                      padding: EdgeInsets.zero,
+                      color: palette.textSecondary,
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                  IconButton(
+                    onPressed: onReportTap,
+                    tooltip: l10n.reportTooltip,
+                    iconSize: 18,
+                    constraints: const BoxConstraints(
+                      minWidth: AppSpacing.minTapTarget,
+                      minHeight: AppSpacing.minTapTarget,
+                    ),
+                    padding: EdgeInsets.zero,
+                    color: palette.textSecondary,
+                    icon: const Icon(Icons.flag_outlined),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    ),
+        ),
         // Heart animation overlay (visible only during double-tap).
         AnimatedBuilder(
           animation: _heartController,
@@ -521,16 +547,12 @@ class _PostImages extends StatelessWidget {
                 padding: EdgeInsets.only(top: index == 0 ? 0 : AppSpacing.xs),
                 child: Row(
                   children: <Widget>[
-                    Expanded(
-                      child: _cell(urls, index, cell, label),
-                    ),
+                    Expanded(child: _cell(urls, index, cell, label)),
                     const SizedBox(width: AppSpacing.xs),
                     // An odd count leaves the last cell empty rather than letting
                     // one picture stretch to the full width of the card.
                     if (index + 1 < urls.length)
-                      Expanded(
-                        child: _cell(urls, index + 1, cell, label),
-                      )
+                      Expanded(child: _cell(urls, index + 1, cell, label))
                     else
                       const Spacer(),
                   ],
@@ -617,16 +639,19 @@ class _PostImage extends StatelessWidget {
                       ),
                     ),
             loadingBuilder:
-                (BuildContext context, Widget child, ImageChunkEvent? progress) =>
-                    progress == null
-                    ? child
-                    : const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
+                (
+                  BuildContext context,
+                  Widget child,
+                  ImageChunkEvent? progress,
+                ) => progress == null
+                ? child
+                : const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
           ),
         ),
       ),
@@ -705,7 +730,9 @@ class _FitPostImageState extends State<_FitPostImage> {
     }
     final ui.Image image = info.image;
     if (image.height != 0) {
-      setState(() => widget.aspectRatios[widget.url] = image.width / image.height);
+      setState(
+        () => widget.aspectRatios[widget.url] = image.width / image.height,
+      );
     }
     info.dispose();
   }
@@ -740,16 +767,19 @@ class _FitPostImageState extends State<_FitPostImage> {
                       ),
                     ),
             loadingBuilder:
-                (BuildContext context, Widget child, ImageChunkEvent? progress) =>
-                    progress == null
-                    ? child
-                    : const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
+                (
+                  BuildContext context,
+                  Widget child,
+                  ImageChunkEvent? progress,
+                ) => progress == null
+                ? child
+                : const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
           ),
         ),
       ),
